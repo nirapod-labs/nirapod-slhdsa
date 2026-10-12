@@ -10,7 +10,7 @@
 #
 #   make check            the proof-hole scan, the constant check, then every
 #                         EasyCrypt file here and in the imported theories
-#   make check-own        proofs/spec, without the scans
+#   make check-own        proofs/spec and proofs/security, without the scans
 #   make check-spec       the scans, then proofs/spec only
 #   make check-imported   the imported crypto-specs theories, re-checked here
 #   make check-formosa    the imported SPHINCS+ security proof, re-checked here
@@ -50,7 +50,7 @@ JASMIN_SRC ?= ../src
 CRYPTO_SPECS := ../third_party/crypto-specs
 FORMOSA      := ../third_party/formosa-slhdsa
 
-EC_PATH := -R spec \
+EC_PATH := -R spec -R security \
            -R $(CRYPTO_SPECS)/common -R $(CRYPTO_SPECS)/fips202 \
            -I JazzEC:$(CRYPTO_SPECS)/arrays
 
@@ -72,7 +72,7 @@ FORMOSA_PROVERS ?= -p Alt-Ergo@2.6 -p CVC5@1.0 -p Z3@4.12
 FORMOSA_TIMEOUT ?= 11
 FORMOSA_FLAGS   := -no-eco -I $(FORMOSA)/proofs $(FORMOSA_PROVERS) -timeout $(FORMOSA_TIMEOUT)
 
-OWN_FILES      := $(shell find spec \
+OWN_FILES      := $(shell find spec security \
                     \( -name '*.ec' -o -name '*.eca' \) 2>/dev/null | LC_ALL=C sort)
 SPEC_FILES     := $(filter spec/%,$(OWN_FILES))
 
