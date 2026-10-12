@@ -10,7 +10,7 @@
  * (sha2/sha256_compress.jinc):
  *
  *     _sha256_compress(h, block, ms)    one block from a byte array
- *     _sha256_compress_ptr(h, p, ms)    one block from caller memory
+ *     _sha256_compress_blocks(h, p, n, ms) n blocks from caller memory
  *
  * Required CPU features: SHA (SHA256RNDS2, SHA256MSG1, SHA256MSG2) and AVX
  * for the VEX-encoded shuffles, adds and blends. The caller's dispatch must
@@ -36,9 +36,9 @@
  * which is the recurrence of section 6.2.2 step 1, four words at a time.
  * Group g reuses the register of group g-4, its last reader.
  *
- * Security: h and the block are secret. The code is straight-line; every
- * address is fixed at compile time or is the public block pointer. ms
- * passes through unchanged, for the reason given in the scalar kernel.
+ * Security: h and the block are secret. Every branch is the public block
+ * count of _sha256_compress_blocks; every address is fixed at compile time
+ * or is the public block pointer.
  *
  * Residue: the kernel stores no message word or chaining value to the
  * stack; they live in vector registers, which it does not clear.
@@ -149,8 +149,9 @@ fn _sha256_compress(
   return h, ms;
 }
 
+/* One block from caller memory at p; the loop body of _sha256_compress_blocks. */
 #[sct = "{ ptr: public, val: secret } × public × msf → { ptr: public, val: secret } × msf"]
-fn _sha256_compress_ptr(reg mut ptr u32[8] h, reg u64 p, reg u64 ms) -> reg ptr u32[8], reg u64
+fn _sha256_compress_one(reg mut ptr u32[8] h, reg u64 p, reg u64 ms) -> reg ptr u32[8], reg u64
 {
   reg ptr u32[4] mask_p;
   reg u128[4] w;
@@ -165,6 +166,32 @@ fn _sha256_compress_ptr(reg mut ptr u32[8] h, reg u64 p, reg u64 ms) -> reg ptr 
   }
 
   h = __shani_rounds(h, w);
+
+  return h, ms;
+}
+
+/*
+ * n consecutive blocks from caller memory at p, with the contract of the
+ * shared kernel's _sha256_compress_blocks. p and n stay in registers
+ * across the block function's calls; the register allocation keeps them
+ * out of the registers the callee writes, so they are never reloaded.
+ */
+#[sct = "{ ptr: public, val: secret } × public × public × msf → { ptr: public, val: secret } × msf"]
+fn _sha256_compress_blocks(
+  reg mut ptr u32[8] h,
+  reg u64 p n,
+  reg u64 ms
+) -> reg ptr u32[8], reg u64
+{
+  reg bool more;
+
+  while { more = n != 0; } (more) {
+    ms = #update_msf(more, ms);
+    h, ms = _sha256_compress_one(h, p, ms);
+    p += 64;
+    n -= 1;
+  }
+  ms = #update_msf(!more, ms);
 
   return h, ms;
 }

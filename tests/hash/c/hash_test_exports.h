@@ -51,7 +51,7 @@ uint64_t HT(sha256_absorb)(uint32_t h[8], uint8_t buf[64], uint64_t total,
                            const uint8_t *in, uint64_t inlen);
 void HT(sha256_finalize)(uint8_t out[32], uint32_t h[8], uint8_t buf[64], uint64_t total);
 void HT(sha256_compress)(uint32_t h[8], const uint8_t block[64]);
-void HT(sha256_compress_ptr)(uint32_t h[8], const uint8_t *block);
+void HT(sha256_compress_blocks)(uint32_t h[8], const uint8_t *blocks, uint64_t n);
 
 void HT(sha512_init)(uint64_t h[8]);
 void HT(sha384_init)(uint64_t h[8]);
@@ -61,7 +61,7 @@ uint64_t HT(sha512_absorb)(uint64_t h[8], uint8_t buf[128], uint64_t total,
                            const uint8_t *in, uint64_t inlen);
 void HT(sha512_finalize)(uint8_t out[64], uint64_t h[8], uint8_t buf[128], uint64_t total);
 void HT(sha512_compress)(uint64_t h[8], const uint8_t block[128]);
-void HT(sha512_compress_ptr)(uint64_t h[8], const uint8_t *block);
+void HT(sha512_compress_blocks)(uint64_t h[8], const uint8_t *blocks, uint64_t n);
 
 /* HMAC: full-length tag (32 or 64 bytes). */
 void HT(hmac_sha256)(uint8_t out[32], const uint8_t *key, uint64_t keylen,

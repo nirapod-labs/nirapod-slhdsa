@@ -304,13 +304,17 @@ continues with `total` equal to the bytes that state covers.
 ```
 fn _sha256_compress(reg mut ptr u32[8] h, reg const ptr u8[64] block, reg u64 ms)
   -> reg ptr u32[8], reg u64
-fn _sha256_compress_ptr(reg mut ptr u32[8] h, reg u64 p, reg u64 ms)
+fn _sha256_compress_blocks(reg mut ptr u32[8] h, reg u64 p n, reg u64 ms)
   -> reg ptr u32[8], reg u64
 ```
 
-`h <- compress(h, M)` for one 64-byte block (FIPS 180-4 section 6.2.2,
-steps 1 to 4), from an array or from 64 bytes of memory. `ms` passes
-through unchanged. The SHA-256 functions of FIPS 205 section 11.2 hash
+`_sha256_compress`: `h <- compress(h, M)` for one 64-byte block (FIPS 180-4
+section 6.2.2, steps 1 to 4) from an array; `ms` passes through unchanged.
+`_sha256_compress_blocks`: the same for the `n` consecutive 64-byte blocks
+of memory at `p` (public `n`, possibly 0), in one call. Whole-block input
+goes through it so that the values a caller keeps across a kernel call are
+saved and protected once per call, not once per block. The SHA-256
+functions of FIPS 205 section 11.2 hash
 `PK.seed || toByte(0, 64 - n)` as their first block: the caller computes
 that state once, copies it per call, and continues with `total = 64`. The
 SHA-512 functions (`H`, `T_l` of security categories 3 and 5) do the same
@@ -359,7 +363,7 @@ The SHA-256 interface with `u64[8]` states, `u8[128]` buffers and a
 ```
 fn _sha512_compress(reg mut ptr u64[8] h, reg const ptr u8[128] block, reg u64 ms)
   -> reg ptr u64[8], reg u64
-fn _sha512_compress_ptr(reg mut ptr u64[8] h, reg u64 p, reg u64 ms)
+fn _sha512_compress_blocks(reg mut ptr u64[8] h, reg u64 p n, reg u64 ms)
   -> reg ptr u64[8], reg u64
 inline fn __sha512_init / __sha384_init / __sha512_224_init / __sha512_256_init
                                     (reg mut ptr u64[8] h) -> reg ptr u64[8]  /* 5.3.4 - 5.3.6 */
@@ -530,6 +534,12 @@ Mach-O output; the pattern accepts both.
   after an AVX2 kernel therefore pays the processor's SSE/AVX transition
   cost on the SHA instructions. The results are unaffected; the speed is
   not.
+- **Protected reloads.** A protected reload is ORR plus CSDB on AArch64.
+  Absorb therefore hands all its whole blocks to one `_sha*_compress_blocks`
+  call, made only when there is at least one, and saves and protects its
+  own state once per call rather than once per block. Inside the call, the
+  scalar kernel still spills and protects `p` and `n` per block; the
+  `x86_64/shani` SHA-256 kernel keeps them in registers.
 - **Values across kernel calls.** Kernels are local functions. The
   compiler's register allocation covers caller and callee together: a value
   live across a call keeps a register the callee does not write, or the

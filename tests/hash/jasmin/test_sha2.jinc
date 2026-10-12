@@ -385,8 +385,8 @@ export fn nirapod_slhdsa_hashtest_sha256_compress(reg u64 hp block)
   __h256_store(hp, h);
 }
 
-#[ct = "public × public -> ()"]
-export fn nirapod_slhdsa_hashtest_sha256_compress_ptr(reg u64 hp block)
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha256_compress_blocks(reg u64 hp block n)
 {
   stack u32[8] h;
   reg u64 ms;
@@ -394,9 +394,10 @@ export fn nirapod_slhdsa_hashtest_sha256_compress_ptr(reg u64 hp block)
   ms = #init_msf();
   hp = #protect(hp, ms);
   block = #protect(block, ms);
+  n = #protect(n, ms);
   h = __h256_load(h, hp);
   () = #spill(hp);
-  h, ms = _sha256_compress_ptr(h, block, ms);
+  h, ms = _sha256_compress_blocks(h, block, n, ms);
   () = #unspill(hp);
   hp = #protect(hp, ms);
   __h256_store(hp, h);
@@ -478,8 +479,8 @@ export fn nirapod_slhdsa_hashtest_sha512_compress(reg u64 hp block)
   __h512_store(hp, h);
 }
 
-#[ct = "public × public -> ()"]
-export fn nirapod_slhdsa_hashtest_sha512_compress_ptr(reg u64 hp block)
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha512_compress_blocks(reg u64 hp block n)
 {
   stack u64[8] h;
   reg u64 ms;
@@ -487,9 +488,10 @@ export fn nirapod_slhdsa_hashtest_sha512_compress_ptr(reg u64 hp block)
   ms = #init_msf();
   hp = #protect(hp, ms);
   block = #protect(block, ms);
+  n = #protect(n, ms);
   h = __h512_load(h, hp);
   () = #spill(hp);
-  h, ms = _sha512_compress_ptr(h, block, ms);
+  h, ms = _sha512_compress_blocks(h, block, n, ms);
   () = #unspill(hp);
   hp = #protect(hp, ms);
   __h512_store(hp, h);

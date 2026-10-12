@@ -52,8 +52,8 @@ this implementation:
 - SHA-256 and SHA-512 finalize alone, with totals up to `2^61 - 1` bytes,
   against the padding and length laid out in C and compressed by the
   compression export;
-- the array and pointer forms of each compression function against each
-  other;
+- the array and multi-block forms of each compression function against
+  each other, for 0 to 4 blocks;
 - HMAC-SHA-256 and HMAC-SHA-512 with keys below, at and above one block;
 - MGF1 at the six FIPS 205 sizes, against MGF1 composed in C from
   libcrypto SHA-2;

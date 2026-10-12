@@ -963,27 +963,33 @@ static void diff_length(unsigned long iter)
   }
 }
 
-/* The array and pointer compression entry points agree on one block. */
+/*
+ * The array and multi-block compression entry points agree: n blocks
+ * through _sha*_compress_blocks equal n single-block compressions,
+ * n = 0 .. 4.
+ */
 static void diff_compress(unsigned long iter)
 {
-  uint8_t block[128];
+  uint8_t blocks[512];
   uint32_t a32[8], b32[8];
   uint64_t a64[8], b64[8];
   char what[96];
-  size_t i;
+  size_t i, n = rnd_below(5);
 
-  rnd_bytes(block, sizeof block);
+  rnd_bytes(blocks, sizeof blocks);
   for (i = 0; i < 8; i++) {
     a32[i] = b32[i] = (uint32_t)rnd();
     a64[i] = b64[i] = rnd();
   }
-  HT(sha256_compress)(a32, block);
-  HT(sha256_compress_ptr)(b32, block);
-  snprintf(what, sizeof what, "diff iter %lu sha256 compress array/pointer", iter);
+  for (i = 0; i < n; i++)
+    HT(sha256_compress)(a32, blocks + 64 * i);
+  HT(sha256_compress_blocks)(b32, blocks, n);
+  snprintf(what, sizeof what, "diff iter %lu sha256 compress array/blocks n=%zu", iter, n);
   check(what, (uint8_t *)a32, (uint8_t *)b32, sizeof a32);
-  HT(sha512_compress)(a64, block);
-  HT(sha512_compress_ptr)(b64, block);
-  snprintf(what, sizeof what, "diff iter %lu sha512 compress array/pointer", iter);
+  for (i = 0; i < n; i++)
+    HT(sha512_compress)(a64, blocks + 128 * i);
+  HT(sha512_compress_blocks)(b64, blocks, n);
+  snprintf(what, sizeof what, "diff iter %lu sha512 compress array/blocks n=%zu", iter, n);
   check(what, (uint8_t *)a64, (uint8_t *)b64, sizeof a64);
 }
 

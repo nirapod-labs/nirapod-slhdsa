@@ -10,18 +10,21 @@
  * Its two entry points are the kernel contract; kernel variants listed as
  * planned in src/jasmin/hash/README.md are to provide the same two:
  *
- *     _sha256_compress(h, block)    one block from a byte array
- *     _sha256_compress_ptr(h, p)    one block from caller memory
+ *     _sha256_compress(h, block, ms)       one block from a byte array
+ *     _sha256_compress_blocks(h, p, n, ms) n blocks from caller memory
  *
- * Both compute h <- compress(h, M) for the 64-byte block M, with h the
- * chaining value H_0 .. H_7 as native u32 words and M read big-endian
- * (section 3.1) through __bswap32 of the HashWord root.
+ * The first computes h <- compress(h, M) for the 64-byte block M, the
+ * second applies it to n consecutive blocks. h is the chaining value
+ * H_0 .. H_7 as native u32 words; M is read big-endian (section 3.1)
+ * through __bswap32 of the HashWord root.
  *
- * Security: h and M are secret. The rounds are straight-line code; every
- * address is fixed at compile time or is the public block pointer. The
- * misspeculation flag ms is passed through unchanged: the kernel has no
- * branch, and taking ms as an argument keeps it in a register the kernel
- * does not clobber, since a flag cannot be spilled and reloaded.
+ * Security: h and M are secret. The rounds are straight-line code; the
+ * only branch is the loop of _sha256_compress_blocks on its public block
+ * count, and every address is fixed at compile time or is the public block
+ * pointer. Each entry point takes the misspeculation flag ms and returns
+ * it, which keeps it in a register the kernel does not clobber, since a
+ * flag cannot be spilled and reloaded; _sha256_compress_blocks updates it
+ * at its loop condition.
  *
  * Residue: on return the local message-schedule window holds 16 schedule
  * words of the last block, which are derived from the secret message:
@@ -229,12 +232,9 @@ fn _sha256_compress(
   return h, ms;
 }
 
-/*
- * The same compression on the 64 bytes of caller memory at p: readable,
- * no alignment required, contents secret like block.
- */
+/* One block from caller memory at p; the loop body of _sha256_compress_blocks. */
 #[sct = "{ ptr: public, val: secret } × public × msf → { ptr: public, val: secret } × msf"]
-fn _sha256_compress_ptr(reg mut ptr u32[8] h, reg u64 p, reg u64 ms) -> reg ptr u32[8], reg u64
+fn _sha256_compress_one(reg mut ptr u32[8] h, reg u64 p, reg u64 ms) -> reg ptr u32[8], reg u64
 {
   stack u32[16] w;
   reg u32 x;
@@ -251,3 +251,34 @@ fn _sha256_compress_ptr(reg mut ptr u32[8] h, reg u64 p, reg u64 ms) -> reg ptr 
   return h, ms;
 }
 
+/*
+ * h <- compress(... compress(h, M_0) ..., M_{n-1}): n consecutive 64-byte
+ * blocks of caller memory at p, each readable, no alignment required,
+ * contents secret like block. n is public; n = 0 leaves h unchanged.
+ *
+ * p and n cross each block's compression through the stack (a kernel may
+ * use every register) and are protected on reload.
+ */
+#[sct = "{ ptr: public, val: secret } × public × public × msf → { ptr: public, val: secret } × msf"]
+fn _sha256_compress_blocks(
+  reg mut ptr u32[8] h,
+  reg u64 p n,
+  reg u64 ms
+) -> reg ptr u32[8], reg u64
+{
+  reg bool more;
+
+  while { more = n != 0; } (more) {
+    ms = #update_msf(more, ms);
+    () = #spill(p, n);
+    h, ms = _sha256_compress_one(h, p, ms);
+    () = #unspill(p, n);
+    p = #protect(p, ms);
+    n = #protect(n, ms);
+    p += 64;
+    n -= 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return h, ms;
+}

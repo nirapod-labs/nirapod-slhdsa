@@ -157,24 +157,33 @@ fn _sha512_absorb_mem(
   }
 
   /*
-   * Whole blocks from memory. Either fill was 0 on entry, or the block
-   * above completed, or inlen is now 0; in all three cases buf has no
-   * pending bytes when this loop runs.
+   * Whole blocks straight from memory, in one kernel call made only when
+   * there is at least one. Either fill was 0 on entry, or the block above
+   * completed, or inlen is now 0; in all three cases buf has no pending
+   * bytes here. The values needed after the call cross it through the
+   * stack and are protected on reload.
    */
 
-  while { more = inlen >= 128; } (more) {
+  n = inlen;
+  n >>= 7;
+  more = n != 0;
+  if (more) {
     ms = #update_msf(more, ms);
     () = #spill(total, in, inlen, buf);
-    h, ms = _sha512_compress_ptr(h, in, ms);
+    h, ms = _sha512_compress_blocks(h, in, n, ms);
     () = #unspill(total, in, inlen, buf);
     total = #protect(total, ms);
     in = #protect(in, ms);
     inlen = #protect(inlen, ms);
     buf = #protect_ptr(buf, ms);
-    in += 128;
-    inlen -= 128;
+    n = inlen;
+    n >>= 7;
+    n <<= 7;
+    in += n;
+    inlen &= 127;
+  } else {
+    ms = #update_msf(!more, ms);
   }
-  ms = #update_msf(!more, ms);
 
   /* Keep the remainder; buf is empty at this point when inlen > 0. */
 
