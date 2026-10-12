@@ -25,9 +25,12 @@ from the library. The test exports live in `tests/hash/`, and
 ```
 keccak/keccak_constants.jinc round count, ι constants and ρ offsets, shared by the kernels
 keccak/keccakf1600.jinc    Keccak-f[1600] kernel (scalar)
+keccak/keccakf1600_x4.jinc 4-way Keccak-f[1600] kernel (scalar, four single-way calls)
 keccak/sponge.jinc         incremental sponge, memory input and output
 keccak/sponge_array.jinc   the same for fixed-length arrays (instance file)
 keccak/fips202.jinc        one-shot SHA-3 and SHAKE from memory
+keccak/sponge_x4.jinc      4-way sponge: init and finalize
+keccak/sponge_x4_array.jinc 4-way absorb and squeeze of fixed-length arrays (instance file)
 keccak/aarch64/scalar/     Keccak-f[1600] kernel for AArch64 with the state in registers
 sha2/sha256_k.jinc         SHA-256 round constants, shared by its kernels
 sha2/sha256_compress.jinc  SHA-256 compression kernel (scalar)
@@ -39,6 +42,12 @@ sha2/sha512.jinc           SHA-384/512/512-224/512-256 values, buffering, paddin
 sha2/sha512_array.jinc     absorb from a fixed-length array (instance file)
 sha2/hmac.jinc             HMAC over SHA-256 and SHA-512
 sha2/mgf1.jinc             MGF1 over SHA-256 and SHA-512 (instance file)
+sha2/sha256_x8.jinc        8-way SHA-224/256: initial values, padding, output
+sha2/sha256_x8_array.jinc  8-way absorb of packed fixed-length arrays (instance file)
+sha2/sha256_x8_compress.jinc 8-way SHA-256 compression kernel (scalar)
+sha2/sha512_x4.jinc        4-way SHA-384/512/512-224/512-256: initial values, padding, output
+sha2/sha512_x4_array.jinc  4-way absorb of packed fixed-length arrays (instance file)
+sha2/sha512_x4_compress.jinc 4-way SHA-512 compression kernel (scalar)
 x86_64/word.jinc           byte reversal, x86-64 instructions
 aarch64/word.jinc          byte reversal, AArch64 instructions (owns the contract)
 ```
@@ -50,7 +59,7 @@ for every target and variant.
 
 | Variant | Target | Kernels | State |
 |---|---|---|---|
-| `scalar` | x86-64, AArch64 | `keccakf1600.jinc`, `sha256_compress.jinc`, `sha512_compress.jinc` in this directory | implemented |
+| `scalar` | x86-64, AArch64 | the `*_compress.jinc` and `keccakf1600*.jinc` kernels in this directory | implemented |
 | `aarch64/scalar` | AArch64 | single-way Keccak with the 25 lanes in registers | implemented, `keccak/aarch64/scalar/` |
 | `avx2` | x86-64 | 4-way Keccak, 8-way SHA-256, 4-way SHA-512 | planned |
 | `shani` | x86-64 | single-stream SHA-256 | planned |
@@ -67,21 +76,30 @@ kernels do not check.
 
 ## Building against these files
 
-Four include roots:
+Six include roots:
 
 | Root | Points at | Provides |
 |---|---|---|
 | `Hash` | `src/jasmin/hash` | everything below |
 | `HashWord` | `src/jasmin/hash/<arch>` (`x86_64`, `aarch64`) | `word.jinc` |
 | `KeccakKernel` | `src/jasmin/hash/keccak` or a single-way variant directory | `keccakf1600.jinc` |
+| `KeccakKernelX` | `src/jasmin/hash/keccak` or a multi-way variant directory | `keccakf1600_x4.jinc` |
 | `Sha2Kernel` | `src/jasmin/hash/sha2` or a single-way variant directory | `sha256_compress.jinc`, `sha512_compress.jinc` |
+| `Sha2KernelX` | `src/jasmin/hash/sha2` or a multi-way variant directory | `sha256_x8_compress.jinc`, `sha512_x4_compress.jinc` |
+
+Single-way and multi-way kernels have separate roots so that a target can
+combine, for example, SHA-NI for single hashes with AVX2 for batches.
 
 ```sh
 jasminc -arch armv8a -I Hash=src/jasmin/hash -I HashWord=src/jasmin/hash/aarch64 \
-        -I KeccakKernel=src/jasmin/hash/keccak/aarch64/scalar -I Sha2Kernel=src/jasmin/hash/sha2 ...
+        -I KeccakKernel=src/jasmin/hash/keccak/aarch64/scalar \
+        -I KeccakKernelX=src/jasmin/hash/keccak \
+        -I Sha2Kernel=src/jasmin/hash/sha2 -I Sha2KernelX=src/jasmin/hash/sha2 ...
 
 jasminc -arch x86-64 -I Hash=src/jasmin/hash -I HashWord=src/jasmin/hash/x86_64 \
-        -I KeccakKernel=src/jasmin/hash/keccak -I Sha2Kernel=src/jasmin/hash/sha2 ...
+        -I KeccakKernel=src/jasmin/hash/keccak \
+        -I KeccakKernelX=src/jasmin/hash/keccak \
+        -I Sha2Kernel=src/jasmin/hash/sha2 -I Sha2KernelX=src/jasmin/hash/sha2 ...
 ```
 
 ```
@@ -136,6 +154,8 @@ also keeps secret-derived data on return:
 | `__hmac_sha*_init` | the padded key blocks K0 ^ ipad and K0 ^ opad |
 | `__hmac_sha*_finalize` | the inner digest |
 | `_mgf1_sha*` | the padded seed message and the last chaining value |
+| `_keccakf1600_x4` (scalar kernel) | instance 3's state, and the residue of `_keccakf1600` |
+| `_sha256_x8_compress`, `_sha512_x4_compress` (scalar kernels) | instance 7's (4-way: 3's) chaining value, and the residue of the single-way kernel |
 
 A function's residue includes the residue of every function it calls.
 Clearing that stack is an obligation of the export that runs these
@@ -393,17 +413,75 @@ fn _mgf1_sha512(...)    /* same shape */
 (RFC 8017, appendix B.2.1). FIPS 205 section 11.2 uses it for `H_msg` with
 `seed = R || PK.seed || Hash(R || PK.seed || PK.root || M)`.
 
-## Multi-way interfaces (planned)
+## Multi-way interfaces
 
-Batched forms of the Keccak and SHA-2 primitives, for independent hashes
-of equal shape (WOTS+ chains, FORS leaves, tree nodes), are planned with
-the layouts below.
+Batched forms run independent hashes of equal shape together: WOTS+ chains,
+FORS leaves and tree nodes. Each multi-way function computes exactly what
+the single-way functions compute on each instance separately.
 
-| Interface | Instances | State layout |
-|---|---|---|
-| Keccak x4 | 4 | `u64[100]`: lane `j` of instance `k` at `4*j + k` |
-| SHA-256 x8 | 8 | `u32[64]`: word `j` of instance `k` at `8*j + k` |
-| SHA-512 x4 | 4 | `u64[32]`: word `j` of instance `k` at `4*j + k` |
+| Interface | Instances | State layout | State |
+|---|---|---|---|
+| Keccak x4 | 4 | `reg ptr u64[100]`: lane `j` of instance `k` at `4*j + k` | implemented |
+| SHA-256 x8 | 8 | `reg ptr u32[64]`: word `j` of instance `k` at `8*j + k` | implemented |
+| SHA-512 x4 | 4 | `reg ptr u64[32]`: word `j` of instance `k` at `4*j + k` | implemented |
+
+Interleaving word `j` of all instances is the layout in which one vector
+register holds that word of every instance. Instances share `pos`, `rate`
+and `total`, because their inputs have the same shape.
+
+### `keccak/keccakf1600_x4.jinc` (kernel), `keccak/sponge_x4.jinc`
+
+```
+fn _keccakf1600_x4(reg mut ptr u64[100] st, reg u64 ms) -> reg ptr u64[100], reg u64
+
+inline fn __keccak_x4_init(reg mut ptr u64[100] st) -> reg ptr u64[100]
+fn _keccak_x4_finalize(reg mut ptr u64[100] st, reg u64 pos rate ds, reg u64 ms)
+  -> reg ptr u64[100], reg u64
+```
+
+### `keccak/sponge_x4_array.jinc` (array instance)
+
+```
+fn _keccak_x4_absorb_array(reg mut ptr u64[100] st, reg u64 pos rate,
+                           reg const ptr u8[HASH_ARRAY_LEN] in0 in1 in2 in3, reg u64 ms)
+  -> reg ptr u64[100], reg u64, reg u64                     /* st, pos, ms */
+fn _keccak_x4_squeeze_array(reg mut ptr u8[HASH_ARRAY_LEN] out0 out1 out2 out3,
+                            reg mut ptr u64[100] st, reg u64 pos rate, reg u64 ms)
+  -> four reg ptr u8[HASH_ARRAY_LEN], reg ptr u64[100], reg u64, reg u64
+```
+
+The single-way contracts of `sponge.jinc` and `sponge_array.jinc` hold per
+instance. Instance `k`'s byte `b` is `st[:u8 32*(b/8) + 8*k + b%8]`. The same
+array may be passed for several instances (a shared prefix such as
+`PK.seed`).
+
+### Multi-way SHA-2: `sha2/sha256_x8.jinc`, `sha2/sha512_x4.jinc`
+
+```
+fn _sha256_x8_compress(reg mut ptr u32[64] h8, reg const ptr u8[512] blocks, reg u64 ms)
+  -> reg ptr u32[64], reg u64                      /* block k at bytes 64k .. 64k+63 */
+inline fn __sha256_x8_init / __sha224_x8_init(reg mut ptr u32[64] h8) -> reg ptr u32[64]
+fn _sha256_x8_absorb_array(reg mut ptr u32[64] h8, reg mut ptr u8[512] buf, reg u64 total,
+                           reg const ptr u8[8 * HASH_ARRAY_LEN] in, reg u64 ms)
+  -> reg ptr u32[64], reg ptr u8[512], reg u64, reg u64
+fn _sha256_x8_finalize(reg mut ptr u8[256] out, reg mut ptr u32[64] h8,
+                       reg mut ptr u8[512] buf, reg u64 total, reg u64 ms)
+  -> reg ptr u8[256], reg ptr u32[64], reg ptr u8[512], reg u64
+```
+
+and the 4-way SHA-512 family with `u64[32]` states, `u8[512]` buffers
+(4 x 128), `u8[256]` outputs (4 x 64) and `__sha512_x4_init`,
+`__sha384_x4_init`, `__sha512_224_x4_init`, `__sha512_256_x4_init`.
+
+- Instance `k`'s pending block is `buf[64k .. 64k+63]` (SHA-512:
+  `buf[128k .. 128k+127]`); its output is `out[32k ..]` (SHA-512: `out[64k ..]`),
+  with truncated digests as prefixes as in the single-way functions.
+- Array inputs are packed: instance `k`'s array is
+  `in[k*HASH_ARRAY_LEN .. (k+1)*HASH_ARRAY_LEN - 1]`. One pointer serves every
+  instance, so a multi-way loop carries one input pointer, not one per
+  instance.
+- `total` is shared, so each instance's FIPS 205 precomputed `PK.seed` state
+  is the same 8 words broadcast into the 8 lanes, continued with `total = 64`.
 
 ## Kernel notes
 
