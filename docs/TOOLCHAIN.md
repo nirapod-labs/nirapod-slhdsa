@@ -85,10 +85,12 @@ yet.
   `it_compile_prog_to_asmP` and the architecture records `armv8a_h_params`
   and `x86_h_params`. The build stops unless the names printed for each are
   exactly those of `toolchain/jasmin/ASSUMPTIONS`.
-- `admit-scan.log`: every `Admitted`, `admit`, `Abort`, `Axiom`,
-  `Parameter`, `Hypothesis` and `Conjecture` in the proof tree. The build
-  stops unless the list is exactly `toolchain/jasmin/ADMITS`, which explains
-  each kind of entry.
+- `admit-scan.log`: the `Admitted.`, `admit.` and `Abort.` lines and the
+  `Axiom`, `Parameter`, `Hypothesis` and `Conjecture` declarations of the
+  proof tree. It is a text scan, which makes any new such line a reviewed
+  change; `Print Assumptions` above is what states the assumptions of the
+  theorems. The build stops unless the list is exactly
+  `toolchain/jasmin/ADMITS`, which explains each kind of entry.
 - `eclib-axioms.log`: every `axiom`, `admit` and `admitted` in the Jasmin
   EasyCrypt library. The build stops unless the list is exactly
   `toolchain/jasmin/ECLIB_AXIOMS`.

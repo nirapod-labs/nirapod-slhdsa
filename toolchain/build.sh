@@ -443,16 +443,17 @@ step_switch() {
 # ---------------------------------------------------------------------------
 # jasmin
 
-# The tree is rebuilt from scratch whenever the pin, the series or the
-# switch changes (compiled Rocq libraries are only valid with the libraries
-# they were compiled against); otherwise its build products are reused by
-# the incremental make.
+# The tree is rebuilt from scratch whenever the pin, the series, the switch
+# or the packages installed in it change (compiled Rocq libraries are only
+# valid with the libraries they were compiled against); otherwise its build
+# products are reused by the incremental make.
 jasmin_tree() {
   local id f files
   fetch_commit "$JASMIN_URL" "$JASMIN_COMMIT" "$WORK/src/jasmin"
   files=$(series_files)
   id=$({ echo "$JASMIN_COMMIT"; entries "$HERE/jasmin/SERIES"
-         echo "$OPAMROOT/$SWITCH"; } \
+         echo "$OPAMROOT/$SWITCH"
+         opam list --installed --columns=name,version -s; } \
        | sha256_of - | cut -d' ' -f1)
   if [ ! -d "$TREE" ] || [ "$(cat "$WORK/state/series" 2>/dev/null)" != "$id" ]; then
     rm -rf "$TREE"
@@ -466,10 +467,20 @@ jasmin_tree() {
     git -C "$TREE" rev-parse HEAD > "$WORK/state/head"
     echo "$id" > "$WORK/state/series"
   fi
+  jasmin_tree_check
+}
+
+# The tree holds exactly the pin and the series, with no modified file and
+# no file that is neither tracked nor ignored (dune would build any source
+# file it finds). The test step's own build directory is the one exception.
+tree_status() {
+  git -C "$TREE" status --porcelain -- . ':!compiler/_build-test'
+}
+
+jasmin_tree_check() {
   [ "$(git -C "$TREE" rev-parse HEAD)" = "$(cat "$WORK/state/head")" ] \
     || die "$TREE: HEAD moved"
-  [ -z "$(git -C "$TREE" status --porcelain --untracked-files=no)" ] \
-    || die "$TREE: tracked files modified"
+  [ -z "$(tree_status)" ] || die "$TREE: modified or untracked files"
   git -C "$TREE" merge-base --is-ancestor "$JASMIN_COMMIT" HEAD \
     || die "$TREE: the pin is not an ancestor of HEAD"
   [ "$(git -C "$TREE" rev-list --count "$JASMIN_COMMIT..HEAD")" \
@@ -536,7 +547,9 @@ jasmin_assumptions() {
   rflags=$(grep -E '^-R ' "$TREE/proofs/_CoqProject" \
              | sed "s#^-R \([^ ]*\) #-R $TREE/proofs/\1 #" | tr '\n' ' ')
   # shellcheck disable=SC2086
-  (cd "$dir" && $NICE rocq compile $rflags Assumptions.v) > "$LOG/assumptions.log" 2>&1
+  (cd "$dir" && $NICE rocq compile $rflags Assumptions.v) > "$LOG/assumptions.log" 2>&1 \
+    || { tail -30 "$LOG/assumptions.log"
+         die "Print Assumptions failed, see $LOG/assumptions.log"; }
   rm -rf "$dir"
   cat "$LOG/assumptions.log"
   # One report per query, in order: "Axioms:" followed by one name per line
@@ -651,8 +664,8 @@ step_jasmin() {
     || { tail -30 "$LOG/compiler.log"; die "compiler build failed"; }
   [ "$(cil_hashes)" = "$(cat "$LOG/cil.sha256")" ] \
     || die "the extracted OCaml changed during the compiler build"
-  [ -z "$(git -C "$TREE" status --porcelain --untracked-files=no)" ] \
-    || die "the build modified tracked files of $TREE"
+  [ -z "$(tree_status)" ] \
+    || die "the build modified or added files of $TREE"
   say "assumptions"
   jasmin_assumptions
   say "admit scans"
@@ -674,6 +687,7 @@ step_test() {
   say "test"
   use_switch
   [ -x "$TREE/compiler/jasminc" ] || die "no compiler in $TREE; run the jasmin step"
+  jasmin_tree_check
   # Every test runs again: dune builds and runs them in a build directory
   # of their own, emptied first, with its cache, which would restore
   # recorded results, disabled.
