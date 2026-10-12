@@ -1,0 +1,177 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * keccakf1600.jinc
+ * ================
+ *
+ * The Keccak-f[1600] permutation, Keccak-p[1600, 24] of FIPS 202 sections 3.3
+ * and 3.4, in portable scalar Jasmin shared by x86-64 and AArch64.
+ *
+ * State:
+ *
+ *     u64[25], lane (x, y) at index x + 5y (FIPS 202 section 3.1.2), each
+ *     lane little-endian, so state byte i is byte i of the string S.
+ *
+ * One round is
+ *
+ *     Rnd(A, ir) = ι(χ(π(ρ(θ(A)))), ir)          (FIPS 202 section 3.3)
+ *
+ * evaluated one output plane at a time. π reads
+ * A'[x, y] = A[(x + 3y) mod 5, x] (section 3.2.3), so the five lanes that
+ * land in plane y are gathered, corrected by θ and rotated by ρ on the way
+ * in, with (x', y') = ((x + 3y) mod 5, x):
+ *
+ *     C[x]    = A[x, 0] ^ A[x, 1] ^ A[x, 2] ^ A[x, 3] ^ A[x, 4]
+ *     D[x]    = C[x - 1] ^ ROT(C[x + 1], 1)
+ *     B[x]    = ROT(A[x', y'] ^ D[x'], r[x', y'])
+ *     E[x, y] = B[x] ^ (~B[x + 1] & B[x + 2])
+ *     E[0, 0] ^= RC[ir]
+ *
+ * with indices modulo 5. Every round reads one state array and writes the
+ * other; two rounds per loop iteration bring the result back to the
+ * caller's array without a copy.
+ *
+ * Security: all state lanes may be secret. The only branch is the round
+ * loop on a public counter, and every address is fixed by that counter or by
+ * compile-time indices.
+ */
+
+from Hash require "keccak/keccak_constants.jinc"
+
+/*
+ * Lane (0, 0) has offset 0: the guard keeps the identity rotation out of
+ * the code.
+ */
+inline fn __rotl64(reg u64 x, inline int r) -> reg u64
+{
+  #[inline]
+  if (r != 0) {
+    x <<r= r;
+  }
+  return x;
+}
+
+/*
+ * One round from a into e, without ι: e <- χ(π(ρ(θ(a)))).
+ *
+ * a is only read and e only written, so they must be distinct arrays. The
+ * caller applies ι to e[0] afterwards, which keeps the round constant out of
+ * the plane loop.
+ *
+ * C and D are kept in stack scratch, not in registers, so the round's
+ * register working set is B (five lanes), two temporaries and the two state
+ * pointers. The registers the emitted code of each target uses are recorded
+ * with the kernel notes in src/jasmin/hash/README.md.
+ */
+inline fn __keccak_round(reg mut ptr u64[25] e, reg const ptr u64[25] a) -> reg ptr u64[25]
+{
+  stack u64[5] c d;
+  reg u64[5] b;
+  reg u64 t u;
+  inline int x y xs r;
+
+  /*
+   * θ: column parities, then the per-column correction
+   *
+   *     C[x] = A[x, 0] ^ A[x, 1] ^ A[x, 2] ^ A[x, 3] ^ A[x, 4]
+   *     D[x] = C[x - 1] ^ ROT(C[x + 1], 1)
+   */
+
+  for x = 0 to 5 {
+    t = a[x];
+    for y = 1 to 5 {
+      u = a[x + 5 * y];
+      t ^= u;
+    }
+    c[x] = t;
+  }
+
+  for x = 0 to 5 {
+    t = c[(x + 1) % 5];
+    t <<r= 1;
+    u = c[(x + 4) % 5];
+    t ^= u;
+    d[x] = t;
+  }
+
+  /*
+   * ρ, π and χ, plane by plane.
+   *
+   * B holds the five lanes π moves into plane y, already θ-corrected and
+   * ρ-rotated; χ then needs only B.
+   */
+
+  for y = 0 to 5 {
+    for x = 0 to 5 {
+      xs = (x + 3 * y) % 5;
+      b[x] = a[xs + 5 * x];
+      t = d[xs];
+      b[x] ^= t;
+      r = __keccak_rho(xs, x);
+      b[x] = __rotl64(b[x], r);
+    }
+
+    for x = 0 to 5 {
+      t = b[(x + 1) % 5];
+      t = !t;
+      t &= b[(x + 2) % 5];
+      t ^= b[x];
+      e[x + 5 * y] = t;
+    }
+  }
+
+  return e;
+}
+
+/*
+ * st <- Keccak-f[1600](st)
+ *
+ * Residue: on return the local round buffer holds the state after round 23,
+ * and the θ scratch holds C and D of round 24. This kernel clears neither;
+ * clearing them is an obligation of the export that runs it.
+ */
+#[sct = "{ ptr: public, val: secret } × msf → { ptr: public, val: secret } × msf"]
+fn _keccakf1600(reg mut ptr u64[25] st, reg u64 ms) -> reg ptr u64[25], reg u64
+{
+  stack u64[25] round_buf;
+  reg ptr u64[25] e;
+  reg ptr u64[24] rc_table;
+  reg u64 ir rc t;
+  reg bool more;
+
+  e = round_buf;
+  ir = 0;
+
+  /*
+   * Invariant: at the top of each iteration, st holds the state after ir
+   * rounds. The loop condition is the only branch; the msf updates at the
+   * head and exit keep the misspeculation flag exact across it, so the
+   * caller's flag stays usable after the call.
+   */
+
+  while { more = ir < KECCAK_ROUNDS; } (more) {
+    ms = #update_msf(more, ms);
+
+    e = __keccak_round(e, st);
+
+    rc_table = KECCAK_RC;
+    rc = rc_table[ir];
+    ir += 1;
+    t = e[0];
+    t ^= rc;
+    e[0] = t;
+
+    st = __keccak_round(st, e);
+
+    rc_table = KECCAK_RC;
+    rc = rc_table[ir];
+    ir += 1;
+    t = st[0];
+    t ^= rc;
+    st[0] = t;
+  }
+  ms = #update_msf(!more, ms);
+
+  return st, ms;
+}

@@ -1,0 +1,50 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Keccak-p[1600] constants shared by every Keccak-f[1600] kernel variant:
+ * the round count, the ι round constants and the ρ offsets.
+ */
+
+param int KECCAK_ROUNDS = 24;
+
+/*
+ * Round constants RC[ir], ir = 0 .. 23 (FIPS 202 section 3.2.5, Algorithm 6):
+ * bit 2^j - 1 of RC[ir] is rc(j + 7 ir) for j = 0 .. 6, where rc is the
+ * degree-8 LFSR of Algorithm 5. tests/hash/tools/check_constants.py
+ * recomputes the table from that definition.
+ */
+u64[24] KECCAK_RC = {
+  0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000,
+  0x000000000000808b, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
+  0x000000000000008a, 0x0000000000000088, 0x0000000080008009, 0x000000008000000a,
+  0x000000008000808b, 0x800000000000008b, 0x8000000000008089, 0x8000000000008003,
+  0x8000000000008002, 0x8000000000000080, 0x000000000000800a, 0x800000008000000a,
+  0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008
+};
+
+/*
+ * ρ offset of lane (x, y), computed at compile time by FIPS 202 Algorithm 2:
+ * starting from (x, y) = (1, 0), step t gives offset (t + 1)(t + 2)/2 mod 64
+ * and moves to (y, (2x + 3y) mod 5). Lane (0, 0) is never visited and keeps 0.
+ */
+inline fn __keccak_rho(inline int x y) -> inline int
+{
+  inline int t cx cy nx r;
+
+  r = 0;
+  cx = 1;
+  cy = 0;
+
+  for t = 0 to 24 {
+    #[inline]
+    if (cx == x && cy == y) {
+      r = ((t + 1) * (t + 2) / 2) % 64;
+    }
+    nx = cy;
+    cy = (2 * cx + 3 * cy) % 5;
+    cx = nx;
+  }
+
+  return r;
+}
