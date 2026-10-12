@@ -38,6 +38,7 @@ at an earlier revision of the pull request, written for the pin (see
 | 0025 | this project | located error for an instruction argument that is not an operand | `check_rexpr` redefined to return the new error; same accepted arguments; theorem statements and proofs unchanged |
 | 0026 | this project | ARMv8-A: `a & !b` lowered to BIC | lowering proved |
 | 0027 | this project | ARMv8-A: store of an immediate through a scratch register | lowering proved |
+| 0028 | this project | ARMv8-A: 32-bit load zero-extended to 64 bits (LDRW, written `LDR <Wt>`) | lowering proved; instruction semantics and printing trusted |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -184,6 +185,23 @@ except for that variable; `lower_cassgn_wordP` uses it for this case.
 Every such store materializes its constant (a MOVZ/MOVK sequence); a
 constant stored many times is cheaper held in a register by the source. Test:
 `compiler/tests/success/armv8a/store_imm.jazz`. Upstream status: not yet
+proposed.
+
+### 0028, LDRW (this project)
+
+At the pin, `x = (64u)[:u32 p];` on ARMv8-A was rejected: zero-extending
+loads were lowered for bytes (LDRB) and halfwords (LDRH) only. `LDR <Wt>`
+loads a word and, because a write to a W register clears the upper half,
+zero-extends it to 64 bits. The patch adds the mnemonic LDRW for that form.
+Like LDRSW, it has a 64-bit destination and is valid at that operand size
+only; it is printed as `ldr` with the W name of the destination register.
+The zero-extending word load is lowered to it, and the Jasmin EasyCrypt
+library models it (`op LDRW`). Before the patch the source needed a 32-bit
+load followed by a separate zero extension (an extra UXTW). The instruction
+semantics, its printing and its EasyCrypt model are trusted, like those of
+the other instructions. The lowering proof needs no change; `make -C proofs
+all` checks it again with the new case. Test:
+`compiler/tests/success/armv8a/ldrw.jazz`. Upstream status: not yet
 proposed.
 
 ## Revisions

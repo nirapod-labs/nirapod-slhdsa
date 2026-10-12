@@ -131,9 +131,10 @@ Trusted, not proved:
   architecture manuals, including the instructions the series adds;
 - the EasyCrypt models of the instructions in the Jasmin EasyCrypt library
   (`eclib/JModel_armv8a.ec`, `eclib/JModel_x86.ec`), which `jasmin2ec`
-  output refers to, and the global axioms of that library: its memory model
-  (`JMemory`), the AES helpers (`AES`) and the horizontal addition of the
-  x86-64 model (`JModel_x86`), listed in `toolchain/jasmin/ECLIB_AXIOMS`;
+  output refers to, including the `LDRW` model the series adds, and the
+  global axioms of that library: its memory model (`JMemory`), the AES
+  helpers (`AES`) and the horizontal addition of the x86-64 model
+  (`JModel_x86`), listed in `toolchain/jasmin/ECLIB_AXIOMS`;
 - the speculative guarantees of barrier instructions, an assumption of the
   speculative constant-time model rather than part of the sequential
   semantics;
@@ -155,7 +156,8 @@ correctness, safety or constant-time behaviour of a particular Jasmin program.
   Pass `-system linux` (ELF) or `-system macosx` (Mach-O) explicitly whenever
   generated assembly is kept or compared.
 - ARMv8-A has no 8- or 16-bit registers: a byte or halfword is loaded into a
-  32- or 64-bit register by a zero- or sign-extending load.
+  32- or 64-bit register by a zero- or sign-extending load, and a 32-bit word
+  is zero-extended to 64 bits by the load itself (`(64u)[:u32 p]`).
 - A memory access can only be a whole instruction argument. Write
   `t = (64u) d[0]; x += t;` rather than `x += (64u) d[0];` (the compiler
   reports the latter as an error).
