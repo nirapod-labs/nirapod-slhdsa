@@ -35,6 +35,7 @@ at an earlier revision of the pull request, written for the pin (see
 | 0010-0015 | PR #1624, head `72c64afbc6cb`; carried revision 34b528f, 10410e0, 72649cd, 61fdb91, 0b1d351, then 72c64af | LDP and STP; architecture-specific conditions on memory arguments | assembly generation and global-load lowering proved; instruction semantics trusted |
 | 0016-0023 | PR #1625, head `02a2330a04c9` | safety checker: unsound verdicts, false alarms, CallTopHeuristic | safety checker (trusted) |
 | 0024 | this project | safety checker for ARMv8-A | safety checker (trusted) |
+| 0025 | this project | located error for an instruction argument that is not an operand | `check_rexpr` redefined to return the new error; same accepted arguments; theorem statements and proofs unchanged |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -131,6 +132,26 @@ the second starting where the first stopped, is not recognised as
 initialized, and reading it raises an `is_init` alarm although every byte is
 written first. The alarm is a loss of precision, not of soundness.
 Initializing the array in one pass avoids it.
+
+### 0025, invalid instruction operands (this project)
+
+An instruction argument that is not an operand of the target, such as the
+zero-extension of a byte read through a pointer in `x += (64u) d[0];`, failed
+at linearization with the internal error `linearization: check_rexpr`, on
+x86-64 and ARMv8-A alike (upstream issue #1126, open). Neither instruction set
+has an addition whose operand zero-extends a memory byte, so the program
+cannot be compiled as written; the byte must be loaded into a register first.
+The patch reports this as an error of the program, located at the
+instruction, printing the argument and the fix. In `linearization.v`, the
+patch adds the error `invalid_operand` and redefines `check_rexpr` to
+return it, built from the argument it rejects. The check succeeds for
+exactly the arguments it accepted before and its type is unchanged; the
+statements and proofs of the theorems that use it are unchanged.
+
+Tests: `compiler/tests/fail/linearization/{x86-64,armv8a}/zext_load_operand.jazz`;
+the expected output of the existing
+`fail/stack_allocation/x86-64/reg_var_expected.jazz` changes from the internal
+error to the new message. Upstream status: not yet proposed.
 
 ## Revisions
 

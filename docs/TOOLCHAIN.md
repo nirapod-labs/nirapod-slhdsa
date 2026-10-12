@@ -156,6 +156,9 @@ correctness, safety or constant-time behaviour of a particular Jasmin program.
   generated assembly is kept or compared.
 - ARMv8-A has no 8- or 16-bit registers: a byte or halfword is loaded into a
   32- or 64-bit register by a zero- or sign-extending load.
+- A memory access can only be a whole instruction argument. Write
+  `t = (64u) d[0]; x += t;` rather than `x += (64u) d[0];` (the compiler
+  reports the latter as an error).
 - On ARMv8-A, an address has a base register and either an offset register
   or an immediate offset, not both: a stack array indexed by a register is
   addressable only when the array is at offset 0 of the frame; otherwise the

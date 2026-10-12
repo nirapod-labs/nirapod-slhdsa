@@ -35,3 +35,4 @@ patches/0021-safetylib-for-loop-counters-point-to-no-memory-regio.patch 3edbb0ba
 patches/0022-safetylib-faster-start-up-with-large-global-tables.patch 38a2770730871bff8fce2d37392ef8fee963e00eb8388c7181899245524e2870
 patches/0023-changes-changelog-entry-for-the-safety-checker-fixes.patch eb9173fed3d99cb7c7d001d74953a9ef1f117a9f8a92f7010139115b1e34f240
 patches/0024-safetylib-implement-the-safety-checker-for-ARMv8-A.patch f74fcc3a734c6adefac99953aad45e5e5a00499b60eed2396ad536ba673e0602
+patches/0025-linearization-report-invalid-instruction-operands-as.patch ff2b46c62c9b94f7295840e6fb13ce977a107c9556319e0bf90a752fb377e96c
