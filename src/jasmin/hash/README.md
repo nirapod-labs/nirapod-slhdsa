@@ -298,6 +298,11 @@ A hash in progress is three caller-held objects:
 
 `h[i]` is `H_i` of FIPS 180-4 section 6.2 / 6.4 as a native word. `buf`
 holds the `total mod blocksize` bytes not yet compressed, at its start.
+The functions never read a byte of `buf` that this hash has not written.
+The safety checker of the pinned toolchain cannot follow that invariant
+through run-time-indexed writes, so a caller whose code is safety-checked
+initialises all of `buf` once (any contents, for example zeros) before its
+first use, as the one-shot functions do.
 `total` counts every byte absorbed, including those already compressed, so
 a caller that compresses a block itself (for example a precomputed state)
 continues with `total` equal to the bytes that state covers.

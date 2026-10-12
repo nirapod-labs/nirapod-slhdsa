@@ -518,6 +518,10 @@ export fn nirapod_slhdsa_hashtest_hmac_sha256(reg u64 out key keylen msg msglen)
   () = #unspill(msg, msglen);
   msg = #protect(msg, ms);
   msglen = #protect(msglen, ms);
+  /* initialised for the safety checker, as in __sha*_mem_from */
+  for i = 0 to 8 {
+    buf[:u64 i] = 0;
+  }
   total = 64;
   inner, buf, total, ms = _sha256_absorb_mem(inner, buf, total, msg, msglen, ms);
   tag, inner, buf, ms = __hmac_sha256_finalize(tag, inner, buf, total, outer, ms);
@@ -551,6 +555,10 @@ export fn nirapod_slhdsa_hashtest_hmac_sha512(reg u64 out key keylen msg msglen)
   () = #unspill(msg, msglen);
   msg = #protect(msg, ms);
   msglen = #protect(msglen, ms);
+  /* initialised for the safety checker, as in __sha*_mem_from */
+  for i = 0 to 16 {
+    buf[:u64 i] = 0;
+  }
   total = 128;
   inner, buf, total, ms = _sha512_absorb_mem(inner, buf, total, msg, msglen, ms);
   tag, inner, buf, ms = __hmac_sha512_finalize(tag, inner, buf, total, outer, ms);

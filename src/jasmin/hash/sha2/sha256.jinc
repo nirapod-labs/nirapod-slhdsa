@@ -279,7 +279,22 @@ inline fn __sha256_mem_from(
   stack u8[64] buf_s;
   reg ptr u8[64] buf;
   reg u64 total;
+  inline int i;
 
+  /*
+   * Source workaround for a safety-checker limitation, not a security
+   * measure. With the pinned toolchain (toolchain/jasmin/PIN, SERIES and
+   * PATCHES.md), jasmin-checksafety does not see that the run-time-indexed
+   * writes of absorb (the remaining bytes) and of finalize (the padding)
+   * together cover every byte the last compressions read, and reports
+   * is_init on the compression's message load. Zeroing the buffer once
+   * removes that alarm. The functions never read a byte of buf they have
+   * not written for this hash (the state invariant in README.md). Remove
+   * the zeroing when the checker proves the form without it.
+   */
+  for i = 0 to 8 {
+    buf_s[:u64 i] = 0;
+  }
   buf = buf_s;
   total = 0;
   /*
