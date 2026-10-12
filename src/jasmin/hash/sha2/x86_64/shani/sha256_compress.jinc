@@ -1,0 +1,170 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha256_compress.jinc (x86-64, shani)
+ * ====================================
+ *
+ * The SHA-256 compression function (FIPS 180-4 section 6.2.2) on the x86
+ * SHA extensions, with the entry points and contracts of the scalar kernel
+ * (sha2/sha256_compress.jinc):
+ *
+ *     _sha256_compress(h, block, ms)    one block from a byte array
+ *     _sha256_compress_ptr(h, p, ms)    one block from caller memory
+ *
+ * Required CPU features: SHA (SHA256RNDS2, SHA256MSG1, SHA256MSG2) and AVX
+ * for the VEX-encoded shuffles, adds and blends. The caller's dispatch must
+ * select this variant only where both are present.
+ *
+ * Register layout. SHA256RNDS2 keeps the eight working variables in two
+ * 128-bit registers, named by their dword lanes from high to low:
+ *
+ *     abef = A B E F        cdgh = C D G H
+ *
+ * and performs two rounds per instruction, taking W_t + K_t for both rounds
+ * from the low two dwords of its implicit XMM0 operand. Each group of four
+ * rounds therefore issues two SHA256RNDS2, the second after moving the high
+ * two dwords of W + K down; the two state registers swap roles each time.
+ *
+ * Message schedule. Four registers hold W in groups of four words; group g
+ * (W_4g .. W_4g+3) for g >= 4 is computed from groups g-4 .. g-1:
+ *
+ *     SHA256MSG1(w[g-4], w[g-3])   W_t-16 + σ0(W_t-15)
+ *     + PALIGNR(w[g-1], w[g-2], 4) W_t-7
+ *     SHA256MSG2(., w[g-1])        + σ1(W_t-2)
+ *
+ * which is the recurrence of section 6.2.2 step 1, four words at a time.
+ * Group g reuses the register of group g-4, its last reader.
+ *
+ * Security: h and the block are secret. The code is straight-line; every
+ * address is fixed at compile time or is the public block pointer. ms
+ * passes through unchanged, for the reason given in the scalar kernel.
+ *
+ * Residue: the kernel stores no message word or chaining value to the
+ * stack; they live in vector registers, which it does not clear.
+ */
+
+from Hash require "sha2/sha256_k.jinc"
+
+/*
+ * PSHUFB mask reversing the bytes of each dword: as little-endian u32
+ * words, lane i selects source bytes 4i+3, 4i+2, 4i+1, 4i.
+ */
+u32[4] SHA256_SHANI_BSWAP = { 0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f };
+
+/*
+ * h as H_0 .. H_7 (lanes a b c d and e f g h, low to high) to and from the
+ * abef / cdgh register layout.
+ */
+inline fn __shani_load_state(reg const ptr u32[8] h) -> reg u128, reg u128
+{
+  reg u128 lo hi abef cdgh t;
+
+  lo = h[:u128 0];                      /* d c b a, high to low */
+  hi = h[:u128 1];                      /* h g f e */
+
+  t = #VPSHUFD_128(lo, 0xb1);           /* c d a b */
+  cdgh = #VPSHUFD_128(hi, 0x1b);        /* e f g h */
+  abef = #VPALIGNR_128(t, cdgh, 8);     /* a b e f */
+  cdgh = #VPBLEND_8u16(cdgh, t, 0xf0);  /* c d g h */
+
+  return abef, cdgh;
+}
+
+inline fn __shani_store_state(reg mut ptr u32[8] h, reg u128 abef cdgh) -> reg ptr u32[8]
+{
+  reg u128 lo hi t;
+
+  t = #VPSHUFD_128(abef, 0x1b);         /* f e b a */
+  cdgh = #VPSHUFD_128(cdgh, 0xb1);      /* d c h g */
+  lo = #VPBLEND_8u16(t, cdgh, 0xf0);    /* d c b a */
+  hi = #VPALIGNR_128(cdgh, t, 8);       /* h g f e */
+
+  h[:u128 0] = lo;
+  h[:u128 1] = hi;
+  return h;
+}
+
+/*
+ * 64 rounds on message groups w[0..3] (W_0 .. W_15, already byte-swapped),
+ * then the feed-forward of step 4.
+ */
+inline fn __shani_rounds(reg mut ptr u32[8] h, reg u128[4] w) -> reg ptr u32[8]
+{
+  reg ptr u32[64] k;
+  reg u128 abef cdgh abef0 cdgh0 wk t;
+  inline int g;
+
+  abef, cdgh = __shani_load_state(h);
+  abef0 = abef;
+  cdgh0 = cdgh;
+  k = SHA256_K;
+
+  for g = 0 to 16 {
+    #[inline]
+    if (g >= 4) {
+      w[g % 4] = #SHA256MSG1(w[g % 4], w[(g + 1) % 4]);
+      t = #VPALIGNR_128(w[(g + 3) % 4], w[(g + 2) % 4], 4);
+      w[g % 4] = #VPADD_4u32(w[g % 4], t);
+      w[g % 4] = #SHA256MSG2(w[g % 4], w[(g + 3) % 4]);
+    }
+
+    /* Rounds 4g .. 4g+3 */
+
+    wk = #VPADD_4u32(w[g % 4], k[:u128 g]);
+    cdgh = #SHA256RNDS2(cdgh, abef, wk);
+    wk = #VPSHUFD_128(wk, 0x0e);
+    abef = #SHA256RNDS2(abef, cdgh, wk);
+  }
+
+  abef = #VPADD_4u32(abef, abef0);
+  cdgh = #VPADD_4u32(cdgh, cdgh0);
+  h = __shani_store_state(h, abef, cdgh);
+
+  return h;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha256_compress(
+  reg mut ptr u32[8] h,
+  reg const ptr u8[64] block,
+  reg u64 ms
+) -> reg ptr u32[8], reg u64
+{
+  reg ptr u32[4] mask_p;
+  reg u128[4] w;
+  reg u128 mask;
+  inline int i;
+
+  mask_p = SHA256_SHANI_BSWAP;
+  mask = mask_p[:u128 0];
+  for i = 0 to 4 {
+    w[i] = block[:u128 i];
+    w[i] = #VPSHUFB_128(w[i], mask);
+  }
+
+  h = __shani_rounds(h, w);
+
+  return h, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × msf → { ptr: public, val: secret } × msf"]
+fn _sha256_compress_ptr(reg mut ptr u32[8] h, reg u64 p, reg u64 ms) -> reg ptr u32[8], reg u64
+{
+  reg ptr u32[4] mask_p;
+  reg u128[4] w;
+  reg u128 mask;
+  inline int i;
+
+  mask_p = SHA256_SHANI_BSWAP;
+  mask = mask_p[:u128 0];
+  for i = 0 to 4 {
+    w[i] = [:u128 p + 16 * i];
+    w[i] = #VPSHUFB_128(w[i], mask);
+  }
+
+  h = __shani_rounds(h, w);
+
+  return h, ms;
+}

@@ -1,0 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The shani variant accelerates SHA-256 only; x86-64 has no SHA-512
+ * instructions in this feature set. SHA-512 uses the scalar kernel.
+ */
+
+from Hash require "sha2/sha512_compress.jinc"
