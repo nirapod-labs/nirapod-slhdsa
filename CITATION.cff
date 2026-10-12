@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this software in research, please cite it as below."
+title: "nirapod-slhdsa: SLH-DSA (FIPS 205) in Jasmin for AArch64 and x86-64"
+type: software
+authors:
+  - name: "nirapod-slhdsa contributors"
+license: Apache-2.0
+repository-code: "https://github.com/nirapod-labs/nirapod-slhdsa"
+keywords:
+  - SLH-DSA
+  - FIPS 205
+  - post-quantum cryptography
+  - Jasmin
+  - EasyCrypt

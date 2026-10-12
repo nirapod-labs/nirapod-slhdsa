@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Review ownership by area. Each change is approved by the other maintainer.
+
+*                   @athexweb3 @orvenweb3
+
+/toolchain/         @athexweb3
+/src/jasmin/hash/   @athexweb3
+/.github/           @athexweb3
+
+/src/jasmin/slhdsa/ @orvenweb3
+/src/c/             @orvenweb3
+/include/           @orvenweb3
+/proofs/            @orvenweb3
+/tests/             @orvenweb3
+/bench/             @orvenweb3

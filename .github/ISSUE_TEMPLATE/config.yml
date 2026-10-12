@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/nirapod-labs/nirapod-slhdsa/security/advisories/new
+    about: Please report security problems privately.
