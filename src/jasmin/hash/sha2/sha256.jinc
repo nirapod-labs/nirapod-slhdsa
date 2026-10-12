@@ -1,0 +1,312 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha256.jinc
+ * ===========
+ *
+ * SHA-256 and SHA-224 (FIPS 180-4 sections 5 and 6.2-6.3), portable scalar
+ * Jasmin shared by x86-64 and AArch64.
+ *
+ * Responsibilities:
+ *
+ *     __sha256_init         initial hash values of SHA-256 and SHA-224
+ *     _sha256_absorb_mem    incremental input from memory
+ *     _sha256_finalize      padding, last compressions, big-endian digest
+ *     _sha256_mem           one-shot SHA-256 and SHA-224 from memory
+ *
+ * Representation:
+ *
+ *     h      u32[8], H_0 .. H_7 as native words
+ *     buf    u8[64], the first (total mod 64) bytes are pending input
+ *     total  bytes absorbed so far, compressed or pending
+ *
+ * The compression function comes from the Sha2Kernel include root
+ * (sha256_compress.jinc): this directory for the portable scalar kernel, or
+ * a variant directory under sha2/<arch>/ that provides the same entry
+ * points.
+ *
+ * Security: message, chaining value and digest are secret. Every branch,
+ * loop bound and address depends only on total, lengths, pointers and
+ * compile-time round indices.
+ */
+
+from HashWord require "word.jinc"
+from Sha2Kernel require "sha256_compress.jinc"
+
+/*
+ * Initial hash values. SHA-256 (section 5.3.3): the first 32 bits of the
+ * fractional parts of the square roots of the first eight primes. SHA-224
+ * (section 5.3.2): the second 32 bits of the fractional parts of the square
+ * roots of the ninth to sixteenth primes.
+ */
+u32[8] SHA256_IV = {
+  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+};
+
+u32[8] SHA224_IV = {
+  0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, 0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4
+};
+
+inline fn __sha256_init(reg mut ptr u32[8] h) -> reg ptr u32[8]
+{
+  reg ptr u32[8] iv;
+  reg u32 t;
+  inline int i;
+
+  iv = SHA256_IV;
+  for i = 0 to 8 {
+    t = iv[i];
+    h[i] = t;
+  }
+  return h;
+}
+
+inline fn __sha224_init(reg mut ptr u32[8] h) -> reg ptr u32[8]
+{
+  reg ptr u32[8] iv;
+  reg u32 t;
+  inline int i;
+
+  iv = SHA224_IV;
+  for i = 0 to 8 {
+    t = iv[i];
+    h[i] = t;
+  }
+  return h;
+}
+
+/*
+ * Append inlen bytes from memory at in.
+ *
+ * Pending bytes in buf are completed first; whole blocks then compress
+ * straight from memory; the remainder (< 64 bytes) is left in buf.
+ * Afterwards total has grown by inlen and buf holds total mod 64 bytes.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         public × public × public ×
+         msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × public × msf"]
+fn _sha256_absorb_mem(
+  reg mut ptr u32[8] h,
+  reg mut ptr u8[64] buf,
+  reg u64 total in inlen,
+  reg u64 ms
+) -> reg ptr u32[8], reg ptr u8[64], reg u64, reg u64
+{
+  reg u64 fill n end t;
+  reg bool more full;
+
+  fill = total;
+  fill &= 63;
+  total += inlen;
+
+  /* Complete a partly filled block. */
+
+  n = 64;
+  n -= fill;
+  n = inlen < n ? inlen : n;
+  n = fill == 0 ? fill : n;
+  inlen -= n;
+
+  end = fill;
+  end += n;
+  while { more = fill < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)[:u8 in];
+    buf[fill] = (8u)t;
+    fill += 1;
+    in += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  full = fill == 64;
+  if (full) {
+    ms = #update_msf(full, ms);
+    /*
+     * Values needed after a compression call cross it through the stack. A
+     * reloaded value is only transient under the speculative model, so it
+     * is protected before it is used as an address, bound or length again.
+     */
+    () = #spill(total, in, inlen, buf);
+    h, ms = _sha256_compress(h, buf, ms);
+    () = #unspill(total, in, inlen, buf);
+    total = #protect(total, ms);
+    in = #protect(in, ms);
+    inlen = #protect(inlen, ms);
+    buf = #protect_ptr(buf, ms);
+  } else {
+    ms = #update_msf(!full, ms);
+  }
+
+  /*
+   * Whole blocks from memory. Either fill was 0 on entry, or the block
+   * above completed, or inlen is now 0; in all three cases buf has no
+   * pending bytes when this loop runs.
+   */
+
+  while { more = inlen >= 64; } (more) {
+    ms = #update_msf(more, ms);
+    () = #spill(total, in, inlen, buf);
+    h, ms = _sha256_compress_ptr(h, in, ms);
+    () = #unspill(total, in, inlen, buf);
+    total = #protect(total, ms);
+    in = #protect(in, ms);
+    inlen = #protect(inlen, ms);
+    buf = #protect_ptr(buf, ms);
+    in += 64;
+    inlen -= 64;
+  }
+  ms = #update_msf(!more, ms);
+
+  /* Keep the remainder; buf is empty at this point when inlen > 0. */
+
+  fill = 0;
+  while { more = fill < inlen; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)[:u8 in];
+    buf[fill] = (8u)t;
+    fill += 1;
+    in += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return h, buf, total, ms;
+}
+
+/*
+ * Padding and output (FIPS 180-4 sections 5.1.1 and 6.2.2).
+ *
+ * The padded tail is the pending bytes, 0x80, zeros, and the 64-bit
+ * big-endian bit length 8 * total. When the pending bytes and 0x80 leave
+ * fewer than 8 bytes in the block (fill > 56), the length goes into an
+ * extra block of zeros.
+ *
+ * out receives H_0 .. H_7 big-endian, all 32 bytes; SHA-224 uses out[0:28]
+ * and the last 4 bytes are the rest of the final chaining value. h and buf
+ * keep final-state data afterwards and need re-initialisation before reuse.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × public × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × msf"]
+fn _sha256_finalize(
+  reg mut ptr u8[32] out,
+  reg mut ptr u32[8] h,
+  reg mut ptr u8[64] buf,
+  reg u64 total,
+  reg u64 ms
+) -> reg ptr u8[32], reg ptr u32[8], reg ptr u8[64], reg u64
+{
+  reg u64 fill z t;
+  reg u32 x;
+  reg bool more two_blocks;
+  inline int i;
+
+  fill = total;
+  fill &= 63;
+  z = 0;
+
+  t = 0x80;
+  buf[fill] = (8u)t;
+  fill += 1;
+
+  two_blocks = fill > 56;
+  if (two_blocks) {
+    ms = #update_msf(two_blocks, ms);
+    while { more = fill < 64; } (more) {
+      ms = #update_msf(more, ms);
+      buf[fill] = (8u)z;
+      fill += 1;
+    }
+    ms = #update_msf(!more, ms);
+
+    () = #spill(out, buf, total);
+    h, ms = _sha256_compress(h, buf, ms);
+    () = #unspill(out, buf, total);
+    out = #protect_ptr(out, ms);
+    buf = #protect_ptr(buf, ms);
+    total = #protect(total, ms);
+    fill = 0;
+    z = 0;
+  } else {
+    ms = #update_msf(!two_blocks, ms);
+  }
+
+  while { more = fill < 56; } (more) {
+    ms = #update_msf(more, ms);
+    buf[fill] = (8u)z;
+    fill += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  t = total;
+  t <<= 3;
+  t = __bswap64(t);
+  buf.[:u64 56] = t;
+
+  () = #spill(out, buf);
+  h, ms = _sha256_compress(h, buf, ms);
+  () = #unspill(out, buf);
+  out = #protect_ptr(out, ms);
+  buf = #protect_ptr(buf, ms);
+
+  for i = 0 to 8 {
+    x = h[i];
+    x = __bswap32(x);
+    out[:u32 i] = x;
+  }
+
+  return out, h, buf, ms;
+}
+
+inline fn __sha256_mem_from(
+  reg mut ptr u8[32] out,
+  reg mut ptr u32[8] h,
+  reg u64 in inlen,
+  reg u64 ms
+) -> reg ptr u8[32], reg u64
+{
+  stack u8[64] buf_s;
+  reg ptr u8[64] buf;
+  reg u64 total;
+
+  buf = buf_s;
+  total = 0;
+  /*
+   * out is live across the absorb call and crosses it through the stack;
+   * it comes back transient, so it is protected before use as an output
+   * address.
+   */
+  () = #spill(out);
+  h, buf, total, ms = _sha256_absorb_mem(h, buf, total, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect_ptr(out, ms);
+  out, h, buf, ms = _sha256_finalize(out, h, buf, total, ms);
+
+  return out, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha256_mem(reg mut ptr u8[32] out, reg u64 in inlen, reg u64 ms) -> reg ptr u8[32], reg u64
+{
+  stack u32[8] h;
+
+  h = __sha256_init(h);
+  out, ms = __sha256_mem_from(out, h, in, inlen, ms);
+
+  return out, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha224_mem(reg mut ptr u8[32] out, reg u64 in inlen, reg u64 ms) -> reg ptr u8[32], reg u64
+{
+  stack u32[8] h;
+
+  h = __sha224_init(h);
+  out, ms = __sha256_mem_from(out, h, in, inlen, ms);
+
+  return out, ms;
+}

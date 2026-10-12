@@ -1,0 +1,126 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha256_array.jinc
+ * =================
+ *
+ * _sha256_absorb_array: append a byte array whose length is fixed by the
+ * enclosing namespace (param int HASH_ARRAY_LEN), with the contract of
+ * _sha256_absorb_mem. sha256.jinc must be required at top level first.
+ *
+ * Bytes pass through buf and each full buffer is compressed. The copy moves
+ * u64 words once the buffer position is word aligned, so its cost is small
+ * next to the compression for the multi-block inputs of FIPS 205 (T_l).
+ */
+
+/* Copy n bytes of in from offset off into buf from position fill. */
+inline fn __sha256_buf_copy_array(
+  reg mut ptr u8[64] buf,
+  reg u64 fill_,
+  reg const ptr u8[HASH_ARRAY_LEN] in,
+  reg u64 off_ n_,
+  reg u64 ms
+) -> reg ptr u8[64], reg u64
+{
+  reg u64 fill off n head end t;
+  reg bool more;
+
+  fill = fill_;
+  off = off_;
+  n = n_;
+
+  head = fill;
+  head = -head;
+  head &= 7;
+  head = n < head ? n : head;
+  n -= head;
+
+  end = fill;
+  end += head;
+  while { more = fill < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)in[off];
+    buf[fill] = (8u)t;
+    fill += 1;
+    off += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  while { more = n >= 8; } (more) {
+    ms = #update_msf(more, ms);
+    t = in.[:u64 off];
+    buf.[:u64 fill] = t;
+    fill += 8;
+    off += 8;
+    n -= 8;
+  }
+  ms = #update_msf(!more, ms);
+
+  end = fill;
+  end += n;
+  while { more = fill < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)in[off];
+    buf[fill] = (8u)t;
+    fill += 1;
+    off += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return buf, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × public ×
+         { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × public × msf"]
+fn _sha256_absorb_array(
+  reg mut ptr u32[8] h,
+  reg mut ptr u8[64] buf,
+  reg u64 total,
+  reg const ptr u8[HASH_ARRAY_LEN] in,
+  reg u64 ms
+) -> reg ptr u32[8], reg ptr u8[64], reg u64, reg u64
+{
+  reg u64 fill off inlen n;
+  reg bool more full;
+
+  fill = total;
+  fill &= 63;
+  total += HASH_ARRAY_LEN;
+  off = 0;
+  inlen = HASH_ARRAY_LEN;
+
+  /* Invariant: buf holds fill < 64 pending bytes at each iteration's top. */
+
+  while { more = inlen != 0; } (more) {
+    ms = #update_msf(more, ms);
+
+    n = 64;
+    n -= fill;
+    n = inlen < n ? inlen : n;
+    buf, ms = __sha256_buf_copy_array(buf, fill, in, off, n, ms);
+    fill += n;
+    off += n;
+    inlen -= n;
+
+    full = fill == 64;
+    if (full) {
+      ms = #update_msf(full, ms);
+      () = #spill(total, in, off, inlen, buf);
+      h, ms = _sha256_compress(h, buf, ms);
+      () = #unspill(total, in, off, inlen, buf);
+      total = #protect(total, ms);
+      in = #protect_ptr(in, ms);
+      off = #protect(off, ms);
+      inlen = #protect(inlen, ms);
+      buf = #protect_ptr(buf, ms);
+      fill = 0;
+    } else {
+      ms = #update_msf(!full, ms);
+    }
+  }
+  ms = #update_msf(!more, ms);
+
+  return h, buf, total, ms;
+}

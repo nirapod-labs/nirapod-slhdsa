@@ -1,0 +1,251 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha256_compress.jinc
+ * ====================
+ *
+ * The SHA-256 compression function (FIPS 180-4 section 6.2.2, steps 1 to
+ * 4), portable scalar kernel, reached through the Sha2Kernel include root.
+ * Its two entry points are the kernel contract; kernel variants listed as
+ * planned in src/jasmin/hash/README.md are to provide the same two:
+ *
+ *     _sha256_compress(h, block)    one block from a byte array
+ *     _sha256_compress_ptr(h, p)    one block from caller memory
+ *
+ * Both compute h <- compress(h, M) for the 64-byte block M, with h the
+ * chaining value H_0 .. H_7 as native u32 words and M read big-endian
+ * (section 3.1) through __bswap32 of the HashWord root.
+ *
+ * Security: h and M are secret. The rounds are straight-line code; every
+ * address is fixed at compile time or is the public block pointer. The
+ * misspeculation flag ms is passed through unchanged: the kernel has no
+ * branch, and taking ms as an argument keeps it in a register the kernel
+ * does not clobber, since a flag cannot be spilled and reloaded.
+ *
+ * Residue: on return the local message-schedule window holds W_48 .. W_63
+ * of the last block, which are derived from the secret message. The kernel
+ * does not clear it; clearing is an obligation of the export that runs it.
+ */
+
+from HashWord require "word.jinc"
+from Hash require "sha2/sha256_k.jinc"
+
+
+/* FIPS 180-4 section 4.1.2, functions (4.4) to (4.7). */
+
+inline fn __Sigma0_256(reg u32 x) -> reg u32
+{
+  reg u32 r t;
+
+  r = x;
+  r >>r= 2;
+  t = x;
+  t >>r= 13;
+  r ^= t;
+  t = x;
+  t >>r= 22;
+  r ^= t;
+  return r;
+}
+
+inline fn __Sigma1_256(reg u32 x) -> reg u32
+{
+  reg u32 r t;
+
+  r = x;
+  r >>r= 6;
+  t = x;
+  t >>r= 11;
+  r ^= t;
+  t = x;
+  t >>r= 25;
+  r ^= t;
+  return r;
+}
+
+inline fn __sigma0_256(reg u32 x) -> reg u32
+{
+  reg u32 r t;
+
+  r = x;
+  r >>r= 7;
+  t = x;
+  t >>r= 18;
+  r ^= t;
+  t = x;
+  t >>= 3;
+  r ^= t;
+  return r;
+}
+
+inline fn __sigma1_256(reg u32 x) -> reg u32
+{
+  reg u32 r t;
+
+  r = x;
+  r >>r= 17;
+  t = x;
+  t >>r= 19;
+  r ^= t;
+  t = x;
+  t >>= 10;
+  r ^= t;
+  return r;
+}
+
+/*
+ * The 64 rounds of FIPS 180-4 section 6.2.2, steps 2 to 4, on message
+ * words W_0 .. W_15 already in w.
+ *
+ * Working variables live in v. Instead of shifting a..h down every round,
+ * the roles rotate over the slots: in round t variable number k (a = 0 ..
+ * h = 7) is v[(k - t) mod 8]. A round then writes only two slots,
+ *
+ *     e' = d + T1    into the slot of d
+ *     a' = T1 + T2   into the slot of h
+ *
+ * which are exactly the slots holding e and a in round t + 1.
+ *
+ * The schedule keeps a 16-word window: slot t mod 16 holds W_t, and
+ * W_t for t >= 16 overwrites W_{t-16}, its last reader:
+ *
+ *     W_t = σ1(W_{t-2}) + W_{t-7} + σ0(W_{t-15}) + W_{t-16}
+ *
+ * Ch and Maj use forms without a complement:
+ *
+ *     Ch(e, f, g)  = g ^ (e & (f ^ g))
+ *     Maj(a, b, c) = (a & b) ^ (c & (a ^ b))
+ *
+ * Each agrees with the section 4.1.2 definition bit by bit (check the two
+ * values of e, respectively of a ^ b).
+ *
+ * Every index is a compile-time function of t, so the rounds are straight
+ * line code with fixed addresses.
+ */
+inline fn __sha256_rounds(reg mut ptr u32[8] h, stack u32[16] w) -> reg ptr u32[8]
+{
+  reg u32[8] v;
+  reg ptr u32[64] k;
+  reg u32 t1 x y;
+  inline int t i;
+
+  for i = 0 to 8 {
+    v[i] = h[i];
+  }
+
+  for t = 0 to 64 {
+    #[inline]
+    if (t >= 16) {
+      x = w[(t - 2) % 16];
+      t1 = __sigma1_256(x);
+      x = w[(t - 15) % 16];
+      x = __sigma0_256(x);
+      t1 += x;
+      x = w[(t - 7) % 16];
+      t1 += x;
+      x = w[t % 16];
+      t1 += x;
+      w[t % 16] = t1;
+    } else {
+      t1 = w[t];
+    }
+
+    /* T1 = h + Σ1(e) + Ch(e, f, g) + K_t + W_t */
+
+    t1 += v[(7 + 64 - t) % 8];
+    x = __Sigma1_256(v[(4 + 64 - t) % 8]);
+    t1 += x;
+    x = v[(5 + 64 - t) % 8];
+    x ^= v[(6 + 64 - t) % 8];
+    x &= v[(4 + 64 - t) % 8];
+    x ^= v[(6 + 64 - t) % 8];
+    t1 += x;
+    k = SHA256_K;
+    x = k[t];
+    t1 += x;
+
+    /* e' = d + T1 */
+
+    v[(3 + 64 - t) % 8] += t1;
+
+    /* a' = T1 + T2, T2 = Σ0(a) + Maj(a, b, c) */
+
+    x = __Sigma0_256(v[(0 + 64 - t) % 8]);
+    t1 += x;
+    x = v[(0 + 64 - t) % 8];
+    x ^= v[(1 + 64 - t) % 8];
+    x &= v[(2 + 64 - t) % 8];
+    y = v[(0 + 64 - t) % 8];
+    y &= v[(1 + 64 - t) % 8];
+    x ^= y;
+    t1 += x;
+    v[(7 + 64 - t) % 8] = t1;
+  }
+
+  /*
+   * Step 4: H_i += working variable i. After 64 rounds, a multiple of 8,
+   * every role is back in its original slot.
+   */
+
+  for i = 0 to 8 {
+    x = h[i];
+    x += v[i];
+    h[i] = x;
+  }
+
+  return h;
+}
+
+/*
+ * h <- compress(h, block): FIPS 180-4 section 6.2.2 on one 64-byte block.
+ *
+ * The block is read only, and completely, into the schedule before h is
+ * first written. Used directly by callers that hold a precomputed chaining
+ * value, and by the buffered paths of sha256.jinc.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha256_compress(
+  reg mut ptr u32[8] h,
+  reg const ptr u8[64] block,
+  reg u64 ms
+) -> reg ptr u32[8], reg u64
+{
+  stack u32[16] w;
+  reg u32 x;
+  inline int i;
+
+  for i = 0 to 16 {
+    x = block[:u32 i];
+    x = __bswap32(x);
+    w[i] = x;
+  }
+
+  h = __sha256_rounds(h, w);
+
+  return h, ms;
+}
+
+/*
+ * The same compression on the 64 bytes of caller memory at p: readable,
+ * no alignment required, contents secret like block.
+ */
+#[sct = "{ ptr: public, val: secret } × public × msf → { ptr: public, val: secret } × msf"]
+fn _sha256_compress_ptr(reg mut ptr u32[8] h, reg u64 p, reg u64 ms) -> reg ptr u32[8], reg u64
+{
+  stack u32[16] w;
+  reg u32 x;
+  inline int i;
+
+  for i = 0 to 16 {
+    x = [:u32 p + 4 * i];
+    x = __bswap32(x);
+    w[i] = x;
+  }
+
+  h = __sha256_rounds(h, w);
+
+  return h, ms;
+}
+
