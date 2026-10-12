@@ -1,0 +1,316 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# .github/workflows/ci.yml
+# ========================
+#
+# The checks a change must pass to reach main, on hosted runners only,
+# natively on each supported platform:
+#
+#   linux-x86_64    ubuntu-24.04       x86-64, Linux, ELF
+#   linux-aarch64   ubuntu-24.04-arm   AArch64, Linux, ELF (compiler only:
+#                                      the pinned provers have no binaries
+#                                      for it)
+#   macos-aarch64   macos-26           AArch64, macOS, Mach-O
+#
+# Order, cheapest first: the lint of the automation, the REUSE check and
+# the source checks need no compiler and fail within minutes; the vectors
+# are fetched once; then each platform builds or restores the pinned
+# toolchain and runs its tests, analyses and checks (platform.yml); then
+# the EasyCrypt proofs run with the linux-x86_64 switch, and the platforms
+# are compared with each other. Every job calls one make target or one
+# script; the workflows themselves only order jobs and move files between
+# them.
+#
+# Each check applies to one component of the repository (the hash layer,
+# the core, ACVP, the differential test, safety and emitted-code analyses,
+# proofs, the shipped assembly). It reports NOT APPLICABLE while its
+# component is not in the tree, and is mandatory as soon as it is
+# (tools/ci/Makefile). So this workflow protects every change from the
+# toolchain onwards, before the other components have been merged.
+#
+# jasmin-checksafety runs on pushes to main, on the schedule, on manual runs,
+# and on pull requests that change the Jasmin sources, the toolchain, the
+# safety configuration or the CI (job `scope`, tools/ci/Makefile
+# ci-safety-scope); on other pull requests its job states the deferral in
+# the job summary.
+#
+# The job `all-checks` succeeds only when every other job of this file
+# succeeded, and it checks that it depends on every other job of this file
+# (tools/ci/require-success.py). It is the status check that branch
+# protection requires: a job skipped because a job before it failed would
+# otherwise count as passing.
+#
+# Weekly, the same workflow runs in cold mode: each platform builds its
+# toolchain from scratch, ignoring the caches, and compares the result with
+# the cached build of the same inputs (platform.yml).
+#
+# No secrets are used. The token is read-only, and checkouts do not keep
+# it.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      cold:
+        description: "Build the toolchain from scratch and compare it with the cached build"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # The number of platform jobs below; the cross-platform checks require
+  # exactly this many records.
+  CI_PLATFORMS: 3
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint and ShellCheck
+        run: tools/ci/lint.sh install "$RUNNER_TEMP/lint"
+
+      - name: Check the workflows, shell scripts and Python scripts
+        run: tools/ci/lint.sh
+
+  reuse:
+    name: reuse
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Copyright and licence information of every file
+        run: tools/ci/lint.sh reuse
+
+  source:
+    name: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Component map, kernel sets, constant tables, generated sources, proof holes
+        run: make -f tools/ci/Makefile ci-source
+
+  scope:
+    name: scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      safety: ${{ steps.scope.outputs.safety }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The base of a pull request must be in the history to diff against.
+          fetch-depth: 0
+
+      - name: Decide whether this event runs the safety checker
+        id: scope
+        env:
+          CI_EVENT: ${{ github.event_name }}
+          CI_BASE: ${{ github.event.pull_request.base.sha }}
+        run: make -s -f tools/ci/Makefile ci-safety-scope
+
+  vectors:
+    name: vectors
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The ACVP files are re-checked against their pins whenever they are
+      # used, so a cached copy saves a download and nothing else. The key
+      # is empty when the tree has no ACVP component.
+      - name: Compute the ACVP cache key
+        id: key
+        run: make -s -f tools/ci/Makefile ci-vectors-key
+
+      - name: Restore the ACVP vectors
+        id: acvp
+        if: steps.key.outputs.acvp-key != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/vectors/acvp
+          key: ${{ steps.key.outputs.acvp-key }}
+
+      - name: Fetch and verify the vectors
+        run: make -f tools/ci/Makefile ci-vectors
+
+      - name: Save the ACVP vectors
+        if: steps.key.outputs.acvp-key != '' && steps.acvp.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/vectors/acvp
+          key: ${{ steps.key.outputs.acvp-key }}
+
+      - name: Upload the vectors
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vectors
+          path: |
+            build/ci/vectors.txt
+            build/hash/vectors
+            build/vectors/acvp
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-x86_64:
+    name: linux-x86_64
+    needs: [lint, reuse, scope, source, vectors]
+    uses: ./.github/workflows/platform.yml
+    with:
+      platform: linux-x86_64
+      runner: ubuntu-24.04
+      jobs: 4
+      safety: ${{ needs.scope.outputs.safety == 'run' }}
+      cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
+
+  linux-aarch64:
+    name: linux-aarch64
+    needs: [lint, reuse, scope, source, vectors]
+    uses: ./.github/workflows/platform.yml
+    with:
+      platform: linux-aarch64
+      runner: ubuntu-24.04-arm
+      jobs: 4
+      toolchain-options: --no-easycrypt
+      safety: ${{ needs.scope.outputs.safety == 'run' }}
+      cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
+
+  macos-aarch64:
+    name: macos-aarch64
+    needs: [lint, reuse, scope, source, vectors]
+    uses: ./.github/workflows/platform.yml
+    with:
+      platform: macos-aarch64
+      runner: macos-26
+      # Three cores and 7 GB of memory. Two parallel jobs leave a margin for
+      # memory; the build has not been measured on this runner.
+      jobs: 2
+      safety: ${{ needs.scope.outputs.safety == 'run' }}
+      cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
+
+  # The EasyCrypt development, with the switch and Jasmin EasyCrypt library
+  # of the linux-x86_64 toolchain build.
+  proofs:
+    name: proofs
+    needs: linux-x86_64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The same packages as the toolchain job, so that the restored switch
+      # finds the libraries it was built against.
+      - name: Install build dependencies
+        run: tools/ci/toolchain.sh deps build
+
+      - name: Name the cache paths
+        id: paths
+        run: tools/ci/toolchain.sh cache-paths
+
+      - name: Restore the opam switch
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.paths.outputs.switch }}
+          key: ${{ needs.linux-x86_64.outputs.switch-key }}
+          fail-on-cache-miss: true
+
+      - name: Restore the compiler and the Jasmin EasyCrypt library
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.paths.outputs.compiler }}
+          key: ${{ needs.linux-x86_64.outputs.compiler-key }}
+          fail-on-cache-miss: true
+
+      - name: Put the cached tools on the PATH
+        run: tools/ci/toolchain.sh bin-path
+
+      - name: Check the proofs
+        run: tools/ci/toolchain.sh exec make -f tools/ci/Makefile ci-proofs
+
+  agree:
+    name: agree
+    needs: [linux-x86_64, linux-aarch64, macos-aarch64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the compilers
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: toolchain-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/toolchains
+
+      - name: Same extracted compiler and assumptions on every platform
+        run: tools/ci/toolchain.sh agree "$RUNNER_TEMP"/toolchains/toolchain-*.tar.gz
+
+      - name: Download the core transcripts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: transcript-*
+          merge-multiple: true
+          path: build/ci/transcripts
+
+      - name: Same deterministic outputs on every platform
+        run: make -f tools/ci/Makefile ci-agree
+
+  all-checks:
+    name: all-checks
+    if: always()
+    needs: [lint, reuse, scope, source, vectors, linux-x86_64, linux-aarch64, macos-aarch64, proofs, agree]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require every job to have succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 -I tools/ci/require-success.py .github/workflows/ci.yml all-checks "$NEEDS"
