@@ -5,7 +5,7 @@ toolchain, rebuilt from its pinned inputs by `toolchain/build.sh`:
 
 | Component | Pin | Where |
 |---|---|---|
-| Jasmin compiler and analysers | jasmin-lang/jasmin `2bf326d583659c1fbd0e5b90f7c09fe0c0456e35` | `toolchain/jasmin/PIN`, `toolchain/jasmin/SERIES` |
+| Jasmin compiler and analysers | jasmin-lang/jasmin `2bf326d583659c1fbd0e5b90f7c09fe0c0456e35` plus a patch series | `toolchain/jasmin/PIN`, `toolchain/jasmin/SERIES`, `toolchain/jasmin/PATCHES.md` |
 | Rocq environment of the compiler proofs | Rocq 9.0.1, mathcomp 2.4.0, coq-elpi 2.5.2, Hierarchy Builder 1.9.1, coqword `86ed49aeca65`, OCaml 4.14.4 | `toolchain/jasmin/PIN` |
 | opam package universe | ocaml/opam-repository `f8293643f2af`, rocq-prover/opam `564ab90f5874` | `toolchain/jasmin/PIN` |
 | EasyCrypt | easycrypt/easycrypt `e7eff05dcef1` (main, after r2026.09), Why3 1.8.2 | `toolchain/easycrypt/PIN` |
@@ -110,9 +110,11 @@ language to the assembly abstract syntax, for the architecture descriptions as
 written in Rocq: if an execution of the source program does not fail, the
 generated assembly program has the same observable behaviour. The theorem rests
 on the assumptions printed in `assumptions.log`. `make -C proofs all` checks it
-again for the tree that is built.
+again for the tree that is built, so it covers the lowerings and
+assembly-generation changes of the patch series (`toolchain/jasmin/PATCHES.md`
+gives the status of each patch).
 
-For the pinned tree, `assumptions.log` lists, for the end-to-end theorem:
+For the pinned tree and series, `assumptions.log` lists, for the end-to-end theorem:
 the axioms of Rocq's primitive 63-bit integers (`Uint63Axioms`,
 `Sint63Axioms`), proof irrelevance and `Eqdep.Eq_rect_eq.eq_rect_eq`, and the
 encoding of code labels as machine words, declared as parameters `encode_label` and
@@ -126,7 +128,7 @@ label parameters; the x86-64 record also on the AES helpers `MixColumns` and
 Trusted, not proved:
 
 - the semantics of each instruction as written in Rocq, transcribed from the
-  architecture manuals;
+  architecture manuals, including the instructions the series adds;
 - the EasyCrypt models of the instructions in the Jasmin EasyCrypt library
   (`eclib/JModel_armv8a.ec`, `eclib/JModel_x86.ec`), which `jasmin2ec`
   output refers to, and the global axioms of that library: its memory model
@@ -137,7 +139,7 @@ Trusted, not proved:
   semantics;
 - the hand-written OCaml: parser and type checker, the register and stack
   allocation heuristics (their results are checked by proved validators),
-  the assembly printers, the safety
+  the assembly printers including the Mach-O relocation syntax, the safety
   checker `jasmin-checksafety`, the constant-time checker `jasmin-ct`, and
   `jasmin2ec`;
 - OCaml, Rocq, opam, the C compiler, the assembler and the linker;
