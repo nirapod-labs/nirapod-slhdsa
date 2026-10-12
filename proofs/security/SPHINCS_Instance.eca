@@ -1,0 +1,289 @@
+(*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * SPHINCS_Instance.eca
+ * ====================
+ *
+ * The SPHINCS+ scheme of the imported security proof (third_party/
+ * formosa-slhdsa, SPHINCS_PLUS.ec) instantiated with the functions of
+ * FIPS 205 for one parameter set P of Table 2.
+ *
+ * The imported theory leaves the parameters, the seed and key types, the
+ * keyed functions, the tweakable hash collection, the message compression
+ * and the WOTS+ chain and encoding abstract. This theory fixes each of
+ * them to the FIPS 205 function it models:
+ *
+ *     n, k, a, lg_w, h', d     Table 2 row P
+ *     address types           WOTS_HASH 0, WOTS_PK 1, TREE 2, FORS_TREE 3,
+ *                              FORS_ROOTS 4 (section 4.2)
+ *     seeds and keys          n-byte strings, sampled uniformly
+ *     msg                     (public key bytes, M') pairs (see below)
+ *
+ * and realizes every axiom the imported theory states about them
+ * (`proof *`). The message is paired with the public key because H_msg
+ * hashes PK.seed and PK.root; signing a message M' under public key pk is
+ * signing (pk, M') in the instance, and freshness of M' implies freshness
+ * of (pk, M').
+ *
+ * The keyed functions and tweakable hashes are FIPS 205 PRF, PRF_msg, F, H
+ * and T_l on the 32-byte ADRS that the model address denotes, with the
+ * model's PRF addresses retyped to WOTS_PRF and FORS_PRF. The WOTS+ chain is
+ * the iterated hash of Algorithm 5, and the WOTS+ encoding is the base-w
+ * digit and checksum string of Algorithms 7 and 8. The one property of the
+ * encoding that the security proof assumes, that two distinct messages have
+ * encodings where one is below the other in some digit, is proven here from
+ * security/WOTS_Encoding.ec.
+ *
+ * Model digests are bit strings and FIPS 205 values are byte strings;
+ * b2bits and bits2b convert between them, and bits2b is injective on
+ * strings of whole bytes, so distinct model messages stay distinct.
+ *
+ * The parameter set P is abstract here; SPHINCS_Sets.ec instantiates the
+ * theory for each of the twelve sets of Table 2.
+ *)
+
+require import AllCore List IntDiv Distr DList RealExp StdOrder.
+import IntOrder.
+require (*--*) Subtype BitEncoding.
+from Jasmin require import JWord.
+require import Bytes FIPS205_Encoding FIPS205_Params FIPS205_Address FIPS205_Hash.
+require import FIPS205_WOTS FIPS205_Internal Validate_Params Validate_Encoding WOTS_Encoding.
+require SPHINCS_PLUS.
+
+op P : params.
+axiom P_in : P \in parameter_sets.
+
+lemma P_table2 : table2_consistent P.
+proof. by have := List.allP table2_consistent parameter_sets; rewrite table2_ok /= => /(_ P P_in). qed.
+
+lemma P_ranges :
+     (P.`n = 16 \/ P.`n = 24 \/ P.`n = 32)
+  /\ 1 <= P.`k /\ 1 <= P.`a /\ P.`lgw = 4 /\ 1 <= P.`hp /\ 1 <= P.`d.
+proof.
+have := P_in; rewrite /parameter_sets /slh_dsa_sha2_128s /slh_dsa_shake_128s /slh_dsa_sha2_128f.
+rewrite /slh_dsa_shake_128f /slh_dsa_sha2_192s /slh_dsa_shake_192s /slh_dsa_sha2_192f.
+rewrite /slh_dsa_shake_192f /slh_dsa_sha2_256s /slh_dsa_shake_256s /slh_dsa_sha2_256f.
+by rewrite /slh_dsa_shake_256f /=; smt().
+qed.
+
+(* n-byte strings: seeds, PRF keys, randomizers. *)
+clone import Subtype as NBytes with
+  type T <- bytes,
+  op P x <- size x = P.`n
+proof *.
+realize inhabited by exists (nseq P.`n W8.zero); rewrite size_nseq; smt(P_ranges).
+
+type nbytes = NBytes.sT.
+
+op dnbytes : nbytes distr = dmap (dlist W8.dword P.`n) NBytes.insubd.
+
+lemma dnbytes_ll : is_lossless dnbytes.
+proof. by rewrite /dnbytes dmap_ll dlist_ll W8.dword_ll. qed.
+
+(* ------------------------------------------------------------------ *)
+(* Encodings between the model's values and FIPS 205 byte strings     *)
+
+(* Digests are bit strings in the model; bit 8i + j is bit j of byte i
+   (least significant first). Any bijection would do for the security
+   statement; this one is used consistently in both directions. *)
+op b2bits (b : bytes) : bool list = flatten (map W8.w2bits b).
+op bits2b (z : bool list) : bytes = map W8.bits2w (BitEncoding.BitChunking.chunk 8 z).
+
+(* The message bits that FORS signs are read most significant first, as
+   base_2b reads them (FIPS 205 Algorithm 4). *)
+op msb_bits (b : bytes) : bool list = flatten (map (fun c => rev (W8.w2bits c)) b).
+
+(* A model address [w0; w1; w2; type; tree; layer] as the 32-byte ADRS of
+   FIPS 205 section 4.2 (layer, tree, type, then the three words). *)
+op adrs_bytes (l : int list) : bytes =
+  toByte (nth 0 l 5) 4 ++ toByte (nth 0 l 4) 12 ++ toByte (nth 0 l 3) 4
+  ++ toByte (nth 0 l 2) 4 ++ toByte (nth 0 l 1) 4 ++ toByte (nth 0 l 0) 4.
+
+(* The model generates WOTS+ and FORS secret values under the chain and
+   FORS tree addresses; FIPS 205 uses the same fields with the types
+   WOTS_PRF (5) and FORS_PRF (6). *)
+op prf_retype (l : int list) : int list =
+  let t = nth 0 l 3 in
+  put l 3 (if t = WOTS_HASH then WOTS_PRF else if t = FORS_TREE then FORS_PRF else t).
+
+lemma size_bits2b (z : bool list) : size (bits2b z) = size z %/ 8.
+proof. by rewrite /bits2b size_map BitEncoding.BitChunking.size_chunk. qed.
+
+lemma bits2bK (z : bool list) : 8 %| size z => b2bits (bits2b z) = z.
+proof.
+move=> hd; rewrite /b2bits /bits2b -map_comp.
+have -> : map (W8.w2bits \o W8.bits2w) (BitEncoding.BitChunking.chunk 8 z)
+          = map idfun (BitEncoding.BitChunking.chunk 8 z).
++ apply/eq_in_map => c hc.
+  have hc8 := BitEncoding.BitChunking.in_chunk_size 8 z c _ hc; first done.
+  by rewrite /(\o) W8.bits2wK // hc8.
+by rewrite map_id BitEncoding.BitChunking.chunkK.
+qed.
+
+lemma bits2b_inj (z z' : bool list) :
+  8 %| size z => 8 %| size z' => bits2b z = bits2b z' => z = z'.
+proof. by move=> hz hz' heq; rewrite -(bits2bK z) // -(bits2bK z') // heq. qed.
+
+(* The WOTS+ digits of an n-byte message: len of them, each below w = 16. *)
+lemma wots_digits_range (x : bytes) :
+  size (wots_digits P x) = FIPS205_Params.len P
+  /\ List.all (fun v => 0 <= v < 16) (wots_digits P x).
+proof.
+have := P_table2; rewrite /table2_consistent => [#] hl _ h1 h2 *.
+have [hn _] := P_ranges.
+rewrite /wots_digits /= size_cat List.all_cat hl /=.
+rewrite !size_base_2b 1,2:/# /FIPS205_Params.len h1 h2 /=.
+have hr : forall y l, List.all (fun v => 0 <= v < 16) (base_2b y 4 l).
++ by move=> y l; have := base_2b_range y 4 l.
+by split; apply hr.
+qed.
+
+(* The model's len1 and len2 are stated with real logarithms; for
+   lg_w = 4 and n in {16, 24, 32} they are 2n and 3, as in Table 2. *)
+lemma log2_16 : log2 16%r = 4%r.
+proof.
+have -> : 16%r = 2%r ^ 4%r by rewrite rpow_nat // RField.fromintXn.
+by rewrite /log2 logK.
+qed.
+
+lemma model_len1 : ceil ((8 * P.`n)%r / log2 (2 ^ P.`lgw)%r) = 2 * P.`n.
+proof.
+have [_ [_ [_ [-> _]]]] := P_ranges; rewrite (_: 2 ^ 4 = 16) // log2_16.
+have -> : (8 * P.`n)%r / 4%r = (2 * P.`n)%r by smt().
+by rewrite from_int_ceil.
+qed.
+
+lemma model_len2 :
+  floor (log2 ((2 * P.`n * (2 ^ P.`lgw - 1))%r) / log2 (2 ^ P.`lgw)%r) + 1 = 3.
+proof.
+have [hn [_ [_ [-> _]]]] := P_ranges; rewrite (_: 2 ^ 4 = 16) // log2_16 /=.
+pose x := (2 * P.`n * 15)%r.
+have hx : 256%r <= x < 4096%r by rewrite /x; smt().
+have l256 : log2 256%r = 8%r.
++ have -> : 256%r = 2%r ^ 8%r by rewrite rpow_nat // RField.fromintXn.
+  by rewrite /log2 logK.
+have l4096 : log2 4096%r = 12%r.
++ have -> : 4096%r = 2%r ^ 12%r by rewrite rpow_nat // RField.fromintXn.
+  by rewrite /log2 logK.
+have h1 : log2 256%r <= log2 x by rewrite /log2 log_mono // /#.
+have h2 : log2 x < log2 4096%r by rewrite /log2 log_mono_ltr // /#.
+have -> : floor (log2 x / 4%r) = 2; last done.
+by rewrite floorP; smt().
+qed.
+
+clone SPHINCS_PLUS as SP with
+  op n <- P.`n,
+  op k <- P.`k,
+  op a <- P.`a,
+  op log2_w <- P.`lgw,
+  op h' <- P.`hp,
+  op d <- P.`d,
+  op chtype <- 0,
+  op pkcotype <- 1,
+  op trhxtype <- 2,
+  op trhftype <- 3,
+  op trcotype <- 4,
+  type mseed <- nbytes,
+  type mkey <- nbytes,
+  type sseed <- nbytes,
+  type pseed <- nbytes,
+  type msg <- bytes * bytes,
+  op dmseed <- dnbytes,
+  op dmkey <- dnbytes,
+  op dsseed <- dnbytes,
+  op dpseed <- dnbytes,
+  op ddgstblock <= duniform DigestBlockFT.enum,
+  op skg <= fun (ss : nbytes) (psad : nbytes * HA.adrs) =>
+    DigestBlock.insubd (b2bits (PRF P (NBytes.val psad.`1) (NBytes.val ss)
+                                  (adrs_bytes (prf_retype (HA.Adrs.val psad.`2))))),
+  op mkg <= fun (ms : nbytes) (m : bytes * bytes) =>
+    NBytes.insubd (PRF_msg P (NBytes.val ms) (slice m.`1 0 P.`n) m.`2),
+  op thfc <= fun (l : int) (ps : nbytes) (ad : HA.adrs) (x : bool list) =>
+    DigestBlock.insubd (b2bits
+      (if l = 8 * P.`n then F P (NBytes.val ps) (adrs_bytes (HA.Adrs.val ad)) (bits2b x)
+       else if l = 8 * P.`n * 2 then H P (NBytes.val ps) (adrs_bytes (HA.Adrs.val ad)) (bits2b x)
+       else T_l P (NBytes.val ps) (adrs_bytes (HA.Adrs.val ad)) (bits2b x))),
+  op FTWES.mco <= fun (mk : nbytes) (m : bytes * bytes) =>
+    let digest = H_msg P (NBytes.val mk) (slice m.`1 0 P.`n) (slice m.`1 P.`n (2 * P.`n)) m.`2 in
+    let (md, it, il) = split_digest P digest in
+    (FTWES.BLKAL.insubd (take (P.`k * P.`a) (msb_bits md)), Index.insubd (it * 2 ^ P.`hp + il)),
+  op FSSLXMTWES.WTWES.ch <= fun (g : nbytes -> HA.adrs -> bool list -> DigestBlock.sT)
+                                 (ps : nbytes) (ad : HA.adrs) (s i : int) (x : bool list) =>
+    DigestBlock.insubd (iteri i (fun c y => DigestBlock.val (g ps (FSSLXMTWES.WTWES.set_hidx ad (s + c)) y)) x),
+  op FSSLXMTWES.WTWES.encode_msgWOTS <= fun (m : DigestBlock.sT) =>
+    FSSLXMTWES.WTWES.EmsgWOTS.mkemsgWOTS
+      (map FSSLXMTWES.WTWES.BaseW.insubd (wots_digits P (bits2b (DigestBlock.val m)))),
+  (* Declared lossless by the imported theory and used nowhere in it. *)
+  op FSSLXMTWES.dmsgFLSLXMSSMTTW <= duniform DigestBlockFT.enum
+proof *.
+realize ge1_n by smt(P_ranges).
+realize ge1_k by smt(P_ranges).
+realize ge1_a by smt(P_ranges).
+realize val_log2w by smt(P_ranges).
+realize ge1_hp by smt(P_ranges).
+realize ge1_d by smt(P_ranges).
+realize dist_adrstypes by done.
+realize dmseed_ll by exact dnbytes_ll.
+realize dmkey_ll by exact dnbytes_ll.
+realize dsseed_ll by exact dnbytes_ll.
+realize dpseed_ll by exact dnbytes_ll.
+realize ddgstblock_ll.
+proof.
+apply duniform_ll; rewrite -size_eq0.
+by have := DigestBlockFT.card_gt0; rewrite /DigestBlockFT.card /#.
+qed.
+
+realize FSSLXMTWES.dmsgFLSLXMSSMTTW_ll.
+proof.
+apply duniform_ll; rewrite -size_eq0.
+by have := DigestBlockFT.card_gt0; rewrite /DigestBlockFT.card /#.
+qed.
+
+realize FTWES.ddgstblock_fu by apply/duniform_fu/DigestBlockFT.enumP.
+realize FTWES.ddgstblock_uni by apply duniform_uni.
+
+realize FSSLXMTWES.WTWES.ch0.
+proof. by move=> g ps ad s i x _ _ hi; rewrite iteri0. qed.
+
+realize FSSLXMTWES.WTWES.chS.
+proof.
+move=> g ps ad s i x _ hx hs hi _.
+rewrite (_: i = (i - 1) + 1) 1:// iteriS 1:/# /=.
+have hsz : size (iteri (i - 1) (fun (c : int) (y : bool list) =>
+               DigestBlock.val (g ps (set_hidx ad (s + c)) y)) x) = 8 * P.`n.
++ case: (i - 1 <= 0) => h0; first by rewrite iteri0.
+  rewrite (_: i - 1 = (i - 2) + 1) 1:// iteriS 1:/# /=.
+  by apply DigestBlock.valP.
+rewrite DigestBlock.valKd DigestBlock.insubdK 1:hsz //.
+by rewrite (_: s + (i - 1) = s + i - 1) 1:/#.
+qed.
+
+realize FSSLXMTWES.WTWES.two_encodings.
+proof.
+move=> m m' hne.
+have hlen : len = FIPS205_Params.len P.
++ rewrite /len /len2 /len1 /w model_len1 model_len2.
+  have := P_table2; rewrite /table2_consistent => [#] _ _ h1 h2 *.
+  by move: h1 h2; rewrite /FIPS205_Params.len /FIPS205_Params.len1 /FIPS205_Params.len2 => -> ->.
+have hsz : forall (x : DigestBlock.sT), size (bits2b (DigestBlock.val x)) = P.`n.
++ by move=> x; rewrite size_bits2b DigestBlock.valP mulKz.
+have h8 : forall (x : DigestBlock.sT), 8 %| size (DigestBlock.val x).
++ by move=> x; rewrite DigestBlock.valP dvdz_mulr.
+have hinj : bits2b (DigestBlock.val m) <> bits2b (DigestBlock.val m').
++ by apply/negP => heq; apply hne; apply DigestBlock.val_inj; apply bits2b_inj => //; apply h8.
+have hget : forall (x : DigestBlock.sT) i, 0 <= i < len =>
+  BaseW.val (EmsgWOTS."_.[_]" (EmsgWOTS.mkemsgWOTS (map BaseW.insubd (wots_digits P (bits2b (DigestBlock.val x))))) i)
+  = nth 0 (wots_digits P (bits2b (DigestBlock.val x))) i.
++ move=> x i hi; have [hs ha] := wots_digits_range (bits2b (DigestBlock.val x)).
+  rewrite EmsgWOTS.getE hi /= EmsgWOTS.ofemsgWOTSK 1:size_map 1:hs 1:hlen //.
+  rewrite (nth_map 0 witness) /=; first by rewrite hs -hlen.
+  rewrite BaseW.insubdK //.
+  have -> : w = 16 by have [_ [_ [_ [hl _]]]] := P_ranges; rewrite /w hl.
+  have := List.allP (fun v => 0 <= v < 16) (wots_digits P (bits2b (DigestBlock.val x))).
+  rewrite ha /= => hall; apply hall; apply mem_nth.
+  by rewrite hs -hlen.
+have [j [hj hlt]] := wots_two_encodings_sets P _ _ P_in (hsz m) (hsz m') hinj.
+have hj' : 0 <= j < len by rewrite hlen.
+by exists j; rewrite hj' /= (hget m j hj') (hget m' j hj').
+qed.

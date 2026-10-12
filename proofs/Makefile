@@ -50,7 +50,7 @@ JASMIN_SRC ?= ../src
 CRYPTO_SPECS := ../third_party/crypto-specs
 FORMOSA      := ../third_party/formosa-slhdsa
 
-EC_PATH := -R spec -R security \
+EC_PATH := -R spec -R security -I $(FORMOSA)/proofs \
            -R $(CRYPTO_SPECS)/common -R $(CRYPTO_SPECS)/fips202 \
            -I JazzEC:$(CRYPTO_SPECS)/arrays
 
