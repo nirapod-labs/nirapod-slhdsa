@@ -46,19 +46,20 @@
  *     mco_props                        message compression yields md,
  *                                      idx_tree and idx_leaf of Algorithm
  *                                      19, lines 6 to 10
- *     sign_refine                      SPHINCS+ signing of (PK, M) under
- *                                      (SK.prf, SK.seed, PK.seed) yields the
- *                                      bytes of slh_sign_internal(M, SK)
- *                                      with addrnd absent
+ *     sign_refine                      SPHINCS+ signing of (PK || r, M)
+ *                                      under (SK.prf, SK.seed, PK.seed), for
+ *                                      any n-byte r, yields the bytes of
+ *                                      slh_sign_internal(M, SK, r)
  *     verify_refine                    SPHINCS+ verification of the decoding
  *                                      of any byte string of the signature
- *                                      length returns slh_verify_internal
+ *                                      length, on (PK || r, M) for any r,
+ *                                      returns slh_verify_internal
  *     keygen_bytes                     the key pair built from the computed
  *                                      root is that of Algorithm 18
  *
- * Deterministic signing only: the model derives the randomizer from the
- * message seed and the message, which is Algorithm 19 with opt_rand =
- * PK.seed.
+ * Both signing modes: the model derives the randomizer from the message
+ * seed and the message, whose opt_rand part is PK.seed for deterministic
+ * signing and fresh randomness for hedged signing (Algorithm 19, line 2).
  *
  * The parameter set is the abstract P of SPHINCS_Instance.
  *)
@@ -203,7 +204,7 @@ lemma enc_skg ss ps ad :
 proof. by rewrite /SP.skg /= enc_insubd // (FIPS205_Hash_Props.size_PRF _ _ _ _ n_okP). qed.
 
 lemma val_mkg ms (m : bytes * bytes) :
-  NBytes.val (SP.mkg ms m) = PRF_msg P (NBytes.val ms) (slice m.`1 0 P.`n) m.`2.
+  NBytes.val (SP.mkg ms m) = PRF_msg P (NBytes.val ms) (slice m.`1 (2 * P.`n) (3 * P.`n)) m.`2.
 proof. by rewrite /SP.mkg /= NBytes.insubdK // (FIPS205_Hash_Props.size_PRF_msg _ _ _ _ n_okP). qed.
 
 (* ------------------------------------------------------------------ *)
@@ -1619,12 +1620,16 @@ rewrite slice_cat_r 1:/# hx slice_cat_r 1:/# hy slice_cat_r 1:/# hz.
 by rewrite (_: 4 * P.`n - P.`n - P.`n - P.`n = size w) 1:/# (_: 3 * P.`n - P.`n - P.`n - P.`n = 0) 1:/# slice_whole.
 qed.
 
-lemma sign_refine msA ssA psA (rootA : SP.dgstblock) (M : bytes) :
+lemma sign_refine msA ssA psA (rootA : SP.dgstblock) (rA M : bytes) :
+  size rA = P.`n =>
   phoare [SP.SPHINCS_PLUS.sign :
-            arg = ((msA, ssA, psA), (NBytes.val psA ++ enc rootA, M))
-            ==> enc_sig res = slh_sign_internal P M (NBytes.val ssA ++ NBytes.val msA ++ NBytes.val psA ++ enc rootA) None] = 1%r.
+            arg = ((msA, ssA, psA), (NBytes.val psA ++ enc rootA ++ rA, M))
+            ==> enc_sig res = slh_sign_internal P M (NBytes.val ssA ++ NBytes.val msA ++ NBytes.val psA ++ enc rootA) (Some rA)] = 1%r.
 proof.
-pose m := (NBytes.val psA ++ enc rootA, M).
+move=> hrA.
+pose m := (NBytes.val psA ++ enc rootA ++ rA, M).
+have hpre : size (NBytes.val psA ++ enc rootA) = 2 * P.`n.
++ by rewrite size_cat nval_size size_enc; ring.
 pose mk := SP.mkg msA m.
 have hmc := mco_props mk m; have hdp := dig_props mk m.
 have [md it il hd] : exists md it il, dig mk m = (md, it, il).
@@ -1636,18 +1641,24 @@ have hf := fors_ad it il hit hil.
 pose sf := fors_sign P md (NBytes.val ssA) (NBytes.val psA) (mk_adrs 0 it 3 il 0 0).
 pose pkf := fors_pkFromSig P sf md (NBytes.val psA) (mk_adrs 0 it 3 il 0 0).
 have hs0 : slice m.`1 0 P.`n = NBytes.val psA.
-+ rewrite /m /= slice_cat_l; first by rewrite nval_size; smt(n_bounds).
++ rewrite /m /= slice_cat_l; first by rewrite hpre; smt(n_bounds).
+  rewrite slice_cat_l; first by rewrite nval_size; smt(n_bounds).
   by rewrite -(nval_size psA) slice_whole.
 have hs1 : slice m.`1 P.`n (2 * P.`n) = enc rootA.
-+ rewrite /m /= slice_cat_r nval_size // (_: 2 * P.`n - P.`n = size (enc rootA)).
++ rewrite /m /= slice_cat_l; first by rewrite hpre; smt(n_bounds).
+  rewrite slice_cat_r nval_size // (_: 2 * P.`n - P.`n = size (enc rootA)).
   + by rewrite size_enc; ring.
   by rewrite /= slice_whole.
-have hr : NBytes.val (NBytes.insubd (PRF_msg P (NBytes.val msA) (NBytes.val psA) M))
-          = PRF_msg P (NBytes.val msA) (NBytes.val psA) M.
+have hs2 : slice m.`1 (2 * P.`n) (3 * P.`n) = rA.
++ rewrite /m /= slice_cat_r hpre // (_: 3 * P.`n - 2 * P.`n = size rA).
+  + by rewrite hrA; ring.
+  by rewrite /= slice_whole.
+have hr : NBytes.val (NBytes.insubd (PRF_msg P (NBytes.val msA) rA M))
+          = PRF_msg P (NBytes.val msA) rA M.
 + by rewrite NBytes.insubdK // (FIPS205_Hash_Props.size_PRF_msg _ _ _ _ n_okP).
-have hdd : split_digest P (H_msg P (PRF_msg P (NBytes.val msA) (NBytes.val psA) M) (NBytes.val psA) (enc rootA) M)
+have hdd : split_digest P (H_msg P (PRF_msg P (NBytes.val msA) rA M) (NBytes.val psA) (enc rootA) M)
            = (md, it, il).
-+ by move: hd; rewrite /dig /mk /SP.mkg hs0 hs1 /= hr.
++ by move: hd; rewrite /dig /mk /SP.mkg hs0 hs1 hs2 /= hr.
 proc; inline SP.FTWES.M_FORS_ES.sign; wp.
 call (ht_sign_ph ssA psA (dec pkf) (SP.FTWES.mco mk m).`2 it il hidx hil hit).
 wp.
@@ -1657,7 +1668,7 @@ call (fors_sign_ph ssA psA adF (SP.FTWES.mco mk m).`1 md it il hf hcm hmd').
 have hmco : SP.FTWES.mco mk m
             = (SP.FTWES.BLKAL.insubd (take (P.`k * P.`a) (msb_bits md)),
                SP.Index.insubd (it * 2 ^ P.`hp + il)).
-+ by rewrite /SP.FTWES.mco /mk /SP.mkg hs0 hs1 /= hr hdd.
++ by rewrite /SP.FTWES.mco /mk /SP.mkg hs0 hs1 hs2 /= hr hdd.
 have hiv : SP.Index.val (SP.Index.insubd (it * 2 ^ P.`hp + il)) = it * 2 ^ P.`hp + il.
 + by move: hidx; rewrite hmco.
 have hq : (it * 2 ^ P.`hp + il) %/ 2 ^ P.`hp = it.
@@ -1665,7 +1676,7 @@ have hq : (it * 2 ^ P.`hp + il) %/ 2 ^ P.`hp = it.
 have hrm : (it * 2 ^ P.`hp + il) %% 2 ^ P.`hp = il.
 + by rewrite modzMDl modz_small // ger0_norm 1:expr_ge0.
 auto => />.
-rewrite hs0 hs1 /= hr hdd /= hiv /SP.l' hq hrm hmco /=.
+rewrite hs0 hs1 hs2 /= hr hdd /= hiv /SP.l' hq hrm hmco /=.
 move=> _ sg hsg1 hsg2 pk hpk.
 have hpkf : size pkf = P.`n by rewrite /pkf -hpk size_enc.
 split; first by apply dec_inj_enc; rewrite hpk.
@@ -1807,15 +1818,15 @@ split; first ring.
 by ring.
 qed.
 
-lemma verify_refine (rootA : SP.dgstblock) psA (M b : bytes) :
+lemma verify_refine (rootA : SP.dgstblock) psA (rA M b : bytes) :
   size b = sig_length P =>
   phoare [SP.SPHINCS_PLUS.verify :
-            arg = ((rootA, psA), (NBytes.val psA ++ enc rootA, M), dec_sig b)
+            arg = ((rootA, psA), (NBytes.val psA ++ enc rootA ++ rA, M), dec_sig b)
             ==> res = slh_verify_internal P M b (NBytes.val psA ++ enc rootA)] = 1%r.
 proof.
 move=> hb.
 have [#] h0n hnf hfs hfsz hhsz := sig_sizes.
-pose m := (NBytes.val psA ++ enc rootA, M).
+pose m := (NBytes.val psA ++ enc rootA ++ rA, M).
 pose mk := NBytes.insubd (slice b 0 P.`n).
 have hmk : NBytes.val mk = slice b 0 P.`n.
 + by rewrite /mk NBytes.insubdK // size_slice //; smt().
@@ -1845,12 +1856,18 @@ have hpk1 : slice (NBytes.val psA ++ enc rootA) P.`n (2 * P.`n) = enc rootA.
 + rewrite slice_cat_r nval_size // (_: 2 * P.`n - P.`n = size (enc rootA)).
   + by rewrite size_enc; ring.
   by rewrite /= slice_whole.
+have hpre : size (NBytes.val psA ++ enc rootA) = 2 * P.`n.
++ by rewrite size_cat nval_size size_enc; ring.
+have hr0 : slice (NBytes.val psA ++ enc rootA ++ rA) 0 P.`n = NBytes.val psA.
++ by rewrite slice_cat_l 2:hpk0 // hpre; smt(n_bounds).
+have hr1 : slice (NBytes.val psA ++ enc rootA ++ rA) P.`n (2 * P.`n) = enc rootA.
++ by rewrite slice_cat_l 2:hpk1 // hpre; smt(n_bounds).
 have hdd : split_digest P (H_msg P (slice b 0 P.`n) (NBytes.val psA) (enc rootA) M) = (md, it, il).
-+ by move: hd; rewrite /dig hmk /m /= hpk0 hpk1.
++ by move: hd; rewrite /dig hmk /m /= hr0 hr1.
 have hmco : SP.FTWES.mco mk m
             = (SP.FTWES.BLKAL.insubd (take (P.`k * P.`a) (msb_bits md)),
                SP.Index.insubd (it * 2 ^ P.`hp + il)).
-+ by rewrite /SP.FTWES.mco hmk /m /= hpk0 hpk1 hdd.
++ by rewrite /SP.FTWES.mco hmk /m /= hr0 hr1 hdd.
 have hiv : SP.Index.val (SP.Index.insubd (it * 2 ^ P.`hp + il)) = it * 2 ^ P.`hp + il.
 + by move: hidx; rewrite hmco.
 have hq : (it * 2 ^ P.`hp + il) %/ 2 ^ P.`hp = it.
@@ -1859,7 +1876,7 @@ have hrm : (it * 2 ^ P.`hp + il) %% 2 ^ P.`hp = il.
 + by rewrite modzMDl modz_small // ger0_norm 1:expr_ge0.
 have hds : dec_sig b = (mk, dec_fors sfb, dec_ht shb) by rewrite /dec_sig.
 auto => />.
-rewrite hds /= hmk /m /= hpk0 hpk1 hdd /= hiv /SP.l' hq hrm hmco /=.
+rewrite hds /= hmk /m /= hr0 hr1 hdd /= hiv /SP.l' hq hrm hmco /=.
 split; first by split => //; apply enc_dec_fors.
 move=> _ _ pk hpk.
 have hpkf : size pkf = P.`n by rewrite /pkf -hpk size_enc.

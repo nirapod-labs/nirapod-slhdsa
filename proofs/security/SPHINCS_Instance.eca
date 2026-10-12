@@ -18,13 +18,19 @@
  *     address types           WOTS_HASH 0, WOTS_PK 1, TREE 2, FORS_TREE 3,
  *                              FORS_ROOTS 4 (section 4.2)
  *     seeds and keys          n-byte strings, sampled uniformly
- *     msg                     (public key bytes, M') pairs (see below)
+ *     msg                     (PK.seed || PK.root || opt_rand, M') pairs
+ *                              (see below)
  *
  * and realizes every axiom the imported theory states about them
- * (`proof *`). The message is paired with the public key because H_msg
- * hashes PK.seed and PK.root; signing a message M' under public key pk is
- * signing (pk, M') in the instance, and freshness of M' implies freshness
- * of (pk, M').
+ * (`proof *`). The message carries the public key because H_msg hashes
+ * PK.seed and PK.root, and it carries opt_rand because PRF_msg reads it:
+ * mkg reads opt_rand and M', mco reads PK.seed, PK.root and M'. Signing M'
+ * under public key pk with randomness opt_rand is signing
+ * (pk || opt_rand, M') in the instance; deterministic signing takes
+ * opt_rand = PK.seed (FIPS 205 Algorithm 19, line 2). Because mkg and mco
+ * each ignore part of the message, the PRF and ITSR advantages the imported
+ * proof yields for this message type are tied back to PRF_msg and H_msg on
+ * their own inputs in SLHDSA_Hedged.eca.
  *
  * The keyed functions and tweakable hashes are FIPS 205 PRF, PRF_msg, F, H
  * and T_l on the 32-byte ADRS that the model address denotes, with the
@@ -198,7 +204,7 @@ clone SPHINCS_PLUS as SP with
     DigestBlock.insubd (b2bits (PRF P (NBytes.val psad.`1) (NBytes.val ss)
                                   (adrs_bytes (prf_retype (HA.Adrs.val psad.`2))))),
   op mkg <= fun (ms : nbytes) (m : bytes * bytes) =>
-    NBytes.insubd (PRF_msg P (NBytes.val ms) (slice m.`1 0 P.`n) m.`2),
+    NBytes.insubd (PRF_msg P (NBytes.val ms) (slice m.`1 (2 * P.`n) (3 * P.`n)) m.`2),
   op thfc <= fun (l : int) (ps : nbytes) (ad : HA.adrs) (x : bool list) =>
     DigestBlock.insubd (b2bits
       (if l = 8 * P.`n then F P (NBytes.val ps) (adrs_bytes (HA.Adrs.val ad)) (bits2b x)

@@ -114,15 +114,16 @@ proof. by proc; call root_from_sig_ll; call pkFORS_from_sig_ll; auto. qed.
 (* From the internal scheme to SPHINCS+                               *)
 
 (* The reduction: run A on the byte encoding of the SPHINCS+ public key,
-   sign A's messages M as the pairs (PK, M), encode the signatures, and
-   decode A's forgery. *)
+   sign A's messages M as the pairs (PK || PK.seed, M) (opt_rand = PK.seed),
+   encode the signatures, and decode A's forgery. *)
 module R (A : DSI.Stateless.Adv_EUFCMA) (O : SP.DSS.Stateless.SOracle_CMA) = {
   var pkb : bytes
+  var pkm : bytes
 
   module O' = {
     proc sign(m : bytes) : bytes = {
       var s;
-      s <@ O.sign((pkb, m));
+      s <@ O.sign((pkm, m));
       return enc_sig s;
     }
   }
@@ -130,10 +131,21 @@ module R (A : DSI.Stateless.Adv_EUFCMA) (O : SP.DSS.Stateless.SOracle_CMA) = {
   proc forge(pk : SP.pkSPHINCSPLUSTW) : (bytes * bytes) * SP.sigSPHINCSPLUSTW = {
     var m, s;
     pkb <- NBytes.val pk.`2 ++ enc pk.`1;
+    pkm <- pkb ++ NBytes.val pk.`2;
     (m, s) <@ A(O').forge(pkb);
-    return ((pkb, m), dec_sig s);
+    return ((pkm, m), dec_sig s);
   }
 }.
+
+(* Deterministic signing is hedged signing with opt_rand = PK.seed. *)
+lemma sign_det (M x y z w : bytes) :
+  size x = P.`n => size y = P.`n => size z = P.`n => size w = P.`n =>
+  slh_sign_internal P M (x ++ y ++ z ++ w) None
+  = slh_sign_internal P M (x ++ y ++ z ++ w) (Some z).
+proof.
+move=> hx hy hz hw; have [_ [_ [h3 _]]] := key_fields x y z w hx hy hz hw.
+by rewrite /slh_sign_internal /= h3.
+qed.
 
 (* The secret key of SLH_Internal held by the oracle, the SPHINCS+ secret
    key and the public key bytes held by the reduction, with the common
@@ -148,13 +160,13 @@ section Reduction.
 declare module A <: DSI.Stateless.Adv_EUFCMA
   {-R, -DSI.Stateless.O_CMA_Default, -SP.DSS.Stateless.O_CMA_Default}.
 
-lemma verify_pre (rootA : SP.dgstblock) psA (M b : bytes) :
+lemma verify_pre (rootA : SP.dgstblock) psA (rA M b : bytes) :
   phoare [SP.SPHINCS_PLUS.verify :
-            arg = ((rootA, psA), (NBytes.val psA ++ enc rootA, M), dec_sig b) /\ size b = sig_length P
+            arg = ((rootA, psA), (NBytes.val psA ++ enc rootA ++ rA, M), dec_sig b) /\ size b = sig_length P
             ==> res = slh_verify_internal P M b (NBytes.val psA ++ enc rootA)] = 1%r.
 proof.
 case: (size b = sig_length P) => hb.
-+ by conseq (verify_refine rootA psA M b hb) => /#.
++ by conseq (verify_refine rootA psA rA M b hb) => /#.
 by exfalso; move=> &hr.
 qed.
 
@@ -162,9 +174,11 @@ lemma oracle_eq :
   equiv [DSI.Stateless.O_CMA_Default(SLH_Internal).sign
          ~ R(A, SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS)).O'.sign :
          ={m} /\ keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} R.pkb{2}
-         /\ SP.DSS.Stateless.O_CMA_Default.qs{2} = map (fun x => (R.pkb{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}
+         /\ R.pkm{2} = R.pkb{2} ++ NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`3
+         /\ SP.DSS.Stateless.O_CMA_Default.qs{2} = map (fun x => (R.pkm{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}
          ==> ={res} /\ keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} R.pkb{2}
-         /\ SP.DSS.Stateless.O_CMA_Default.qs{2} = map (fun x => (R.pkb{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}].
+         /\ R.pkm{2} = R.pkb{2} ++ NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`3
+         /\ SP.DSS.Stateless.O_CMA_Default.qs{2} = map (fun x => (R.pkm{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}].
 proof.
 proc; inline SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS).sign SLH_Internal.sign.
 conseq (_: m{1} = m{2}
@@ -173,15 +187,18 @@ conseq (_: m{1} = m{2}
                     = NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`2
                       ++ NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`1
                       ++ NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`3 ++ enc r)
+           /\ R.pkm{2} = R.pkb{2} ++ NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`3
            /\ SP.DSS.Stateless.O_CMA_Default.qs{2}
-               = map (fun x => (R.pkb{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}
+               = map (fun x => (R.pkm{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}
            ==> _) => //.
 elim* => r.
 exlim (SP.DSS.Stateless.O_CMA_Default.sk{2}).`1, (SP.DSS.Stateless.O_CMA_Default.sk{2}).`2,
       (SP.DSS.Stateless.O_CMA_Default.sk{2}).`3, m{2} => ms ss ps M.
-wp; call{2} (sign_refine ms ss ps r M).
+wp; call{2} (sign_refine ms ss ps r (NBytes.val ps) M (nval_size ps)).
 auto => /> &1 &2; split; first by case: (SP.DSS.Stateless.O_CMA_Default.sk{2}).
-move=> _ sg -> /=; split; first by exists r.
+move=> _ sg -> /=; split.
++ by rewrite sign_det // ?nval_size ?size_enc.
+split; first by exists r.
 by rewrite map_rcons.
 qed.
 
@@ -202,22 +219,24 @@ exlim ss{2}, ps{2} => s0 p0.
 seq 0 1 : (={glob A} /\ sprf{1} = ms{2} /\ ss{1} = s0 /\ ss{2} = s0 /\ ps{1} = p0 /\ ps{2} = p0
            /\ enc root{2} = xmss_node P (NBytes.val s0) 0 P.`hp (NBytes.val p0) (mk_adrs (P.`d - 1) 0 0 0 0 0)).
 + by call{2} (gen_root_ph s0 p0); skip => /> /#.
-seq 6 9 : (keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} R.pkb{2}
+seq 6 10 : (keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} R.pkb{2}
            /\ SP.DSS.Stateless.O_CMA_Default.qs{2}
-               = map (fun x => (R.pkb{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}
+               = map (fun x => (R.pkm{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}
            /\ m{1} = m0{2} /\ sig{1} = s{2} /\ pk{1} = R.pkb{2}
-           /\ pk{2} = (root{2}, ps{2}) /\ R.pkb{2} = NBytes.val ps{2} ++ enc root{2}).
+           /\ pk{2} = (root{2}, ps{2}) /\ R.pkb{2} = NBytes.val ps{2} ++ enc root{2}
+           /\ R.pkm{2} = R.pkb{2} ++ NBytes.val ps{2}).
 + call (_: keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} R.pkb{2}
+           /\ R.pkm{2} = R.pkb{2} ++ NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`3
            /\ SP.DSS.Stateless.O_CMA_Default.qs{2}
-               = map (fun x => (R.pkb{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}).
+               = map (fun x => (R.pkm{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}).
   + by conseq oracle_eq.
   wp; skip => /> &2 hr.
   rewrite (keygen_bytes s0 ms{2} p0 root{2} hr) /=.
   by exists root{2}.
 exlim sig{1}, root{2}, ps{2}, m{1} => b r p M.
 case (size b = sig_length P).
-+ wp; call{2} (verify_pre r p M b).
-  wp; skip => &1 &2 H; move: H => [#] hb hr hp hM _ hqs hm hsig hpk1 hpk2 hpkb hsz /=.
++ wp; call{2} (verify_pre r p (NBytes.val p) M b).
+  wp; skip => &1 &2 H; move: H => [#] hb hr hp hM _ hqs hm hsig hpk1 hpk2 hpkb hpkm hsz /=.
   split; first smt().
   move=> _ v hv [hval hfresh]; split.
   + by move: hval; rewrite hv hpk1 hpkb hb hr hp hM.
