@@ -32,6 +32,7 @@ keccak/fips202.jinc        one-shot SHA-3 and SHAKE from memory
 keccak/sponge_x4.jinc      4-way sponge: init and finalize
 keccak/sponge_x4_array.jinc 4-way absorb and squeeze of fixed-length arrays (instance file)
 keccak/aarch64/scalar/     Keccak-f[1600] kernel for AArch64 with the state in registers
+keccak/x86_64/avx2/        4-way Keccak-f[1600] kernel in AVX2
 sha2/sha256_k.jinc         SHA-256 round constants, shared by its kernels
 sha2/sha256_compress.jinc  SHA-256 compression kernel (scalar)
 sha2/sha256.jinc           SHA-224/256 initial values, buffering, padding
@@ -48,6 +49,8 @@ sha2/sha256_x8_compress.jinc 8-way SHA-256 compression kernel (scalar)
 sha2/sha512_x4.jinc        4-way SHA-384/512/512-224/512-256: initial values, padding, output
 sha2/sha512_x4_array.jinc  4-way absorb of packed fixed-length arrays (instance file)
 sha2/sha512_x4_compress.jinc 4-way SHA-512 compression kernel (scalar)
+sha2/x86_64/shani/         SHA-256 kernel on the x86 SHA extensions
+sha2/x86_64/avx2/          8-way SHA-256 and 4-way SHA-512 kernels in AVX2
 x86_64/word.jinc           byte reversal, x86-64 instructions
 aarch64/word.jinc          byte reversal, AArch64 instructions (owns the contract)
 ```
@@ -61,8 +64,9 @@ for every target and variant.
 |---|---|---|---|
 | `scalar` | x86-64, AArch64 | the `*_compress.jinc` and `keccakf1600*.jinc` kernels in this directory | implemented |
 | `aarch64/scalar` | AArch64 | single-way Keccak with the 25 lanes in registers | implemented, `keccak/aarch64/scalar/` |
-| `avx2` | x86-64 | 4-way Keccak, 8-way SHA-256, 4-way SHA-512 | planned |
-| `shani` | x86-64 | single-stream SHA-256 | planned |
+| `x86_64/avx2` | x86-64 | 4-way Keccak (AVX2 required); single-way Keccak stays scalar | implemented, `keccak/x86_64/avx2/` |
+| `x86_64/avx2` | x86-64 | 8-way SHA-256, 4-way SHA-512 (AVX2 required) | implemented, `sha2/x86_64/avx2/` |
+| `x86_64/shani` | x86-64 | single-stream SHA-256 (SHA and AVX required); SHA-512 stays scalar | implemented, `sha2/x86_64/shani/` |
 | `sha3` | AArch64 | NEON Keccak with EOR3/RAX1/XAR/BCAX | planned |
 | `sha2` | AArch64 | SHA256H/H2/SU0/SU1, SHA512H/H2/SU0/SU1 | planned |
 
@@ -98,8 +102,8 @@ jasminc -arch armv8a -I Hash=src/jasmin/hash -I HashWord=src/jasmin/hash/aarch64
 
 jasminc -arch x86-64 -I Hash=src/jasmin/hash -I HashWord=src/jasmin/hash/x86_64 \
         -I KeccakKernel=src/jasmin/hash/keccak \
-        -I KeccakKernelX=src/jasmin/hash/keccak \
-        -I Sha2Kernel=src/jasmin/hash/sha2 -I Sha2KernelX=src/jasmin/hash/sha2 ...
+        -I KeccakKernelX=src/jasmin/hash/keccak/x86_64/avx2 \
+        -I Sha2Kernel=src/jasmin/hash/sha2/x86_64/shani -I Sha2KernelX=src/jasmin/hash/sha2/x86_64/avx2 ...
 ```
 
 ```
@@ -156,6 +160,9 @@ also keeps secret-derived data on return:
 | `_mgf1_sha*` | the padded seed message and the last chaining value |
 | `_keccakf1600_x4` (scalar kernel) | instance 3's state, and the residue of `_keccakf1600` |
 | `_sha256_x8_compress`, `_sha512_x4_compress` (scalar kernels) | instance 7's (4-way: 3's) chaining value, and the residue of the single-way kernel |
+| `_keccakf1600_x4` (`x86_64/avx2`) | the four states after round 23 |
+| `_sha256_x8_compress`, `_sha512_x4_compress` (`x86_64/avx2`) | 16 schedule words of every instance: W_47 .. W_62 (SHA-512: W_63 .. W_78) |
+| `_sha256_compress*` (`x86_64/shani`) | no message word or chaining value is stored to the stack |
 
 A function's residue includes the residue of every function it calls.
 Clearing that stack is an obligation of the export that runs these
@@ -510,6 +517,19 @@ Mach-O output; the pattern accepts both.
   besides the round constant it makes five stores and five loads. The
   emitted kernel has no register moves, and ρ and π are 24 rotates per
   round (576 `ror` in all).
+- **4-way Keccak, x86-64 AVX2.** The lanes are not kept in registers
+  between rounds. As in the scalar kernel, each round reads the 25 lanes
+  from one of two arrays, the caller's state and a stack round buffer, and
+  writes its χ output to the other. C and D stay in registers: the emitted
+  `_keccakf1600_x4` uses 13 of the 16 ymm registers (B, C/D, temporaries and
+  the two VPSHUFB rotation masks) and seven general-purpose registers.
+- **SHA-NI after AVX2, x86-64.** SHA256RNDS2, SHA256MSG1 and SHA256MSG2
+  have legacy-SSE encodings only. The AVX2 kernels return with the upper
+  halves of the ymm registers dirty, and the pinned toolchain has no
+  VZEROUPPER to clear them. An export that runs the `x86_64/shani` kernel
+  after an AVX2 kernel therefore pays the processor's SSE/AVX transition
+  cost on the SHA instructions. The results are unaffected; the speed is
+  not.
 - **Values across kernel calls.** Kernels are local functions. The
   compiler's register allocation covers caller and callee together: a value
   live across a call keeps a register the callee does not write, or the

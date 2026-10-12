@@ -141,6 +141,13 @@ On AArch64, the register-resident Keccak kernel:
 make -C tests/hash check KECCAK_VARIANT=aarch64/scalar
 ```
 
+On x86-64, the AVX2 and SHA-NI kernels:
+
+```sh
+make -C tests/hash check KECCAKX_VARIANT=x86_64/avx2 \
+     SHA2_VARIANT=x86_64/shani SHA2X_VARIANT=x86_64/avx2
+```
+
 ## Vector provenance
 
 `vectors/fetch.sh` downloads four archives from the NIST Cryptographic
