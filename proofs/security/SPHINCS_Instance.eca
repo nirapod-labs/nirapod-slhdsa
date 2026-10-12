@@ -29,8 +29,9 @@
  * (pk || opt_rand, M') in the instance; deterministic signing takes
  * opt_rand = PK.seed (FIPS 205 Algorithm 19, line 2). Because mkg and mco
  * each ignore part of the message, the PRF and ITSR advantages the imported
- * proof yields for this message type are tied back to PRF_msg and H_msg on
- * their own inputs in SLHDSA_Hedged.eca.
+ * proof yields for this message type are not assumptions on PRF_msg and
+ * H_msg by themselves; SLHDSA_Hedged.eca relates them to PRF_msg and H_msg
+ * on their own inputs for hedged signing.
  *
  * The keyed functions and tweakable hashes are FIPS 205 PRF, PRF_msg, F, H
  * and T_l on the 32-byte ADRS that the model address denotes, with the

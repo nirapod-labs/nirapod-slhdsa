@@ -10,38 +10,62 @@
  *
  * Scheme. SLH_Hedged is the internal scheme of FIPS 205 section 9 with
  * addrnd present: every signature draws a fresh, uniform n-byte opt_rand
- * (the RBG of Algorithm 22, line 6) and returns slh_sign_internal(M, SK,
+ * (the addrnd of Algorithms 22 and 23) and returns slh_sign_internal(M, SK,
  * opt_rand). Key generation and verification are those of SLH_Internal.
+ *
+ * Results.
+ *
+ *     internal_le_sp_h         a forger against SLH_Hedged yields, through
+ *                              the reduction W, a forger against the
+ *                              SPHINCS+ instance with at least the same
+ *                              success probability
+ *     prf_proj                 for W, the PRF advantage against mkg equals
+ *                              the PRF advantage against PRF_msg on
+ *                              (opt_rand, M') under the key SK.prf
+ *     itsr_proj                for W, the ITSR advantage against mco is at
+ *                              most the ITSR advantage against H_msg, with
+ *                              the FIPS 205 index function, on
+ *                              (PK.seed, PK.root, M')
+ *     slhdsa_euf_cma_hedged    the external interface with hedged signing:
+ *                              the success probability of any forger A is
+ *                              at most the SPHINCS+ bound of the imported
+ *                              proof for the adversary W(B(A)), with its
+ *                              mkg and mco terms replaced by the PRF_msg
+ *                              and H_msg terms above, plus the pre-hash
+ *                              collision term of ExternalFraming.ec
  *
  * Route. The SPHINCS+ instance signs (PK.seed || PK.root || opt_rand, M')
  * (SPHINCS_Instance.eca), so hedged signing is SPHINCS+ signing of a
  * message whose opt_rand part the reduction W draws. W answers A's
  * queries this way and records (opt_rand, M', R) for each; for the forgery
  * it picks the opt_rand of a recorded query with the same M' and R, if
- * there is one. The imported SPHINCS+ bound then applies to W, with two of
- * its terms stated for the instance message type:
+ * there is one. The imported SPHINCS+ bound then applies to W, but two of
+ * its terms are stated for the instance message type, where they are not
+ * meaningful assumptions on their own:
  *
- *  - the PRF advantage against mkg, which ignores PK.seed and PK.root and
- *    so is not a PRF on that type, and
- *  - the ITSR advantage against mco, which ignores opt_rand and so is not
- *    ITSR on that type (two messages that differ only in opt_rand share
- *    their FORS indices).
+ *  - mkg ignores PK.seed and PK.root, so it is not a PRF on that type;
+ *  - mco ignores opt_rand, so it is not ITSR on that type (two messages
+ *    that differ only in opt_rand share their FORS indices).
  *
- * Both are tied back to the functions on their own inputs, through
- * explicit adversaries:
+ * prf_proj and itsr_proj restate both for PRF_msg and H_msg on their own
+ * inputs, through the explicit adversaries PP and PI. The first holds
+ * because all of W's queries carry one public key, so the two random
+ * functions see the same queries. The second holds because W's choice of
+ * opt_rand makes its forgery a recorded query whenever its H_msg inputs
+ * and randomizer match one, and a recorded query is never an ITSR win.
  *
- *     prf_proj    the mkg term equals the PRF advantage against PRF_msg
- *                 on (opt_rand, M') under the key SK.prf, because all of
- *                 W's messages share one public key
- *     itsr_proj   the mco term is at most the ITSR advantage against
- *                 H_msg with the FIPS 205 index function on
- *                 (PK.seed, PK.root, M'), because W's choice of opt_rand
- *                 for the forgery makes every winning pair new on those
- *                 inputs
+ * No term for opt_rand collisions appears: the PRF hop of the imported
+ * proof replaces mkg by a random function of the whole message, and a
+ * repeated opt_rand only repeats an input of that function.
  *
- * No hypothesis on opt_rand collisions is needed: the PRF hop of the
- * imported proof replaces mkg by a random function of the whole message,
- * and repeated opt_rand values only repeat its inputs.
+ * Hypotheses: A terminates whenever its signing oracle does, and A does not
+ * read or write the state of the games and reductions involved (the module
+ * restrictions of the statement). Nothing is assumed about the hash
+ * functions; the PRF_msg term is the standard PRF advantage, keyed by
+ * SK.prf drawn uniformly.
+ *
+ * The randomness of key generation and of opt_rand is modelled as uniform
+ * n-byte strings.
  *)
 
 require import AllCore List Distr DList FMap.
@@ -581,3 +605,101 @@ by apply (itsr_final _ _ _ _ _ _ _ hrel).
 qed.
 
 end section ITSRProjection.
+
+(* ------------------------------------------------------------------ *)
+(* The external interface with hedged signing                         *)
+
+section HedgedComposition.
+
+declare module A <: DSE.Stateless.Adv_EUFCMA {
+   -SP.SKG_PRF.O_PRF_Default, -SP.MKG_PRF.O_PRF_Default,
+   -SP.FTWES.MCO_ITSR.O_ITSR_Default, -SP.FTWES.F_OpenPRE.O_SMDTOpenPRE_Default,
+   -SP.FTWES.FP_OPRETCRDSPR.FP_OpenPRE.O_SMDTOpenPRE_Default, -SP.FTWES.FP_OPRETCRDSPR.FP_TCR.O_SMDTTCR_Default,
+   -SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.O_SMDTDSPR_Default, -SP.FTWES.FP_OPRETCRDSPR.R_TCR_OpenPRE,
+   -SP.FTWES.FP_OPRETCRDSPR.R_DSPR_OpenPRE, -SP.FTWES.TRHC.O_THFC_Default,
+   -SP.FTWES.TRHC_TCR.O_SMDTTCR_Default, -SP.FTWES.TRCOC.O_THFC_Default,
+   -SP.FTWES.TRCOC_TCR.O_SMDTTCR_Default, -SP.FTWES.O_CMA_MFORSTWESNPRF,
+   -SP.FTWES.O_CMA_MFORSTWESNPRF_AV, -SP.FTWES.R_ITSR_EUFCMA,
+   -SP.FTWES.R_FSMDTOpenPRE_EUFCMA, -SP.FTWES.R_TRHSMDTTCRC_EUFCMA,
+   -SP.FTWES.R_TRCOSMDTTCRC_EUFCMA, -SP.FSSLXMTWES.PKCOC.O_THFC_Default,
+   -SP.FSSLXMTWES.PKCOC_TCR.O_SMDTTCR_Default, -SP.FSSLXMTWES.TRHC.O_THFC_Default,
+   -SP.FSSLXMTWES.TRHC_TCR.O_SMDTTCR_Default, -SP.FSSLXMTWES.WTWES.FC.O_THFC_Default,
+   -SP.FSSLXMTWES.WTWES.FC_UD.O_SMDTUD_Default, -SP.FSSLXMTWES.WTWES.FC_TCR.O_SMDTTCR_Default,
+   -SP.FSSLXMTWES.WTWES.FC_PRE.O_SMDTPRE_Default, -SP.FSSLXMTWES.WTWES.O_MEUFGCMA_WOTSTWESNPRF,
+   -SP.FSSLXMTWES.WTWES.R_SMDTPREC_Game4WOTSTWES, -SP.FSSLXMTWES.WTWES.R_SMDTUDC_Game23WOTSTWES,
+   -SP.FSSLXMTWES.WTWES.R_SMDTTCRC_Game34WOTSTWES, -SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA,
+   -SP.FSSLXMTWES.R_SMDTTCRCPKCO_EUFNAGCMA, -SP.FSSLXMTWES.R_SMDTTCRCTRH_EUFNAGCMA,
+   -SP.DSS.Stateless.O_CMA_Default, -SP.R_SKGPRF_EUFCMA,
+   -SP.R_MKGPRF_EUFCMA, -SP.R_MFORSTWESNPRFEUFCMA_EUFCMA,
+   -SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA, -R,
+   -DSI.Stateless.O_CMA_Default, -DSE.Stateless.O_CMA_Default,
+   -Rec, -W, -PRFMsg_PRF.O_PRF_Default, -HMsg_ITSR.O_ITSR_Default
+}.
+
+declare axiom A_forge_ll (O <: DSE.Stateless.SOracle_CMA{-A}) :
+  islossless O.sign => islossless A(O).forge.
+
+lemma WB_ll (O <: SP.DSS.Stateless.SOracle_CMA{-W, -A}) :
+  islossless O.sign => islossless W(B(A), O).forge.
+proof.
+move=> hO; proc; inline B(A, W(B(A), O).O').forge; wp; call (: true); last by auto.
++ by apply A_forge_ll.
+proc; inline *; sp; if; auto; call hO; auto; smt(dnbytes_ll).
+qed.
+
+lemma slhdsa_euf_cma_hedged &m :
+  Pr[DSE.Stateless.EUF_CMA(External(SLH_Hedged), A,
+      DSE.Stateless.O_CMA_Default).main() @ &m : res]
+  <= `|Pr[SP.SKG_PRF.PRF(SP.R_SKGPRF_EUFCMA(W(B(A))),
+      SP.SKG_PRF.O_PRF_Default).main (false) @ &m : res] -
+      Pr[SP.SKG_PRF.PRF(SP.R_SKGPRF_EUFCMA(W(B(A))),
+      SP.SKG_PRF.O_PRF_Default).main (true) @ &m : res]|
+   + `|Pr[PRFMsg_PRF.PRF(PP(SP.R_MKGPRF_EUFCMA(W(B(A)))),
+       PRFMsg_PRF.O_PRF_Default).main (false) @ &m : res] -
+       Pr[PRFMsg_PRF.PRF(PP(SP.R_MKGPRF_EUFCMA(W(B(A)))),
+       PRFMsg_PRF.O_PRF_Default).main (true) @ &m : res]|
+   + Pr[HMsg_ITSR.ITSR(PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(B(A))))),
+       HMsg_ITSR.O_ITSR_Default).main() @ &m : res]
+   + StdOrder.RealOrder.maxr 0%r (Pr[SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.SM_DT_DSPR(SP.FTWES.FP_OPRETCRDSPR.R_DSPR_OpenPRE(SP.FTWES.R_FPOpenPRE_FOpenPRE(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(B(A))))),
+       SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.O_SMDTDSPR_Default).main () @ &m : res] -
+       Pr[SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.SM_DT_SPprob(SP.FTWES.FP_OPRETCRDSPR.R_DSPR_OpenPRE(SP.FTWES.R_FPOpenPRE_FOpenPRE(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(B(A))))),
+       SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.O_SMDTDSPR_Default).main () @ &m : res])
+   + 3%r * Pr[SP.FTWES.FP_OPRETCRDSPR.FP_TCR.SM_DT_TCR(SP.FTWES.FP_OPRETCRDSPR.R_TCR_OpenPRE(SP.FTWES.R_FPOpenPRE_FOpenPRE(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(B(A))))),
+       SP.FTWES.FP_OPRETCRDSPR.FP_TCR.O_SMDTTCR_Default).main () @ &m : res]
+   + Pr[SP.FTWES.TRHC_TCR.SM_DT_TCR_C(SP.FTWES.R_TRHSMDTTCRC_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(B(A)))),
+       SP.FTWES.TRHC_TCR.O_SMDTTCR_Default, SP.FTWES.TRHC.O_THFC_Default).main() @ &m : res]
+   + Pr[SP.FTWES.TRCOC_TCR.SM_DT_TCR_C(SP.FTWES.R_TRCOSMDTTCRC_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(B(A)))),
+       SP.FTWES.TRCOC_TCR.O_SMDTTCR_Default, SP.FTWES.TRCOC.O_THFC_Default).main() @ &m : res]
+   + (SP.w -
+       2)%r * `|Pr[SP.FSSLXMTWES.WTWES.FC_UD.SM_DT_UD_C(SP.FSSLXMTWES.WTWES.R_SMDTUDC_Game23WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(W(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_UD.O_SMDTUD_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main (false) @ &m : res] -
+       Pr[SP.FSSLXMTWES.WTWES.FC_UD.SM_DT_UD_C(SP.FSSLXMTWES.WTWES.R_SMDTUDC_Game23WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(W(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_UD.O_SMDTUD_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main (true) @ &m : res]|
+   + Pr[SP.FSSLXMTWES.WTWES.FC_TCR.SM_DT_TCR_C(SP.FSSLXMTWES.WTWES.R_SMDTTCRC_Game34WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(W(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_TCR.O_SMDTTCR_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main () @ &m : res]
+   + Pr[SP.FSSLXMTWES.WTWES.FC_PRE.SM_DT_PRE_C(SP.FSSLXMTWES.WTWES.R_SMDTPREC_Game4WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(W(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_PRE.O_SMDTPRE_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main () @ &m : res]
+   + Pr[SP.FSSLXMTWES.PKCOC_TCR.SM_DT_TCR_C(SP.FSSLXMTWES.R_SMDTTCRCPKCO_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(W(B(A)))),
+       SP.FSSLXMTWES.PKCOC_TCR.O_SMDTTCR_Default,
+       SP.FSSLXMTWES.PKCOC.O_THFC_Default).main () @ &m : res]
+   + Pr[SP.FSSLXMTWES.TRHC_TCR.SM_DT_TCR_C(SP.FSSLXMTWES.R_SMDTTCRCTRH_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(W(B(A)))),
+       SP.FSSLXMTWES.TRHC_TCR.O_SMDTTCR_Default,
+       SP.FSSLXMTWES.TRHC.O_THFC_Default).main () @ &m : res]
+   + Pr[EUF_CMA_Rec(SLH_Hedged, A).main() @ &m :
+          exists y, y \in DSE.Stateless.O_CMA_Default.qs /\ ph_collision Rec.forged y].
+proof.
+have h1 := euf_cma_external SLH_Hedged A SLH_Hedged_verify_ll &m.
+have h2 := internal_le_sp_h (B(A)) &m.
+have h3 := SP.EUFCMA_SPHINCS_PLUS (W(B(A))) _ &m.
++ by move=> O hO; apply (WB_ll O hO).
+have h4 := prf_proj (B(A)) false &m.
+have h5 := prf_proj (B(A)) true &m.
+have h6 := itsr_proj (B(A)) &m.
+smt().
+qed.
+
+end section HedgedComposition.

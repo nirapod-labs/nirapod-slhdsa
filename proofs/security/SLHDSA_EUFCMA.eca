@@ -43,12 +43,17 @@
  * restrictions of the statement). Nothing is assumed about the hash
  * functions.
  *
+ * The reduction R signs (PK || PK.seed, M'): deterministic signing is
+ * Algorithm 19 with opt_rand = PK.seed. The PRF term for mkg and the ITSR
+ * term for mco are stated, as the imported proof states them, for the
+ * instance message type, on which mkg ignores the public key and mco
+ * ignores opt_rand. SLHDSA_Hedged.eca restates both for PRF_msg and H_msg
+ * on their own inputs for its reduction; that restatement is not made
+ * here for R.
+ *
  * Departures from FIPS 205.
  *
- *  - Hedged signing (addrnd present, Algorithm 19 with opt_rand fresh
- *    randomness) is not covered: the imported SPHINCS+ scheme derives its
- *    randomizer deterministically from the message seed. Its EUF-CMA under
- *    hedged signing is open here.
+ *  - Hedged signing (addrnd present) is covered by SLHDSA_Hedged.eca.
  *  - The randomness of key generation is modelled as uniform n-byte strings.
  *)
 
