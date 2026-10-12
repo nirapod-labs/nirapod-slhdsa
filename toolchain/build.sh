@@ -277,9 +277,9 @@ switch_repositories() {
 
 # Each prover is installed as <name>-<version>, the form under which Why3
 # detects several versions of one prover side by side. Any other copy of a
-# prover in the switch is removed first. Why3 also searches the rest of
-# PATH; switch_easycrypt_config stops the build if it finds any prover
-# beyond the pinned set.
+# prover in the switch is removed first, and Why3 searches only the
+# switch's bin directory (switch_easycrypt_config), so a prover installed
+# elsewhere on the host is not used.
 switch_provers() {
   local bin name version url sum member file got tmp
   bin=$(opam var bin)
@@ -309,12 +309,16 @@ switch_provers() {
 # one points it at a Why3 configuration that belongs to the switch. The key
 # is `why3conf` (EasyCrypt src/ecOptions.ml, read_ini_file). The user's own
 # configuration is out of reach because XDG_CONFIG_HOME is under $WORK.
+# Why3 looks for provers on PATH, which is limited here to the switch's bin
+# directory: a distribution z3 elsewhere on PATH would otherwise be added
+# next to the pinned binaries.
 switch_easycrypt_config() {
-  local lib
+  local lib bin
   lib=$(opam var lib)/easycrypt
+  bin=$(opam var bin)
   mkdir -p "$lib/config"
   printf '[general]\nwhy3conf = %s\n' "$lib/why3.conf" > "$lib/config/toolchain.conf"
-  easycrypt why3config -why3 "$lib/why3.conf"
+  PATH="$bin" "$bin/easycrypt" why3config -why3 "$lib/why3.conf"
   easycrypt config > "$LOG/easycrypt-config.txt" 2>&1
   grep -Fqx "  $lib/why3.conf" "$LOG/easycrypt-config.txt" \
     || die "EasyCrypt does not use $lib/why3.conf"
@@ -327,18 +331,19 @@ switch_easycrypt_config() {
     || die "EasyCrypt reports no configuration file"
   ! awk -v lib="$lib/" 'index($0, lib) != 1' "$WORK/tmp/easycrypt-config-paths" \
     | grep . || die "EasyCrypt reads configuration outside $lib (listed above)"
-  switch_check_provers
+  switch_check_provers "$lib/why3.conf" "$bin"
 }
 
-# Why3 detects provers on the whole PATH, not only in the switch, and
-# EasyCrypt resolves a name such as Z3@4.12 to the lowest known version at
-# least the one named. The provers EasyCrypt knows must therefore be
-# exactly those of prover_assets, by name and version: a distribution z3 on
-# PATH, or a binary whose version Why3 cannot read (shown as 0.0.0), stops
-# the build. Variants such as Z3[noBV] are configurations of the same
-# binary and are not compared.
+# switch_check_provers WHY3CONF BIN: EasyCrypt resolves a name such as
+# Z3@4.12 to the lowest known version at least the one named, so the
+# provers it knows must be exactly those of prover_assets, by name and
+# version; a binary whose version Why3 cannot read shows as 0.0.0 and
+# fails the comparison. Variants such as Z3[noBV] are configurations of the
+# same binary and are not compared. Every binary in the Why3 configuration
+# must also be the switch's: a second binary reporting a pinned version
+# would appear only as a variant.
 switch_check_provers() {
-  local want got
+  local conf=$1 bin=$2 want got
   want=$(prover_assets "$PLATFORM" | while read -r name version _; do
            case $name in
              (z3) echo "Z3@$version" ;;
@@ -352,9 +357,11 @@ switch_check_provers() {
   if [ "$got" != "$want" ]; then
     diff <(echo "$want") <(echo "$got") | sed 's/^/  /' >&2 || true
     die "the provers EasyCrypt knows differ from the pinned set" \
-        "(< pinned, > known); remove other provers from PATH" \
+        "(< pinned, > known)" \
         "(see $LOG/easycrypt-config.txt)"
   fi
+  ! sed -n 's/^path = "\(.*\)"$/\1/p' "$conf" | awk -v bin="$bin/" 'index($0, bin) != 1' \
+    | grep . || die "$conf names prover binaries outside $bin (listed above)"
   echo "provers: exactly the pinned set"
 }
 
