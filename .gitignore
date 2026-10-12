@@ -1,0 +1,17 @@
+# Build outputs
+/build/
+*.o
+*.a
+*.so
+*.dylib
+
+# EasyCrypt and Rocq caches
+*.eco
+.lia.cache
+*.vo
+*.vok
+*.vos
+*.glob
+
+# Toolchain checkout and build tree
+/toolchain/work/

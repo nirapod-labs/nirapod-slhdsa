@@ -1,0 +1,6 @@
+version = 1
+
+[[annotations]]
+path = ["README.md", "AUTHORS", "NOTICE", "docs/**", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "CITATION.cff", ".gitignore"]
+SPDX-FileCopyrightText = "nirapod-slhdsa contributors"
+SPDX-License-Identifier = "Apache-2.0"
