@@ -15,7 +15,7 @@ recorded results carry the revision and host they were obtained on.
 | `jasmin/hash_test.jazz` | test compilation unit: every test export |
 | `jasmin/test_keccak.jinc` | exports for Keccak-f, the sponge, SHA-3 and SHAKE |
 | `jasmin/test_sha2.jinc` | exports for SHA-2 (one-shot, incremental, compression) and HMAC |
-| `jasmin/test_arrays.jinc` | generated: array instances at lengths 1, 7, 16, 22, 32, 64, 65, 129, 200, and MGF1 at the FIPS 205 sizes |
+| `jasmin/test_arrays.jinc` | generated: array instances at lengths 1, 7, 16, 22, 32, 64, 65, 129, 200 (single-way and multi-way), and MGF1 at the FIPS 205 sizes |
 | `jasmin/array_io.jinc` | copy between C memory and a fixed-length stack array |
 | `c/hash_test.c` | C harness: CAVP and differential modes |
 | `c/hash_test_exports.h` | C prototypes of the test exports |
@@ -59,7 +59,16 @@ this implementation:
   libcrypto SHA-2;
 - every array instance, after a random prefix absorbed through the memory
   form and, for squeezing, after a random number of bytes already output
-  and followed by more output from the position it returns.
+  and followed by more output from the position it returns;
+- the 4-way Keccak permutation against four single-way permutations, and
+  the 4-way sponge per instance against libcrypto for all six SHA-3 and
+  SHAKE domains, over two absorbed and two squeezed arrays;
+- the 8-way SHA-256 and 4-way SHA-512 compressions against the single-way
+  compression of every instance, and their absorb and finalize layer per
+  instance against libcrypto for every SHA-2 initial value;
+- the 8-way SHA-256 and 4-way SHA-512 finalize alone, with totals up to
+  `2^61 - 1` bytes, per instance against the padding and length laid out
+  in C and compressed by the single-way compression export.
 
 Message lengths concentrate on every rate and block boundary. The seed and
 the libcrypto version are printed; a failure prints its inputs.
@@ -77,7 +86,8 @@ constant in each of Keccak, SHA-256 and SHA-512 in a copy of the sources,
 builds it with the selected kernel variants, runs CAVP and a short
 differential run, and requires a failure in every family the Makefile
 lists: the three single-way families,
-which every kernel variant reaches through the shared constant tables.
+and the three multi-way kernels. Every kernel variant reads the shared
+constant tables, so the control covers the variants selected for the run.
 
 **CT and SCT** (`make ct`, `make sct`). `jasmin-ct` and `jasmin-ct --sct`
 over the whole test unit, which covers every export and, through them,
@@ -122,7 +132,8 @@ make -C tests/hash check-prebuilt negative-control-prebuilt             # the x8
 ```
 
 `DIFF_SEED` and `DIFF_ITERS` set the differential seed and iteration count.
-`KECCAK_VARIANT` and `SHA2_VARIANT` select kernel variant directories.
+`KECCAK_VARIANT`, `KECCAKX_VARIANT`, `SHA2_VARIANT` and `SHA2X_VARIANT` select
+kernel variant directories (the same values in both steps of a cross-host run).
 On AArch64, the register-resident Keccak kernel:
 
 ```sh

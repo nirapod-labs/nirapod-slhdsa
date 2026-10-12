@@ -19,9 +19,10 @@
  *         Seeded random comparison with libcrypto (OpenSSL 3) as an
  *         independent oracle: one-shot, incremental with random split
  *         points, the fixed-length array instances, HMAC with all key
- *         length classes, and MGF1 (composed here from libcrypto SHA-2).
- *         SHA-2 finalize with totals no message reaches is checked
- *         against padding laid out here.
+ *         length classes, MGF1 (composed here from libcrypto SHA-2), and
+ *         the multi-way forms: 4-way Keccak, 8-way SHA-256, 4-way SHA-512.
+ *         SHA-2 finalize, single-way and multi-way, with totals no message
+ *         reaches is checked against padding laid out here.
  *
  * What a PASS establishes: the exported production code paths produced
  * the expected bytes on the cases listed in the summary, on this host.
@@ -1136,6 +1137,254 @@ static void diff_arrays(unsigned long iter, uint8_t *msg)
   }
 }
 
+/*
+ * 4-way Keccak. The permutation is compared with four single-way
+ * permutations; the 4-way sponge is compared with libcrypto per instance,
+ * over two absorbed arrays and two squeezed arrays of random tested
+ * lengths, so that pos crosses lane and block boundaries, for all six
+ * SHA-3 and SHAKE domains.
+ */
+struct x4_case {
+  size_t len;
+  uint64_t (*abs)(uint64_t *, uint64_t, uint64_t, const uint8_t *);
+  uint64_t (*sqz)(uint8_t *, uint64_t *, uint64_t, uint64_t);
+};
+
+#define X4_CASE(L) { L, HT(keccak_x4_absorb_array_##L), HT(keccak_x4_squeeze_array_##L) }
+
+static const struct x4_case X4[] = {
+  X4_CASE(1),  X4_CASE(7),  X4_CASE(16),  X4_CASE(22),  X4_CASE(32),
+  X4_CASE(64), X4_CASE(65), X4_CASE(129), X4_CASE(200),
+};
+
+static void diff_keccak_x4(unsigned long iter)
+{
+  const struct keccak_mode *km = &KMODES[rnd_below(6)];
+  const struct x4_case *a = &X4[rnd_below(9)], *b = &X4[rnd_below(9)];
+  const struct x4_case *c = &X4[rnd_below(9)], *d = &X4[rnd_below(9)];
+  uint64_t st4[100], one[4][25];
+  uint8_t ina[4 * 200], inb[4 * 200], outc[4 * 200], outd[4 * 200];
+  uint8_t msg[400], want[400];
+  uint64_t pos;
+  char what[160];
+  int k, j;
+
+  /* Permutation */
+  for (j = 0; j < 25; j++)
+    for (k = 0; k < 4; k++)
+      st4[4 * j + k] = one[k][j] = rnd();
+  HT(keccakf1600_x4)(st4);
+  for (k = 0; k < 4; k++) {
+    uint64_t got[25];
+    HT(keccakf1600)(one[k]);
+    for (j = 0; j < 25; j++)
+      got[j] = st4[4 * j + k];
+    snprintf(what, sizeof what, "diff iter %lu keccakf1600_x4 instance %d", iter, k);
+    check(what, (uint8_t *)got, (uint8_t *)one[k], sizeof got);
+  }
+
+  /* Sponge: absorb a then b, finalize, squeeze c then d */
+  rnd_bytes(ina, sizeof ina);
+  rnd_bytes(inb, sizeof inb);
+  memset(st4, 0, sizeof st4);
+  pos = a->abs(st4, 0, km->rate, ina);
+  pos = b->abs(st4, pos, km->rate, inb);
+  HT(keccak_x4_finalize)(st4, pos, km->rate, km->ds);
+  pos = c->sqz(outc, st4, 0, km->rate);
+  d->sqz(outd, st4, pos, km->rate);
+  /*
+   * SHAKE: the whole squeezed stream. SHA-3: the stream's first d bytes are
+   * the digest, so the comparison covers min(d, squeezed) bytes.
+   */
+  for (k = 0; k < 4; k++) {
+    uint8_t got[400];
+    size_t n = c->len + d->len;
+
+    memcpy(msg, ina + k * a->len, a->len);
+    memcpy(msg + a->len, inb + k * b->len, b->len);
+    memcpy(got, outc + k * c->len, c->len);
+    memcpy(got + c->len, outd + k * d->len, d->len);
+    if (km->dlen) {
+      ossl_digest(km->ossl, msg, a->len + b->len, want, km->dlen, 0);
+      n = n < km->dlen ? n : km->dlen;
+    } else
+      ossl_digest(km->ossl, msg, a->len + b->len, want, n, 1);
+    snprintf(what, sizeof what, "diff iter %lu %s keccak_x4 instance %d absorb %zu+%zu squeeze %zu+%zu", iter,
+             km->ossl, k, a->len, b->len, c->len, d->len);
+    check(what, got, want, n);
+  }
+}
+
+/*
+ * Multi-way SHA-2. Each compression is compared with the single-way
+ * compression of every instance; the absorb and finalize layer with
+ * libcrypto per instance, over two absorbed arrays of random tested lengths.
+ */
+struct shax_case {
+  size_t len;
+  uint64_t (*s256)(uint32_t *, uint8_t *, uint64_t, const uint8_t *);
+  uint64_t (*s512)(uint64_t *, uint8_t *, uint64_t, const uint8_t *);
+};
+
+#define SHAX_CASE(L) { L, HT(sha256_x8_absorb_array_##L), HT(sha512_x4_absorb_array_##L) }
+
+static const struct shax_case SHAX[] = {
+  SHAX_CASE(1),  SHAX_CASE(7),  SHAX_CASE(16),  SHAX_CASE(22),  SHAX_CASE(32),
+  SHAX_CASE(64), SHAX_CASE(65), SHAX_CASE(129), SHAX_CASE(200),
+};
+
+static void diff_sha2_multi(unsigned long iter)
+{
+  const struct shax_case *a = &SHAX[rnd_below(9)], *b = &SHAX[rnd_below(9)];
+  uint8_t blocks[512], ina[8 * 200], inb[8 * 200], buf[512], out[256], msg[400], want[64];
+  char what[160];
+  int k, j;
+
+  rnd_bytes(blocks, sizeof blocks);
+  rnd_bytes(ina, sizeof ina);
+  rnd_bytes(inb, sizeof inb);
+
+  {
+    uint32_t h8[64], one[8];
+    int v = (int)rnd_below(2);
+    const char *md = v ? "SHA224" : "SHA256";
+    size_t dl = v ? 28 : 32;
+    uint64_t total;
+
+    for (j = 0; j < 64; j++)
+      h8[j] = (uint32_t)rnd();
+    {
+      uint32_t ref[64];
+      memcpy(ref, h8, sizeof ref);
+      HT(sha256_x8_compress)(h8, blocks);
+      for (k = 0; k < 8; k++) {
+        for (j = 0; j < 8; j++)
+          one[j] = ref[8 * j + k];
+        HT(sha256_compress)(one, blocks + 64 * k);
+        for (j = 0; j < 8; j++)
+          ref[8 * j + k] = one[j];
+      }
+      snprintf(what, sizeof what, "diff iter %lu sha256_x8_compress", iter);
+      check(what, (uint8_t *)h8, (uint8_t *)ref, sizeof ref);
+    }
+
+    (v ? HT(sha224_x8_init) : HT(sha256_x8_init))(h8);
+    total = a->s256(h8, buf, 0, ina);
+    total = b->s256(h8, buf, total, inb);
+    HT(sha256_x8_finalize)(out, h8, buf, total);
+    for (k = 0; k < 8; k++) {
+      memcpy(msg, ina + k * a->len, a->len);
+      memcpy(msg + a->len, inb + k * b->len, b->len);
+      ossl_digest(md, msg, a->len + b->len, want, dl, 0);
+      snprintf(what, sizeof what, "diff iter %lu %s sha256_x8 instance %d absorb %zu+%zu", iter, md, k, a->len,
+               b->len);
+      check(what, out + 32 * k, want, dl);
+    }
+  }
+
+  {
+    static const char *const mds[] = { "SHA512", "SHA384", "SHA512-224", "SHA512-256" };
+    static const size_t dls[] = { 64, 48, 28, 32 };
+    uint64_t h4[32], one[8], ref[32];
+    int v = (int)rnd_below(4);
+    uint64_t total;
+
+    for (j = 0; j < 32; j++)
+      h4[j] = rnd();
+    memcpy(ref, h4, sizeof ref);
+    HT(sha512_x4_compress)(h4, blocks);
+    for (k = 0; k < 4; k++) {
+      for (j = 0; j < 8; j++)
+        one[j] = ref[4 * j + k];
+      HT(sha512_compress)(one, blocks + 128 * k);
+      for (j = 0; j < 8; j++)
+        ref[4 * j + k] = one[j];
+    }
+    snprintf(what, sizeof what, "diff iter %lu sha512_x4_compress", iter);
+    check(what, (uint8_t *)h4, (uint8_t *)ref, sizeof ref);
+
+    switch (v) {
+    case 0: HT(sha512_x4_init)(h4); break;
+    case 1: HT(sha384_x4_init)(h4); break;
+    case 2: HT(sha512_224_x4_init)(h4); break;
+    default: HT(sha512_256_x4_init)(h4); break;
+    }
+    total = a->s512(h4, buf, 0, ina);
+    total = b->s512(h4, buf, total, inb);
+    HT(sha512_x4_finalize)(out, h4, buf, total);
+    for (k = 0; k < 4; k++) {
+      memcpy(msg, ina + k * a->len, a->len);
+      memcpy(msg + a->len, inb + k * b->len, b->len);
+      ossl_digest(mds[v], msg, a->len + b->len, want, dls[v], 0);
+      snprintf(what, sizeof what, "diff iter %lu %s sha512_x4 instance %d absorb %zu+%zu", iter, mds[v], k,
+               a->len, b->len);
+      check(what, out + 64 * k, want, dls[v]);
+    }
+  }
+}
+
+/*
+ * The multi-way finalize lays out padding and length itself, so it gets
+ * the test diff_length gives the single-way one: a random total up to
+ * 2^61 - 1 bytes, shared by the instances, a random chaining value and
+ * pending block per instance, and each instance compared with padding laid
+ * out here and the single-way compression export.
+ */
+static void diff_length_multi(unsigned long iter)
+{
+  uint8_t blocks[256], buf[512], out[256], ref[256];
+  char what[128];
+  size_t n, i;
+  int k, j;
+
+  {
+    uint64_t total = rnd_total();
+    uint32_t h8[64], one[8];
+
+    for (j = 0; j < 64; j++)
+      h8[j] = (uint32_t)rnd();
+    rnd_bytes(buf, sizeof buf);
+    for (k = 0; k < 8; k++) {
+      for (j = 0; j < 8; j++)
+        one[j] = h8[8 * j + k];
+      n = pad_final(blocks, buf + 64 * k, total, 64, 8);
+      for (i = 0; i < n; i += 64)
+        HT(sha256_compress)(one, blocks + i);
+      for (i = 0; i < 32; i++)
+        ref[32 * k + i] = (uint8_t)(one[i / 4] >> (8 * (3 - i % 4)));
+    }
+    HT(sha256_x8_finalize)(out, h8, buf, total);
+    for (k = 0; k < 8; k++) {
+      snprintf(what, sizeof what, "diff iter %lu sha256_x8 finalize instance %d total=%llu", iter, k,
+               (unsigned long long)total);
+      check(what, out + 32 * k, ref + 32 * k, 32);
+    }
+  }
+  {
+    uint64_t total = rnd_total();
+    uint64_t h4[32], one[8];
+
+    for (j = 0; j < 32; j++)
+      h4[j] = rnd();
+    rnd_bytes(buf, sizeof buf);
+    for (k = 0; k < 4; k++) {
+      for (j = 0; j < 8; j++)
+        one[j] = h4[4 * j + k];
+      n = pad_final(blocks, buf + 128 * k, total, 128, 16);
+      for (i = 0; i < n; i += 128)
+        HT(sha512_compress)(one, blocks + i);
+      for (i = 0; i < 64; i++)
+        ref[64 * k + i] = (uint8_t)(one[i / 8] >> (8 * (7 - i % 8)));
+    }
+    HT(sha512_x4_finalize)(out, h4, buf, total);
+    for (k = 0; k < 4; k++) {
+      snprintf(what, sizeof what, "diff iter %lu sha512_x4 finalize instance %d total=%llu", iter, k,
+               (unsigned long long)total);
+      check(what, out + 64 * k, ref + 64 * k, 64);
+    }
+  }
+}
+
 static int run_diff(uint64_t seed, unsigned long iters)
 {
   uint8_t *msg = xmalloc(MAXMSG);
@@ -1156,6 +1405,9 @@ static int run_diff(uint64_t seed, unsigned long iters)
     diff_hmac(i, msg, len);
     diff_mgf1(i);
     diff_arrays(i, msg);
+    diff_keccak_x4(i);
+    diff_sha2_multi(i);
+    diff_length_multi(i);
   }
   free(msg);
   return 0;

@@ -25,7 +25,9 @@
 #   ARCH                x86_64 | aarch64 (default: this machine)
 #   SYSTEM              linux | macosx (default: this machine)
 #   KECCAK_VARIANT      single-way Keccak kernel directory under src/jasmin/hash/keccak
+#   KECCAKX_VARIANT     4-way Keccak kernel directory, same tree
 #   SHA2_VARIANT        single-way SHA-2 kernel directory under src/jasmin/hash/sha2
+#   SHA2X_VARIANT       multi-way SHA-2 kernel directory, same tree
 #                       (each empty: the shared scalar kernels)
 #   VECTORS             extracted CAVP directory (default: build/hash/vectors)
 #   DIFF_SEED, DIFF_ITERS   differential test seed and iteration count
@@ -49,18 +51,26 @@ JARCH_x86_64  := x86-64
 JARCH := $(JARCH_$(ARCH))
 
 KECCAK_VARIANT  ?=
+KECCAKX_VARIANT ?=
 SHA2_VARIANT    ?=
+SHA2X_VARIANT   ?=
 tag = $(if $(1),$(subst /,_,$(1)),scalar)
-VARIANT_TAG := keccak_$(call tag,$(KECCAK_VARIANT))-sha2_$(call tag,$(SHA2_VARIANT))
+KECCAK_TAG  := keccak_$(call tag,$(KECCAK_VARIANT))-keccakx_$(call tag,$(KECCAKX_VARIANT))
+SHA2_TAG    := sha2_$(call tag,$(SHA2_VARIANT))-sha2x_$(call tag,$(SHA2X_VARIANT))
+VARIANT_TAG := $(KECCAK_TAG)-$(SHA2_TAG)
 
 # Kernel roots relative to $(HASH)
 KECCAK_DIR  := keccak$(if $(KECCAK_VARIANT),/$(KECCAK_VARIANT))
+KECCAKX_DIR := keccak$(if $(KECCAKX_VARIANT),/$(KECCAKX_VARIANT))
 SHA2_DIR    := sha2$(if $(SHA2_VARIANT),/$(SHA2_VARIANT))
+SHA2X_DIR   := sha2$(if $(SHA2X_VARIANT),/$(SHA2X_VARIANT))
 
 JROOTS := -I Hash=$(HASH) \
           -I HashWord=$(HASH)/$(ARCH) \
           -I KeccakKernel=$(HASH)/$(KECCAK_DIR) \
-          -I Sha2Kernel=$(HASH)/$(SHA2_DIR)
+          -I KeccakKernelX=$(HASH)/$(KECCAKX_DIR) \
+          -I Sha2Kernel=$(HASH)/$(SHA2_DIR) \
+          -I Sha2KernelX=$(HASH)/$(SHA2X_DIR)
 
 BUILD   := $(ROOT)/build/hash
 OUT     := $(BUILD)/$(ARCH)-$(SYSTEM)-$(VARIANT_TAG)
@@ -135,13 +145,16 @@ generated:
 	  { echo "tests/hash/jasmin/test_arrays.jinc is stale: regenerate it"; exit 1; }
 
 # Mutates one round constant per kernel family in a copy of the sources and
-# requires the tests on that copy to fail in every family below.
-NEG_FAMILIES := SHA3_256 SHA256Short SHA512Short
+# requires the tests on that copy to fail in every family below. The
+# multi-way families are the checks against libcrypto: the multi-way
+# kernels read the same mutated tables as the single-way ones, so
+# comparisons between the two cannot detect the mutation.
+NEG_FAMILIES := SHA3_256 SHA256Short SHA512Short keccak_x4 sha256_x8 sha512_x4
 NEG_WORK     := $(OUT)/negative-control
 
 negative-control-asm:
 	JASMINC=$(JASMINC) JARCH=$(JARCH) SYSTEM=$(SYSTEM) ARCH=$(ARCH) \
-	KECCAK_DIR=$(KECCAK_DIR) SHA2_DIR=$(SHA2_DIR) \
+	KECCAK_DIR=$(KECCAK_DIR) KECCAKX_DIR=$(KECCAKX_DIR) SHA2_DIR=$(SHA2_DIR) SHA2X_DIR=$(SHA2X_DIR) \
 	$(TESTS)/tools/negative_control.sh build $(HASH) $(NEG_WORK) $(TESTS)/jasmin/hash_test.jazz
 
 negative-control-prebuilt:

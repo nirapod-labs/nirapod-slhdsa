@@ -17,7 +17,7 @@
 # The two steps can run on different hosts, as the x86-64 tests do:
 #
 #     negative_control.sh build <hash source dir> <work dir> <test unit .jazz>
-#         env: JASMINC JARCH SYSTEM ARCH KECCAK_DIR SHA2_DIR
+#         env: JASMINC JARCH SYSTEM ARCH KECCAK_DIR KECCAKX_DIR SHA2_DIR SHA2X_DIR
 #     negative_control.sh run <work dir> <harness .c> <vectors dir>
 #         env: CC CRYPTO_LIBS NEG_FAMILIES
 #
@@ -54,7 +54,8 @@ build() {
   h=$work/hash
   "$JASMINC" -arch "$JARCH" -system "$SYSTEM" \
     -I Hash="$h" -I HashWord="$h/$ARCH" \
-    -I KeccakKernel="$h/$KECCAK_DIR" -I Sha2Kernel="$h/$SHA2_DIR" \
+    -I KeccakKernel="$h/$KECCAK_DIR" -I KeccakKernelX="$h/$KECCAKX_DIR" \
+    -I Sha2Kernel="$h/$SHA2_DIR" -I Sha2KernelX="$h/$SHA2X_DIR" \
     -o "$work/hash_test.s" "$unit"
 }
 
