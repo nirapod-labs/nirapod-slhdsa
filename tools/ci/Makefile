@@ -241,7 +241,8 @@ CI_TARGET := $(CI_ARCH)-$(CI_FORMAT)
 
 CI_HASH_VARS_scalar  :=
 CI_HASH_CPU_scalar   :=
-CI_HASH_VARS_x86_64  := KECCAKX_VARIANT=x86_64/avx2 SHA2_VARIANT=x86_64/shani
+CI_HASH_VARS_x86_64  := KECCAKX_VARIANT=x86_64/avx2 SHA2_VARIANT=x86_64/shani \
+                        SHA2X_VARIANT=x86_64/avx2
 CI_HASH_CPU_x86_64   := avx avx2 sha_ni
 CI_HASH_VARS_aarch64 := KECCAK_VARIANT=aarch64/scalar
 CI_HASH_CPU_aarch64  :=

@@ -1,0 +1,240 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha256_x8_compress.jinc (x86-64, avx2)
+ * ======================================
+ *
+ * Eight independent SHA-256 compressions in AVX2, with the entry point and
+ * contract of the scalar 8-way kernel (sha2/sha256_x8_compress.jinc):
+ *
+ *     _sha256_x8_compress(h8, blocks, ms)
+ *
+ * Lane layout: one 256-bit register holds the same word of all eight
+ * instances, dword k for instance k. h8 is already in that layout (H_j of
+ * instance k at 8j + k), so state register j is h8[:u256 j]. The blocks are
+ * not: instance k's block is 64 contiguous bytes. Each half block (eight
+ * words) of the eight instances is an 8 x 8 matrix of dwords with instances
+ * as rows, and a transpose turns it into eight schedule registers:
+ *
+ *     VPUNPCK{L,H}_8u32   pairs of rows, interleaved dwords
+ *     VPUNPCK{L,H}_4u64   quadruples of rows, interleaved qwords
+ *     VPERM2I128          the two 128-bit halves: instances 0-3 and 4-7
+ *
+ * VPSHUFB then makes each dword big-endian (FIPS 180-4 section 3.1).
+ *
+ * Rounds: the round, schedule and slot-rotation structure of the scalar
+ * kernel (sha2/sha256_compress.jinc), with every operation applied to the
+ * eight lanes. AVX2 has no 32-bit rotate, so ROTR by r is a right shift, a
+ * left shift by 32 - r and an OR. K_t is broadcast from the shared table.
+ *
+ * Required CPU feature: AVX2.
+ *
+ * Security: h8 and the blocks are secret. Straight-line code; every
+ * address is fixed at compile time. ms passes through unchanged. Residue:
+ * the local schedule window holds 16 schedule words of every instance on
+ * return (W_47 .. W_62 as compiled: the store of W_63 is dead and is
+ * removed); clearing is the export's obligation.
+ */
+
+from Hash require "sha2/sha256_k.jinc"
+
+/* VPSHUFB mask reversing the bytes of each dword, in both 128-bit halves. */
+u32[8] SHA256_X8_BSWAP = {
+  0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f,
+  0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f
+};
+
+inline fn __rotr_8u32(reg u256 x, inline int r) -> reg u256
+{
+  reg u256 t;
+
+  t = x >>8u32 r;
+  x = x <<8u32 (32 - r);
+  x |= t;
+  return x;
+}
+
+inline fn __Sigma0_8x(reg u256 x) -> reg u256
+{
+  reg u256 r t;
+
+  r = __rotr_8u32(x, 2);
+  t = __rotr_8u32(x, 13);
+  r ^= t;
+  t = __rotr_8u32(x, 22);
+  r ^= t;
+  return r;
+}
+
+inline fn __Sigma1_8x(reg u256 x) -> reg u256
+{
+  reg u256 r t;
+
+  r = __rotr_8u32(x, 6);
+  t = __rotr_8u32(x, 11);
+  r ^= t;
+  t = __rotr_8u32(x, 25);
+  r ^= t;
+  return r;
+}
+
+inline fn __sigma0_8x(reg u256 x) -> reg u256
+{
+  reg u256 r t;
+
+  r = __rotr_8u32(x, 7);
+  t = __rotr_8u32(x, 18);
+  r ^= t;
+  t = x >>8u32 3;
+  r ^= t;
+  return r;
+}
+
+inline fn __sigma1_8x(reg u256 x) -> reg u256
+{
+  reg u256 r t;
+
+  r = __rotr_8u32(x, 17);
+  t = __rotr_8u32(x, 19);
+  r ^= t;
+  t = x >>8u32 10;
+  r ^= t;
+  return r;
+}
+
+/*
+ * Words 8q .. 8q + 7 of the eight blocks into w[8q .. 8q + 7], transposed
+ * and byte-swapped. Row k is instance k's 32 bytes at 64k + 32q.
+ */
+inline fn __sha256_x8_load_half(
+  stack u256[16] w,
+  reg const ptr u8[512] blocks,
+  inline int q,
+  reg u256 mask
+) -> stack u256[16]
+{
+  reg u256[8] r t;
+  reg u256 c;
+  inline int k;
+
+  for k = 0 to 8 {
+    r[k] = blocks[:u256 2 * k + q];
+  }
+
+  /*
+   * row pairs (2i, 2i + 1): dwords 0,1 | 4,5 in t[2i], dwords 2,3 | 6,7 in
+   * t[2i + 1]
+   */
+  for k = 0 to 4 {
+    t[2 * k] = #VPUNPCKL_8u32(r[2 * k], r[2 * k + 1]);
+    t[2 * k + 1] = #VPUNPCKH_8u32(r[2 * k], r[2 * k + 1]);
+  }
+
+  /*
+   * row quadruples: r[m] now holds word m (low half) and m + 4 (high half)
+   * of rows 0-3 or 4-7
+   */
+  r[0] = #VPUNPCKL_4u64(t[0], t[2]);
+  r[1] = #VPUNPCKH_4u64(t[0], t[2]);
+  r[2] = #VPUNPCKL_4u64(t[1], t[3]);
+  r[3] = #VPUNPCKH_4u64(t[1], t[3]);
+  r[4] = #VPUNPCKL_4u64(t[4], t[6]);
+  r[5] = #VPUNPCKH_4u64(t[4], t[6]);
+  r[6] = #VPUNPCKL_4u64(t[5], t[7]);
+  r[7] = #VPUNPCKH_4u64(t[5], t[7]);
+
+  /* halves: instances 0-3 from r[m], 4-7 from r[m + 4] */
+  for k = 0 to 4 {
+    c = #VPERM2I128(r[k], r[k + 4], 0x20);
+    c = #VPSHUFB_256(c, mask);
+    w[8 * q + k] = c;
+    c = #VPERM2I128(r[k], r[k + 4], 0x31);
+    c = #VPSHUFB_256(c, mask);
+    w[8 * q + k + 4] = c;
+  }
+
+  return w;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha256_x8_compress(
+  reg mut ptr u32[64] h8,
+  reg const ptr u8[512] blocks,
+  reg u64 ms
+) -> reg ptr u32[64], reg u64
+{
+  stack u256[16] w;
+  reg ptr u32[8] mask_p;
+  reg ptr u32[64] k;
+  reg u256[8] v;
+  reg u256 mask t1 x y;
+  inline int t i;
+
+  mask_p = SHA256_X8_BSWAP;
+  mask = mask_p[:u256 0];
+  w = __sha256_x8_load_half(w, blocks, 0, mask);
+  w = __sha256_x8_load_half(w, blocks, 1, mask);
+
+  for i = 0 to 8 {
+    v[i] = h8[:u256 i];
+  }
+  k = SHA256_K;
+
+  /*
+   * Rounds of section 6.2.2 step 3; variable k (a = 0 .. h = 7) of round t
+   * is v[(k - t) mod 8].
+   */
+
+  for t = 0 to 64 {
+    #[inline]
+    if (t >= 16) {
+      t1 = __sigma1_8x(w[(t - 2) % 16]);
+      x = __sigma0_8x(w[(t - 15) % 16]);
+      t1 = t1 +8u32 x;
+      t1 = t1 +8u32 w[(t - 7) % 16];
+      t1 = t1 +8u32 w[t % 16];
+      w[t % 16] = t1;
+    } else {
+      t1 = w[t];
+    }
+
+    /* T1 = h + Σ1(e) + Ch(e, f, g) + K_t + W_t */
+
+    t1 = t1 +8u32 v[(7 + 64 - t) % 8];
+    x = __Sigma1_8x(v[(4 + 64 - t) % 8]);
+    t1 = t1 +8u32 x;
+    x = v[(5 + 64 - t) % 8] ^ v[(6 + 64 - t) % 8];
+    x &= v[(4 + 64 - t) % 8];
+    x ^= v[(6 + 64 - t) % 8];
+    t1 = t1 +8u32 x;
+    x = #VPBROADCAST_8u32(k[t]);
+    t1 = t1 +8u32 x;
+
+    /* e' = d + T1 */
+
+    v[(3 + 64 - t) % 8] = v[(3 + 64 - t) % 8] +8u32 t1;
+
+    /* a' = T1 + Σ0(a) + Maj(a, b, c) */
+
+    x = __Sigma0_8x(v[(0 + 64 - t) % 8]);
+    t1 = t1 +8u32 x;
+    x = v[(0 + 64 - t) % 8] ^ v[(1 + 64 - t) % 8];
+    x &= v[(2 + 64 - t) % 8];
+    y = v[(0 + 64 - t) % 8] & v[(1 + 64 - t) % 8];
+    x ^= y;
+    t1 = t1 +8u32 x;
+    v[(7 + 64 - t) % 8] = t1;
+  }
+
+  /* Step 4 */
+
+  for i = 0 to 8 {
+    x = h8[:u256 i];
+    x = x +8u32 v[i];
+    h8[:u256 i] = x;
+  }
+
+  return h8, ms;
+}
