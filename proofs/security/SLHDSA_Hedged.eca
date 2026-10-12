@@ -46,7 +46,7 @@
 
 require import AllCore List Distr DList FMap.
 from Jasmin require import JWord.
-require import Bytes FIPS205_Params FIPS205_Internal FIPS205_External FIPS205_XMSS FIPS205_Address_Props.
+require import Bytes FIPS205_Params FIPS205_Hash FIPS205_Internal FIPS205_External FIPS205_XMSS FIPS205_Address_Props.
 require import ExternalFraming.
 require SLHDSA_EUFCMA.
 
@@ -214,3 +214,166 @@ by auto => />.
 qed.
 
 end section HedgedReduction.
+
+(* ------------------------------------------------------------------ *)
+(* PRF_msg on its own inputs                                          *)
+
+require (*--*) KeyedHashFunctions.
+
+(* PRF_msg(SK.prf, opt_rand, M') as a keyed function of (opt_rand, M'). *)
+op prf_msg (k : nbytes) (x : bytes * bytes) : nbytes = NBytes.insubd (PRF_msg P (NBytes.val k) x.`1 x.`2).
+
+clone KeyedHashFunctions as PRFMsg with
+  type key_t <- nbytes,
+  type in_t <- bytes * bytes,
+  type out_t <- nbytes,
+  op f <- prf_msg
+proof *.
+
+clone PRFMsg.PRF as PRFMsg_PRF with
+  op dkey <- dnbytes,
+  op doutm x <- dnbytes
+proof *.
+realize dkey_ll by exact dnbytes_ll.
+realize doutm_ll by move=> _; exact dnbytes_ll.
+
+(* A distinguisher against mkg made into one against PRF_msg: each query
+   (PK || opt_rand, M') is asked as (opt_rand, M'). *)
+module PP (C : SP.MKG_PRF.Adv_PRF) (O : PRFMsg_PRF.Oracle_PRF) = {
+  module O' : SP.MKG_PRF.Oracle_PRF = {
+    proc init(b : bool) : unit = { }
+
+    proc query(x : bytes * bytes) : nbytes = {
+      var y;
+      y <@ O.query((slice x.`1 (2 * P.`n) (3 * P.`n), x.`2));
+      return y;
+    }
+  }
+
+  proc distinguish() : bool = {
+    var b;
+    b <@ C(O').distinguish();
+    return b;
+  }
+}.
+
+lemma slice_rand (pkb r : bytes) :
+  size pkb = 2 * P.`n => size r = P.`n =>
+  slice (pkb ++ r) (2 * P.`n) (3 * P.`n) = r.
+proof.
+move=> hp hr; rewrite slice_cat_r hp // (_: 3 * P.`n - 2 * P.`n = size r) 1:hr 1:/#.
+by rewrite /= slice_whole.
+qed.
+
+section PRFProjection.
+
+declare module A <: DSI.Stateless.Adv_EUFCMA
+  {-W, -SP.R_MKGPRF_EUFCMA, -SP.MKG_PRF.O_PRF_Default, -PRFMsg_PRF.O_PRF_Default}.
+
+(* All of W's queries carry the same public key, so the queries of the
+   two games correspond one to one. *)
+pred prf_rel (pkb : bytes) (mS : (bytes * bytes, nbytes) fmap) (mF : (bytes * bytes, nbytes) fmap) =
+  size pkb = 2 * P.`n
+  /\ forall r M, mF.[(r, M)] = if size r = P.`n then mS.[(pkb ++ r, M)] else None.
+
+lemma prf_rel_get pkb mS mF (r M : bytes) :
+  size r = P.`n => prf_rel pkb mS mF => mF.[(r, M)] = mS.[(pkb ++ r, M)].
+proof. by move=> hr [_ h]; rewrite h hr. qed.
+
+lemma prf_rel_set pkb mS mF (r M : bytes) (y : nbytes) :
+  size r = P.`n => prf_rel pkb mS mF =>
+  prf_rel pkb mS.[(pkb ++ r, M) <- y] mF.[(r, M) <- y].
+proof.
+move=> hr [hp h]; split => // r' M'; rewrite !get_setE h.
+case: (size r' = P.`n) => hr' //=.
++ by have -> : (pkb ++ r' = pkb ++ r) = (r' = r) by smt(catsI).
+by case: (r' = r) => [->> //|].
+qed.
+
+local lemma prf_oracle :
+  equiv [W(A, SP.R_MKGPRF_EUFCMA(W(A), SP.MKG_PRF.O_PRF_Default).O_CMA).O'.sign
+         ~ W(A, SP.R_MKGPRF_EUFCMA(W(A), PP(SP.R_MKGPRF_EUFCMA(W(A)), PRFMsg_PRF.O_PRF_Default).O').O_CMA).O'.sign :
+         ={m, W.pkb, W.rec, glob SP.R_MKGPRF_EUFCMA}
+         /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+         /\ prf_rel W.pkb{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}
+         ==> ={res, W.pkb, W.rec, glob SP.R_MKGPRF_EUFCMA}
+         /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+         /\ prf_rel W.pkb{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}].
+proof.
+proc.
+inline SP.R_MKGPRF_EUFCMA(W(A), SP.MKG_PRF.O_PRF_Default).O_CMA.sign
+       SP.R_MKGPRF_EUFCMA(W(A), PP(SP.R_MKGPRF_EUFCMA(W(A)), PRFMsg_PRF.O_PRF_Default).O').O_CMA.sign.
+inline SP.MKG_PRF.O_PRF_Default.query PP(SP.R_MKGPRF_EUFCMA(W(A)), PRFMsg_PRF.O_PRF_Default).O'.query
+       PRFMsg_PRF.O_PRF_Default.query.
+seq 3 3 : (={r, m0, ad, m, W.pkb, W.rec, glob SP.R_MKGPRF_EUFCMA}
+           /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+           /\ prf_rel W.pkb{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}
+           /\ m0{1} = (W.pkb{1} ++ NBytes.val r{1}, m{1})).
++ by auto.
+seq 3 5 : (={r, m0, ad, m, mk, W.pkb, W.rec, glob SP.R_MKGPRF_EUFCMA}
+           /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+           /\ prf_rel W.pkb{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}).
++ sp.
+  conseq (_: ={r, m0, ad, m, W.pkb, W.rec, glob SP.R_MKGPRF_EUFCMA}
+             /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+             /\ prf_rel W.pkb{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}
+             /\ size (NBytes.val r{1}) = P.`n
+             /\ x{1} = (W.pkb{1} ++ NBytes.val r{1}, m{1})
+             /\ x0{2} = (NBytes.val r{1}, m{1}) ==> _).
+  + move=> &1 &2 [#] -> -> -> 11!-> hb hk hrel hm0.
+    rewrite hm0 /= slice_rand; [by case: hrel | by apply nval_size | smt(nval_size)].
+  if => //.
+  + if.
+    + by move=> /> &1 &2 *; rewrite !domE; smt(prf_rel_get).
+    + auto => /> &1 &2 hp hrel hsz _ _ y _; rewrite !get_set_sameE /=.
+      by have [_ h] := prf_rel_set W.pkb{2} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}
+                         (NBytes.val r{2}) m{2} y hsz _; first by split.
+    by auto => /> &1 &2 *; smt(prf_rel_get).
+  by auto => /> &1 &2 hp hrel hsz *; rewrite /prf_msg /= (slice_rand _ _ hp hsz).
+sim / (={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+       /\ prf_rel W.pkb{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2})
+    : (={s, W.pkb, W.rec, glob SP.R_MKGPRF_EUFCMA}).
+qed.
+
+local lemma prf_dist :
+  equiv [SP.R_MKGPRF_EUFCMA(W(A), SP.MKG_PRF.O_PRF_Default).distinguish
+         ~ SP.R_MKGPRF_EUFCMA(W(A), PP(SP.R_MKGPRF_EUFCMA(W(A)), PRFMsg_PRF.O_PRF_Default).O').distinguish :
+         ={glob A}
+         /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+         /\ SP.MKG_PRF.O_PRF_Default.m{1} = empty /\ PRFMsg_PRF.O_PRF_Default.m{2} = empty
+         ==> ={res}].
+proof.
+proc.
+inline W(A, SP.R_MKGPRF_EUFCMA(W(A), SP.MKG_PRF.O_PRF_Default).O_CMA).forge
+       W(A, SP.R_MKGPRF_EUFCMA(W(A), PP(SP.R_MKGPRF_EUFCMA(W(A)), PRFMsg_PRF.O_PRF_Default).O').O_CMA).forge.
+seq 12 12 : (={glob A, glob SP.R_MKGPRF_EUFCMA, pk}
+             /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+             /\ SP.MKG_PRF.O_PRF_Default.m{1} = empty /\ PRFMsg_PRF.O_PRF_Default.m{2} = empty).
++ sim / (={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+         /\ SP.MKG_PRF.O_PRF_Default.m{1} = empty /\ PRFMsg_PRF.O_PRF_Default.m{2} = empty)
+      : (={glob A, glob SP.R_MKGPRF_EUFCMA, pk}).
+seq 3 3 : (={glob A, glob SP.R_MKGPRF_EUFCMA, pk, pk0, W.pkb, W.rec}
+           /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+           /\ prf_rel W.pkb{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}).
++ auto => /> *; split; first by rewrite size_cat nval_size size_enc; ring.
+  by move=> r M; rewrite !emptyE.
+seq 1 1 : (={glob A, glob SP.R_MKGPRF_EUFCMA, pk, pk0, W.pkb, W.rec, m, s}).
++ call (: ={W.pkb, W.rec, glob SP.R_MKGPRF_EUFCMA}
+          /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+          /\ prf_rel W.pkb{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}).
+  + by conseq prf_oracle.
+  by auto.
+sim.
+qed.
+
+lemma prf_proj b &m :
+  Pr[SP.MKG_PRF.PRF(SP.R_MKGPRF_EUFCMA(W(A)), SP.MKG_PRF.O_PRF_Default).main(b) @ &m : res]
+  = Pr[PRFMsg_PRF.PRF(PP(SP.R_MKGPRF_EUFCMA(W(A))), PRFMsg_PRF.O_PRF_Default).main(b) @ &m : res].
+proof.
+byequiv => //; proc.
+inline SP.MKG_PRF.O_PRF_Default.init PRFMsg_PRF.O_PRF_Default.init
+       PP(SP.R_MKGPRF_EUFCMA(W(A)), PRFMsg_PRF.O_PRF_Default).distinguish.
+wp; call prf_dist; auto.
+qed.
+
+end section PRFProjection.
