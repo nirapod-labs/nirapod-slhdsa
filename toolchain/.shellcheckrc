@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# ShellCheck settings for the scripts of this directory. build.sh sources
+# the PIN files; ShellCheck follows them, relative to the script, without
+# needing -x on the command line.
+external-sources=true
+source-path=SCRIPTDIR

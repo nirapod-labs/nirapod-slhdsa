@@ -91,6 +91,7 @@
 # the toolchain directory must match its checked-out commit, and the Jasmin
 # tree must hold exactly the pin plus the series.
 
+# shellcheck source-path=SCRIPTDIR
 set -euo pipefail
 umask 022
 
@@ -113,9 +114,9 @@ done
 STEP=${STEP:-all}
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-# shellcheck source=jasmin/PIN
+# shellcheck source=./jasmin/PIN
 . "$HERE/jasmin/PIN"
-# shellcheck source=easycrypt/PIN
+# shellcheck source=./easycrypt/PIN
 . "$HERE/easycrypt/PIN"
 
 SWITCH=${SWITCH:-nirapod-slhdsa}
