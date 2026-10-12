@@ -42,11 +42,16 @@ require import Bytes.
 (* ------------------------------------------------------------------ *)
 (* Section 3.1: big-endian words                                      *)
 
-op be32 (b : bytes) : W32.t = W32.of_int (be_int b).
-op be64 (b : bytes) : W64.t = W64.of_int (be_int b).
+(* Section 3.1, item 3: a word is stored with its most significant byte
+   first. W4u8.pack4 and W8u8.pack8 assemble a word from its bytes least
+   significant first, so the big-endian reading of a byte string is the
+   packing of its reversal, and the big-endian encoding of a word is the
+   reversal of its little-endian byte list. *)
+op be32 (b : bytes) : W32.t = W4u8.pack4 (rev b).
+op be64 (b : bytes) : W64.t = W8u8.pack8 (rev b).
 
-op w32_be (x : W32.t) : bytes = be_bytes 4 (W32.to_uint x).
-op w64_be (x : W64.t) : bytes = be_bytes 8 (W64.to_uint x).
+op w32_be (x : W32.t) : bytes = rev (W4u8.to_list x).
+op w64_be (x : W64.t) : bytes = rev (W8u8.to_list x).
 
 (* ================================================================== *)
 (* SHA-224 and SHA-256                                                *)
