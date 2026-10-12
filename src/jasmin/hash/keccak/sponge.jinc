@@ -1,0 +1,319 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sponge.jinc
+ * ===========
+ *
+ * The sponge construction of FIPS 202 section 4 over Keccak-f[1600], kept
+ * incremental so a caller can absorb a message in pieces and squeeze any
+ * number of output bytes in pieces.
+ *
+ * Sponge state:
+ *
+ *     st    Keccak state, byte i of the string S at st[:u8 i]
+ *     pos   absorbing: bytes of the current block already XORed in,
+ *           0 <= pos < rate
+ *           squeezing: bytes of the current permuted block already
+ *           output, 0 <= pos <= rate
+ *     rate  r/8 bytes, a multiple of 8 and at most 168
+ *
+ * Transitions (the caller holds st and pos between calls):
+ *
+ *     __keccak_init       st = 0, pos = 0                     absorbing
+ *     _keccak_absorb_*    XOR input at pos; when pos reaches
+ *                         rate: permute, pos = 0               absorbing
+ *     _keccak_finalize    XOR ds at pos and 0x80 at rate - 1;
+ *                         permute; caller sets pos = 0         squeezing
+ *     _keccak_squeeze_*   when pos = rate: permute, pos = 0;
+ *                         copy output from pos                 squeezing
+ *
+ * The state carries no phase flag: absorbing after finalize, or changing
+ * rate mid-stream, is a caller error that no function detects.
+ *
+ * Absorbing XORs bytes straight into the state instead of buffering a
+ * padded block. FIPS 202 Algorithm 8 XORs each block P_i || 0^c into S,
+ * and XOR is bytewise, so the two agree once _keccak_finalize XORs the
+ * padding at its position.
+ *
+ * Security: message and state bytes are secret. pos, rate, lengths and
+ * pointers are public and drive every branch, loop and address here.
+ */
+
+from KeccakKernel require "keccakf1600.jinc"
+
+inline fn __keccak_init(reg mut ptr u64[25] st) -> reg ptr u64[25]
+{
+  reg u64 z;
+  inline int i;
+
+  z = 0;
+  for i = 0 to 25 {
+    st[i] = z;
+  }
+
+  return st;
+}
+
+/*
+ * XOR n bytes from memory at in into st, starting at state byte pos.
+ * Requires pos + n <= 200.
+ *
+ * Lanes are little-endian in both the state and the byte string, so whole
+ * lanes are XORed as u64 words once pos reaches a multiple of 8; only the
+ * unaligned head and the tail go byte by byte.
+ */
+inline fn __keccak_xor_mem(
+  reg mut ptr u64[25] st,
+  reg u64 pos_ in_ n_,
+  reg u64 ms
+) -> reg ptr u64[25], reg u64
+{
+  reg u64 pos in n head end t v;
+  reg bool more;
+
+  /* Work on copies: the caller still needs pos, in and n afterwards. */
+  pos = pos_;
+  in = in_;
+  n = n_;
+
+  head = pos;
+  head = -head;
+  head &= 7;
+  head = n < head ? n : head;
+  n -= head;
+
+  end = pos;
+  end += head;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)st[:u8 pos];
+    v = (64u)[:u8 in];
+    t ^= v;
+    st[:u8 pos] = (8u)t;
+    pos += 1;
+    in += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  while { more = n >= 8; } (more) {
+    ms = #update_msf(more, ms);
+    t = st.[:u64 pos];
+    v = [:u64 in];
+    t ^= v;
+    st.[:u64 pos] = t;
+    pos += 8;
+    in += 8;
+    n -= 8;
+  }
+  ms = #update_msf(!more, ms);
+
+  end = pos;
+  end += n;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)st[:u8 pos];
+    v = (64u)[:u8 in];
+    t ^= v;
+    st[:u8 pos] = (8u)t;
+    pos += 1;
+    in += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return st, ms;
+}
+
+/*
+ * Copy n state bytes starting at pos to memory at out.
+ * Requires pos + n <= 200. Same head, lanes, tail shape as __keccak_xor_mem.
+ */
+inline fn __keccak_extract_mem(
+  reg u64 out_,
+  reg const ptr u64[25] st,
+  reg u64 pos_ n_,
+  reg u64 ms
+) -> reg u64
+{
+  reg u64 out pos n head end t;
+  reg bool more;
+
+  out = out_;
+  pos = pos_;
+  n = n_;
+
+  head = pos;
+  head = -head;
+  head &= 7;
+  head = n < head ? n : head;
+  n -= head;
+
+  end = pos;
+  end += head;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)st[:u8 pos];
+    [:u8 out] = (8u)t;
+    pos += 1;
+    out += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  while { more = n >= 8; } (more) {
+    ms = #update_msf(more, ms);
+    t = st.[:u64 pos];
+    [:u64 out] = t;
+    pos += 8;
+    out += 8;
+    n -= 8;
+  }
+  ms = #update_msf(!more, ms);
+
+  end = pos;
+  end += n;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)st[:u8 pos];
+    [:u8 out] = (8u)t;
+    pos += 1;
+    out += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return ms;
+}
+
+/*
+ * Absorb inlen bytes from memory at in.
+ *
+ * Each iteration fills the current block as far as the input allows and
+ * permutes when the block is complete, so on return pos < rate again.
+ * inlen = 0 returns the state unchanged.
+ */
+#[sct = "{ ptr: public, val: secret } × public × public × public × public × msf →
+         { ptr: public, val: secret } × public × msf"]
+fn _keccak_absorb_mem(
+  reg mut ptr u64[25] st,
+  reg u64 pos rate in inlen,
+  reg u64 ms
+) -> reg ptr u64[25], reg u64, reg u64
+{
+  reg u64 n;
+  reg bool more full;
+
+  while { more = inlen != 0; } (more) {
+    ms = #update_msf(more, ms);
+
+    n = rate;
+    n -= pos;
+    n = inlen < n ? inlen : n;
+    st, ms = __keccak_xor_mem(st, pos, in, n, ms);
+    pos += n;
+    in += n;
+    inlen -= n;
+
+    full = pos == rate;
+    if (full) {
+      ms = #update_msf(full, ms);
+      /*
+       * Loop state crosses the call through the stack and is protected on
+       * reload.
+       */
+      () = #spill(rate, in, inlen);
+      st, ms = _keccakf1600(st, ms);
+      () = #unspill(rate, in, inlen);
+      rate = #protect(rate, ms);
+      in = #protect(in, ms);
+      inlen = #protect(inlen, ms);
+      pos = 0;
+    } else {
+      ms = #update_msf(!full, ms);
+    }
+  }
+  ms = #update_msf(!more, ms);
+
+  return st, pos, ms;
+}
+
+/*
+ * End absorption: pad10*1 (FIPS 202 Algorithm 9) behind the domain suffix,
+ * then the last permutation.
+ *
+ * ds carries the suffix bits and the first padding bit in FIPS 202
+ * appendix B.2 bit order (0x06 for SHA-3, 0x1f for SHAKE) and must be below
+ * 0x80. The final padding bit is the top bit of the last rate byte. When
+ * pos = rate - 1 both land in the same byte, as pad10*1 requires.
+ *
+ * Squeezing starts with pos = 0.
+ */
+#[sct = "{ ptr: public, val: secret } × public × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _keccak_finalize(
+  reg mut ptr u64[25] st,
+  reg u64 pos rate ds,
+  reg u64 ms
+) -> reg ptr u64[25], reg u64
+{
+  reg u64 t;
+
+  t = (64u)st[:u8 pos];
+  t ^= ds;
+  st[:u8 pos] = (8u)t;
+
+  rate -= 1;
+  t = (64u)st[:u8 rate];
+  t ^= 0x80;
+  st[:u8 rate] = (8u)t;
+
+  st, ms = _keccakf1600(st, ms);
+
+  return st, ms;
+}
+
+/*
+ * Write outlen output bytes to memory at out, continuing the output stream.
+ *
+ * The permutation runs lazily, when output is needed and the current block
+ * is used up (pos = rate). A squeeze that ends exactly at a block boundary
+ * therefore leaves pos = rate, and the next call permutes first.
+ */
+#[sct = "{ ptr: public, val: secret } × public × public × public × public × msf →
+         { ptr: public, val: secret } × public × msf"]
+fn _keccak_squeeze_mem(
+  reg mut ptr u64[25] st,
+  reg u64 pos rate out outlen,
+  reg u64 ms
+) -> reg ptr u64[25], reg u64, reg u64
+{
+  reg u64 n;
+  reg bool more empty;
+
+  while { more = outlen != 0; } (more) {
+    ms = #update_msf(more, ms);
+
+    empty = pos == rate;
+    if (empty) {
+      ms = #update_msf(empty, ms);
+      () = #spill(rate, out, outlen);
+      st, ms = _keccakf1600(st, ms);
+      () = #unspill(rate, out, outlen);
+      rate = #protect(rate, ms);
+      out = #protect(out, ms);
+      outlen = #protect(outlen, ms);
+      pos = 0;
+    } else {
+      ms = #update_msf(!empty, ms);
+    }
+
+    n = rate;
+    n -= pos;
+    n = outlen < n ? outlen : n;
+    ms = __keccak_extract_mem(out, st, pos, n, ms);
+    pos += n;
+    out += n;
+    outlen -= n;
+  }
+  ms = #update_msf(!more, ms);
+
+  return st, pos, ms;
+}

@@ -1,0 +1,235 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sponge_array.jinc
+ * =================
+ *
+ * Absorb from, and squeeze into, a byte array whose length is fixed by the
+ * enclosing namespace:
+ *
+ *     namespace N {
+ *       param int HASH_ARRAY_LEN = 32;
+ *       from Hash require "keccak/sponge_array.jinc"
+ *     }
+ *
+ * The functions have the contracts of their memory counterparts in
+ * sponge.jinc, with the whole array as input or output. That file must be
+ * required at top level before any instance.
+ *
+ * Fixed-shape SLH-DSA inputs (PK.seed, ADRS, n-byte chain values, WOTS+ and
+ * FORS public values) are held in stack arrays and passed as array
+ * pointers, not as the raw memory pointers the forms of sponge.jinc take.
+ */
+
+/* XOR n bytes of in, from offset off, into st from state byte pos. */
+inline fn __keccak_xor_array(
+  reg mut ptr u64[25] st,
+  reg u64 pos_,
+  reg const ptr u8[HASH_ARRAY_LEN] in,
+  reg u64 off_ n_,
+  reg u64 ms
+) -> reg ptr u64[25], reg u64
+{
+  reg u64 pos off n head end t v;
+  reg bool more;
+
+  pos = pos_;
+  off = off_;
+  n = n_;
+
+  head = pos;
+  head = -head;
+  head &= 7;
+  head = n < head ? n : head;
+  n -= head;
+
+  end = pos;
+  end += head;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)st[:u8 pos];
+    v = (64u)in[off];
+    t ^= v;
+    st[:u8 pos] = (8u)t;
+    pos += 1;
+    off += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  while { more = n >= 8; } (more) {
+    ms = #update_msf(more, ms);
+    t = st.[:u64 pos];
+    v = in.[:u64 off];
+    t ^= v;
+    st.[:u64 pos] = t;
+    pos += 8;
+    off += 8;
+    n -= 8;
+  }
+  ms = #update_msf(!more, ms);
+
+  end = pos;
+  end += n;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)st[:u8 pos];
+    v = (64u)in[off];
+    t ^= v;
+    st[:u8 pos] = (8u)t;
+    pos += 1;
+    off += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return st, ms;
+}
+
+/* Copy n state bytes from state byte pos into out from offset off. */
+inline fn __keccak_extract_array(
+  reg mut ptr u8[HASH_ARRAY_LEN] out,
+  reg u64 off_,
+  reg const ptr u64[25] st,
+  reg u64 pos_ n_,
+  reg u64 ms
+) -> reg ptr u8[HASH_ARRAY_LEN], reg u64
+{
+  reg u64 pos off n head end t;
+  reg bool more;
+
+  pos = pos_;
+  off = off_;
+  n = n_;
+
+  head = pos;
+  head = -head;
+  head &= 7;
+  head = n < head ? n : head;
+  n -= head;
+
+  end = pos;
+  end += head;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)st[:u8 pos];
+    out[off] = (8u)t;
+    pos += 1;
+    off += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  while { more = n >= 8; } (more) {
+    ms = #update_msf(more, ms);
+    t = st.[:u64 pos];
+    out.[:u64 off] = t;
+    pos += 8;
+    off += 8;
+    n -= 8;
+  }
+  ms = #update_msf(!more, ms);
+
+  end = pos;
+  end += n;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)st[:u8 pos];
+    out[off] = (8u)t;
+    pos += 1;
+    off += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return out, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × public × msf"]
+fn _keccak_absorb_array(
+  reg mut ptr u64[25] st,
+  reg u64 pos rate,
+  reg const ptr u8[HASH_ARRAY_LEN] in,
+  reg u64 ms
+) -> reg ptr u64[25], reg u64, reg u64
+{
+  reg u64 off inlen n;
+  reg bool more full;
+
+  off = 0;
+  inlen = HASH_ARRAY_LEN;
+
+  while { more = inlen != 0; } (more) {
+    ms = #update_msf(more, ms);
+
+    n = rate;
+    n -= pos;
+    n = inlen < n ? inlen : n;
+    st, ms = __keccak_xor_array(st, pos, in, off, n, ms);
+    pos += n;
+    off += n;
+    inlen -= n;
+
+    full = pos == rate;
+    if (full) {
+      ms = #update_msf(full, ms);
+      () = #spill(rate, in, off, inlen);
+      st, ms = _keccakf1600(st, ms);
+      () = #unspill(rate, in, off, inlen);
+      rate = #protect(rate, ms);
+      in = #protect_ptr(in, ms);
+      off = #protect(off, ms);
+      inlen = #protect(inlen, ms);
+      pos = 0;
+    } else {
+      ms = #update_msf(!full, ms);
+    }
+  }
+  ms = #update_msf(!more, ms);
+
+  return st, pos, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × public × msf"]
+fn _keccak_squeeze_array(
+  reg mut ptr u8[HASH_ARRAY_LEN] out,
+  reg mut ptr u64[25] st,
+  reg u64 pos rate,
+  reg u64 ms
+) -> reg ptr u8[HASH_ARRAY_LEN], reg ptr u64[25], reg u64, reg u64
+{
+  reg u64 off outlen n;
+  reg bool more empty;
+
+  off = 0;
+  outlen = HASH_ARRAY_LEN;
+
+  while { more = outlen != 0; } (more) {
+    ms = #update_msf(more, ms);
+
+    empty = pos == rate;
+    if (empty) {
+      ms = #update_msf(empty, ms);
+      () = #spill(rate, out, off, outlen);
+      st, ms = _keccakf1600(st, ms);
+      () = #unspill(rate, out, off, outlen);
+      rate = #protect(rate, ms);
+      out = #protect_ptr(out, ms);
+      off = #protect(off, ms);
+      outlen = #protect(outlen, ms);
+      pos = 0;
+    } else {
+      ms = #update_msf(!empty, ms);
+    }
+
+    n = rate;
+    n -= pos;
+    n = outlen < n ? outlen : n;
+    out, ms = __keccak_extract_array(out, off, st, pos, n, ms);
+    pos += n;
+    off += n;
+    outlen -= n;
+  }
+  ms = #update_msf(!more, ms);
+
+  return out, st, pos, ms;
+}

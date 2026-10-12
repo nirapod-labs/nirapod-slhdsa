@@ -1,0 +1,208 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * fips202.jinc
+ * ============
+ *
+ * One-shot SHA-3 hash functions and SHAKE extendable-output functions of
+ * FIPS 202 section 6, over a message in memory:
+ *
+ *     SHA3-d(M)       = KECCAK[2d](M || 01, d),     d in {224, 256, 384, 512}
+ *     SHAKE128(M, ℓ)  = KECCAK[256](M || 1111, ℓ)
+ *     SHAKE256(M, ℓ)  = KECCAK[512](M || 1111, ℓ)
+ *
+ * KECCAK[c] has rate 1600 - c bits. HashSLH-DSA uses these as pre-hash
+ * functions (FIPS 205 section 10.2.2).
+ *
+ * Contracts follow sponge.jinc: message bytes secret, pointers and lengths
+ * public, memory read only within [in, in + inlen) and written only within
+ * the output.
+ *
+ * Output pointers and lengths are live across the whole absorb phase and
+ * pass through the stack (#spill). A reloaded value is only transient under
+ * the speculative model, so each is protected before it is used again.
+ */
+
+require "sponge.jinc"
+
+/* Rates in bytes: (1600 - c) / 8 with c = 2d (FIPS 202 sections 6.1, 6.2). */
+param int SHA3_224_RATE = 144;
+param int SHA3_256_RATE = 136;
+param int SHA3_384_RATE = 104;
+param int SHA3_512_RATE = 72;
+param int SHAKE128_RATE = 168;
+param int SHAKE256_RATE = 136;
+
+/*
+ * Domain bytes: the suffix of section 6 followed by the first bit of
+ * pad10*1, packed least significant bit first (appendix B.2).
+ *
+ *     SHA-3:  0 1 | 1  ->  0b110   = 0x06
+ *     SHAKE:  1 1 1 1 | 1  ->  0b11111 = 0x1f
+ */
+param int SHA3_DS = 0x06;
+param int SHAKE_DS = 0x1f;
+
+inline fn __sha3_absorb_all(
+  reg mut ptr u64[25] st,
+  reg u64 rate ds in inlen,
+  reg u64 ms
+) -> reg ptr u64[25], reg u64
+{
+  reg u64 pos;
+
+  st = __keccak_init(st);
+  pos = 0;
+  () = #spill(rate, ds);
+  st, pos, ms = _keccak_absorb_mem(st, pos, rate, in, inlen, ms);
+  () = #unspill(rate, ds);
+  rate = #protect(rate, ms);
+  ds = #protect(ds, ms);
+  st, ms = _keccak_finalize(st, pos, rate, ds, ms);
+
+  return st, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha3_224_mem(reg mut ptr u8[28] out, reg u64 in inlen, reg u64 ms) -> reg ptr u8[28], reg u64
+{
+  stack u64[25] st;
+  reg u64 rate ds t;
+  reg u32 w;
+  inline int i;
+
+  rate = SHA3_224_RATE;
+  ds = SHA3_DS;
+  () = #spill(out);
+  st, ms = __sha3_absorb_all(st, rate, ds, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect_ptr(out, ms);
+
+  /*
+   * 28 = 3 * 8 + 4: three whole lanes, then the low four bytes of lane 3,
+   * which are 32-bit word 6 of both the state and out.
+   */
+  for i = 0 to 3 {
+    t = st[i];
+    out[:u64 i] = t;
+  }
+  w = st[:u32 6];
+  out[:u32 6] = w;
+
+  return out, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha3_256_mem(reg mut ptr u8[32] out, reg u64 in inlen, reg u64 ms) -> reg ptr u8[32], reg u64
+{
+  stack u64[25] st;
+  reg u64 rate ds t;
+  inline int i;
+
+  rate = SHA3_256_RATE;
+  ds = SHA3_DS;
+  () = #spill(out);
+  st, ms = __sha3_absorb_all(st, rate, ds, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect_ptr(out, ms);
+
+  for i = 0 to 4 {
+    t = st[i];
+    out[:u64 i] = t;
+  }
+
+  return out, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha3_384_mem(reg mut ptr u8[48] out, reg u64 in inlen, reg u64 ms) -> reg ptr u8[48], reg u64
+{
+  stack u64[25] st;
+  reg u64 rate ds t;
+  inline int i;
+
+  rate = SHA3_384_RATE;
+  ds = SHA3_DS;
+  () = #spill(out);
+  st, ms = __sha3_absorb_all(st, rate, ds, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect_ptr(out, ms);
+
+  for i = 0 to 6 {
+    t = st[i];
+    out[:u64 i] = t;
+  }
+
+  return out, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha3_512_mem(reg mut ptr u8[64] out, reg u64 in inlen, reg u64 ms) -> reg ptr u8[64], reg u64
+{
+  stack u64[25] st;
+  reg u64 rate ds t;
+  inline int i;
+
+  rate = SHA3_512_RATE;
+  ds = SHA3_DS;
+  () = #spill(out);
+  st, ms = __sha3_absorb_all(st, rate, ds, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect_ptr(out, ms);
+
+  for i = 0 to 8 {
+    t = st[i];
+    out[:u64 i] = t;
+  }
+
+  return out, ms;
+}
+
+inline fn __shake_mem(
+  reg u64 rate out outlen in inlen,
+  reg u64 ms
+) -> reg u64
+{
+  stack u64[25] st;
+  reg u64 ds pos;
+
+  ds = SHAKE_DS;
+  () = #spill(out, outlen, rate);
+  st, ms = __sha3_absorb_all(st, rate, ds, in, inlen, ms);
+  () = #unspill(out, outlen, rate);
+  out = #protect(out, ms);
+  outlen = #protect(outlen, ms);
+  rate = #protect(rate, ms);
+
+  pos = 0;
+  st, pos, ms = _keccak_squeeze_mem(st, pos, rate, out, outlen, ms);
+
+  return ms;
+}
+
+#[sct = "public × public × public × public × msf → msf"]
+fn _shake128_mem(reg u64 out outlen in inlen, reg u64 ms) -> reg u64
+{
+  reg u64 rate;
+
+  rate = SHAKE128_RATE;
+  ms = __shake_mem(rate, out, outlen, in, inlen, ms);
+
+  return ms;
+}
+
+#[sct = "public × public × public × public × msf → msf"]
+fn _shake256_mem(reg u64 out outlen in inlen, reg u64 ms) -> reg u64
+{
+  reg u64 rate;
+
+  rate = SHAKE256_RATE;
+  ms = __shake_mem(rate, out, outlen, in, inlen, ms);
+
+  return ms;
+}
