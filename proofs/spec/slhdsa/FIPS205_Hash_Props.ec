@@ -89,3 +89,26 @@ move=> hn; rewrite /T_l.
 case: (p.`family = SHAKE) => _; first by rewrite size_shake256 /#.
 by case: (p.`n = 16) => h16; rewrite size_trunc // ?size_sha256 ?size_sha512 /#.
 qed.
+
+lemma size_mgf1 (hash : bytes -> bytes) (hlen : int) (seed : bytes) (masklen : int) :
+  0 < hlen => 0 <= masklen => (forall x, size (hash x) = hlen) =>
+  size (mgf1 hash hlen seed masklen) = masklen.
+proof.
+move=> hh hm hs; rewrite /mgf1 size_take // (size_flatten_ctt hlen).
++ by move=> x /mapP [c [_ ->]]; rewrite hs.
+rewrite size_map size_range /cdiv.
+have h1 : masklen <= hlen * ((masklen + hlen - 1) %/ hlen).
++ by have := divz_eq (masklen + hlen - 1) hlen; smt(modz_ge0 ltz_pmod).
+have h0 : 0 <= (masklen + hlen - 1) %/ hlen by apply divz_ge0 => /#.
+by smt().
+qed.
+
+lemma size_H_msg p (r pk_seed pk_root msg : bytes) :
+  n_ok p => 0 <= p.`m => size (H_msg p r pk_seed pk_root msg) = p.`m.
+proof.
+move=> hn hm; rewrite /H_msg.
+case: (p.`family = SHAKE) => _; first by rewrite size_shake256.
+case: (p.`n = 16) => _.
++ by rewrite /mgf1_sha256 size_mgf1 // => x; rewrite size_sha256.
+by rewrite /mgf1_sha512 size_mgf1 // => x; rewrite size_sha512.
+qed.
