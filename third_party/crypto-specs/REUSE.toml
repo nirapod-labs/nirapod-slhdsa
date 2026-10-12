@@ -1,0 +1,9 @@
+version = 1
+
+# Files imported unchanged from formosa-crypto/crypto-specs at
+# fb050598ed356c5c6604d92a1e198b2dd4543777; see README.md here.
+[[annotations]]
+path = ["LICENSE", "arrays/**", "common/**", "fips202/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "formosa-crypto crypto-specs contributors"
+SPDX-License-Identifier = "CC0-1.0"
