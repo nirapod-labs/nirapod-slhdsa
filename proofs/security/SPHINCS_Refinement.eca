@@ -1,0 +1,805 @@
+(*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * SPHINCS_Refinement.eca
+ * ======================
+ *
+ * The SPHINCS+ procedures of the imported security proof, instantiated
+ * with the FIPS 205 functions (SPHINCS_Instance), compute the FIPS 205
+ * algorithms on encoded values.
+ *
+ * The imported model works on n-byte digests held as 8n-bit strings, on
+ * addresses held as lists of six indices, and on signatures held as nested
+ * lists. The encodings used here:
+ *
+ *     enc / dec           a digest and its n bytes (bits2b / b2bits)
+ *     ab                  a model address and its 32-byte ADRS
+ *     enc_ap              an authentication path, root side first in the
+ *                         model and leaf side first in FIPS 205
+ *     enc_fors, enc_ht    FORS and hypertree signatures and their byte
+ *                         strings (Figures 13 and 14)
+ *
+ * Every procedure is characterised by a statement of probability one, so
+ * the statements hold for every run:
+ *
+ *     WOTS_sign_ph, pkWOTS_from_*_ph   the WOTS+ procedures compute the
+ *                                      chains of Algorithms 5 to 8
+ *     leaves_ph, xmss_root_enc         the leaves of an XMSS tree are WOTS+
+ *                                      public keys and its root is the node
+ *                                      of Algorithm 9 at height h'
+ *     gen_root_ph                      key generation computes PK.root
+ *                                      (Algorithm 18, line 3)
+ *     xmss_layer_enc                   a WOTS+ signature with the
+ *                                      authentication path built from the
+ *                                      tree encodes Algorithm 10
+ *
+ * The parameter set is the abstract P of SPHINCS_Instance.
+ *)
+
+require import AllCore List IntDiv Distr StdOrder BitEncoding.
+import IntOrder BS2Int.
+from Jasmin require import JWord.
+require import Bytes FIPS205_Encoding FIPS205_Params FIPS205_Address FIPS205_Hash.
+require import FIPS205_WOTS FIPS205_XMSS FIPS205_Hypertree FIPS205_FORS FIPS205_Internal.
+require import FIPS205_Address_Props FIPS205_Hash_Props Validate_Params.
+require import BinaryTrees MerkleTrees MerkleTrees_FIPS205 FIPS205_TreeForms.
+require SPHINCS_Instance.
+
+clone include SPHINCS_Instance.
+
+lemma P_facts :
+     n_ok P /\ P.`lgw = 4 /\ w P = 16 /\ len1 P = 2 * P.`n /\ len2 P = 3
+  /\ len P = 2 * P.`n + 3 /\ P.`h = P.`d * P.`hp
+  /\ 1 <= P.`hp <= 9 /\ 1 <= P.`a <= 14 /\ 1 <= P.`k <= 35 /\ 1 <= P.`d <= 22.
+proof. exact (ps_facts P P_in). qed.
+
+lemma n_okP : n_ok P by have [#] := P_facts.
+
+lemma n_bounds : 16 <= P.`n <= 32.
+proof. by have := n_okP; rewrite /n_ok /#. qed.
+
+(* ------------------------------------------------------------------ *)
+(* Digests and their bytes                                            *)
+
+op enc (x : SP.dgstblock) : bytes = bits2b (SP.DigestBlock.val x).
+op dec (b : bytes) : SP.dgstblock = SP.DigestBlock.insubd (b2bits b).
+
+lemma size_b2bits (b : bytes) : size (b2bits b) = 8 * size b.
+proof.
+rewrite /b2bits (List.size_flatten_ctt 8) ?size_map //.
+by move=> x /mapP [c [_ ->]]; rewrite W8.size_w2bits.
+qed.
+
+lemma b2bitsK (b : bytes) : bits2b (b2bits b) = b.
+proof.
+rewrite /b2bits /bits2b BitChunking.flattenK //.
++ by move=> x /mapP [c [_ ->]]; rewrite W8.size_w2bits.
+by rewrite -map_comp; rewrite (eq_map _ idfun) ?map_id // => c; rewrite /(\o) W8.w2bitsK.
+qed.
+
+lemma b2bits_cat (x y : bytes) : b2bits (x ++ y) = b2bits x ++ b2bits y.
+proof. by rewrite /b2bits map_cat flatten_cat. qed.
+
+lemma bits2b_cat (x y : bool list) :
+  8 %| size x => 8 %| size y => bits2b (x ++ y) = bits2b x ++ bits2b y.
+proof.
+by move=> hx hy; rewrite -(bits2bK x) // -(bits2bK y) // -b2bits_cat !b2bitsK.
+qed.
+
+lemma dvd8_val (x : SP.dgstblock) : 8 %| size (SP.DigestBlock.val x).
+proof. by rewrite SP.DigestBlock.valP dvdz_mulr. qed.
+
+lemma size_enc (x : SP.dgstblock) : size (enc x) = P.`n.
+proof. by rewrite /enc size_bits2b SP.DigestBlock.valP mulKz. qed.
+
+lemma enc_dec (b : bytes) : size b = P.`n => enc (dec b) = b.
+proof.
+by move=> hb; rewrite /enc /dec SP.DigestBlock.insubdK 1:size_b2bits 1:hb // b2bitsK.
+qed.
+
+lemma dec_enc (x : SP.dgstblock) : dec (enc x) = x.
+proof. by rewrite /enc /dec bits2bK 1:dvd8_val SP.DigestBlock.valKd. qed.
+
+lemma enc_inj (x y : SP.dgstblock) : enc x = enc y => x = y.
+proof. by move=> h; rewrite -(dec_enc x) h dec_enc. qed.
+
+lemma enc_cat (x y : SP.dgstblock) :
+  bits2b (SP.DigestBlock.val x ++ SP.DigestBlock.val y) = enc x ++ enc y.
+proof. by rewrite bits2b_cat ?dvd8_val. qed.
+
+lemma enc_flatten (xs : SP.dgstblock list) :
+  bits2b (flatten (map SP.DigestBlock.val xs)) = flatten (map enc xs).
+proof.
+elim: xs => [|x xs ih] /=; first by rewrite flatten_nil /bits2b BitChunking.chunk_nil.
+rewrite !flatten_cons bits2b_cat ?dvd8_val ?ih //.
+rewrite (List.size_flatten_ctt (8 * P.`n)).
++ by move=> b /mapP [z [_ ->]]; rewrite SP.DigestBlock.valP.
+by apply/dvdz_mulr/dvdz_mulr/dvdzz.
+qed.
+
+(* ------------------------------------------------------------------ *)
+(* The keyed functions and tweakable hashes                           *)
+
+op ab (ad : SP.adrs) : adrs = adrs_bytes (SP.HA.Adrs.val ad).
+
+lemma adrs_bytesE (l : int list) :
+  adrs_bytes l = mk_adrs (nth 0 l 5) (nth 0 l 4) (nth 0 l 3) (nth 0 l 2) (nth 0 l 1) (nth 0 l 0).
+proof. by rewrite /adrs_bytes /mk_adrs. qed.
+
+lemma enc_insubd (b : bytes) : size b = P.`n => enc (SP.DigestBlock.insubd (b2bits b)) = b.
+proof. exact enc_dec. qed.
+
+lemma len_n : len P = 2 * P.`n + 3 by have [#] := P_facts.
+
+lemma SP_len : SP.len = len P.
+proof. by rewrite /SP.len /SP.len2 /SP.len1 /SP.w model_len1 model_len2 len_n. qed.
+
+lemma enc_f ps ad x :
+  enc (SP.f ps ad x) = F P (NBytes.val ps) (ab ad) (bits2b x).
+proof. by rewrite /SP.f /SP.thfc /= enc_insubd // (FIPS205_Hash_Props.size_F _ _ _ _ n_okP). qed.
+
+lemma enc_trh ps ad x :
+  enc (SP.trh ps ad x) = H P (NBytes.val ps) (ab ad) (bits2b x).
+proof.
+rewrite /SP.trh /SP.thfc ifF; first by have := n_bounds; smt().
+by rewrite /= enc_insubd // (FIPS205_Hash_Props.size_H _ _ _ _ n_okP).
+qed.
+
+lemma enc_pkco ps ad x :
+  enc (SP.pkco ps ad x) = T_l P (NBytes.val ps) (ab ad) (bits2b x).
+proof.
+rewrite /SP.pkco /SP.thfc SP_len len_n ifF; first by have := n_bounds; smt().
+rewrite ifF; first by have := n_bounds; smt().
+by rewrite enc_insubd // (FIPS205_Hash_Props.size_T_l _ _ _ _ n_okP).
+qed.
+
+lemma P_k3 : 3 <= P.`k.
+proof.
+have := P_in; rewrite /parameter_sets /slh_dsa_sha2_128s /slh_dsa_shake_128s /slh_dsa_sha2_128f.
+rewrite /slh_dsa_shake_128f /slh_dsa_sha2_192s /slh_dsa_shake_192s /slh_dsa_sha2_192f.
+rewrite /slh_dsa_shake_192f /slh_dsa_sha2_256s /slh_dsa_shake_256s /slh_dsa_sha2_256f.
+by rewrite /slh_dsa_shake_256f /=; smt().
+qed.
+
+lemma enc_trco ps ad x :
+  enc (SP.trco ps ad x) = T_l P (NBytes.val ps) (ab ad) (bits2b x).
+proof.
+have hk := P_k3.
+rewrite /SP.trco /SP.thfc ifF; first by have := n_bounds; smt().
+rewrite ifF; first by have := n_bounds; smt().
+by rewrite enc_insubd // (FIPS205_Hash_Props.size_T_l _ _ _ _ n_okP).
+qed.
+
+lemma enc_skg ss ps ad :
+  enc (SP.skg ss (ps, ad))
+  = PRF P (NBytes.val ps) (NBytes.val ss) (adrs_bytes (prf_retype (SP.HA.Adrs.val ad))).
+proof. by rewrite /SP.skg /= enc_insubd // (FIPS205_Hash_Props.size_PRF _ _ _ _ n_okP). qed.
+
+lemma val_mkg ms (m : bytes * bytes) :
+  NBytes.val (SP.mkg ms m) = PRF_msg P (NBytes.val ms) (slice m.`1 0 P.`n) m.`2.
+proof. by rewrite /SP.mkg /= NBytes.insubdK // (FIPS205_Hash_Props.size_PRF_msg _ _ _ _ n_okP). qed.
+
+(* ------------------------------------------------------------------ *)
+(* Model addresses                                                    *)
+
+(* The index lists of the five address kinds the model uses, with the
+   ranges of the honest computation (the validity predicate of the
+   imported theory). *)
+lemma w_16 : SP.w = 16.
+proof. by have [#] _ h4 *:= P_facts; rewrite /SP.w h4. qed.
+
+lemma valid_ch (h c kp t l : int) :
+  0 <= h < 15 => 0 <= c < len P => 0 <= kp < 2 ^ P.`hp =>
+  0 <= t < 2 ^ (P.`hp * (P.`d - l - 1)) => 0 <= l < P.`d =>
+  SP.valid_adrsidxs [h; c; kp; 0; t; l].
+proof.
+move=> *; rewrite /SP.valid_adrsidxs /SP.adrs_len /SP.valid_idxvals /=; left.
+rewrite /SP.valid_idxvalsch /SP.valid_hidx /SP.valid_chidx /SP.valid_kpidx /SP.valid_tidx.
+by rewrite /SP.valid_lidx /SP.nr_trees /SP.l' w_16 SP_len /#.
+qed.
+
+lemma valid_pkco (kp t l : int) :
+  0 <= kp < 2 ^ P.`hp => 0 <= t < 2 ^ (P.`hp * (P.`d - l - 1)) => 0 <= l < P.`d =>
+  SP.valid_adrsidxs [0; 0; kp; 1; t; l].
+proof.
+move=> *; rewrite /SP.valid_adrsidxs /SP.adrs_len /SP.valid_idxvals /=; right; left.
+rewrite /SP.valid_idxvalspkco /SP.valid_kpidx /SP.valid_tidx.
+by rewrite /SP.valid_lidx /SP.nr_trees /SP.l' /#.
+qed.
+
+lemma valid_trhx (b h t l : int) :
+  0 <= h <= P.`hp => 0 <= b < 2 ^ (P.`hp - h) =>
+  0 <= t < 2 ^ (P.`hp * (P.`d - l - 1)) => 0 <= l < P.`d =>
+  SP.valid_adrsidxs [b; h; 0; 2; t; l].
+proof.
+move=> *; rewrite /SP.valid_adrsidxs /SP.adrs_len /SP.valid_idxvals /=; right; right; left.
+rewrite /SP.valid_idxvalstrhx /SP.valid_tbxidx /SP.valid_thxidx /SP.valid_tidx.
+by rewrite /SP.valid_lidx /SP.nr_trees /SP.nr_nodesx /#.
+qed.
+
+lemma valid_trhf (b h kp t : int) :
+  0 <= h <= P.`a => 0 <= b < P.`k * 2 ^ (P.`a - h) => 0 <= kp < 2 ^ P.`hp =>
+  0 <= t < 2 ^ (P.`hp * (P.`d - 1)) =>
+  SP.valid_adrsidxs [b; h; kp; 3; t; 0].
+proof.
+move=> *; rewrite /SP.valid_adrsidxs /SP.adrs_len /SP.valid_idxvals /=; right; right; right; left.
+rewrite /SP.valid_idxvalstrhf /SP.valid_tbfidx /SP.valid_thfidx /SP.valid_kpidx /SP.valid_tidx.
+by rewrite /SP.nr_trees /SP.nr_nodesf /SP.l' /#.
+qed.
+
+lemma valid_trco (kp t : int) :
+  0 <= kp < 2 ^ P.`hp => 0 <= t < 2 ^ (P.`hp * (P.`d - 1)) =>
+  SP.valid_adrsidxs [0; 0; kp; 4; t; 0].
+proof.
+move=> *; rewrite /SP.valid_adrsidxs /SP.adrs_len /SP.valid_idxvals /=; right; right; right; right.
+rewrite /SP.valid_idxvalstrco /SP.valid_kpidx /SP.valid_tidx.
+by rewrite /SP.nr_trees /SP.l' /#.
+qed.
+
+(* The setters on index lists of known shape. *)
+lemma val_set_ltidx ad a0 a1 a2 a3 a4 a5 i j :
+  SP.HA.Adrs.val ad = [a0; a1; a2; a3; a4; a5] =>
+  SP.valid_adrsidxs [a0; a1; a2; a3; j; i] =>
+  SP.HA.Adrs.val (SP.set_ltidx ad i j) = [a0; a1; a2; a3; j; i].
+proof. by move=> hv hok; rewrite /SP.set_ltidx hv /= SP.HA.Adrs.insubdK. qed.
+
+lemma val_set_typeidx ad a0 a1 a2 a3 a4 a5 ty :
+  SP.HA.Adrs.val ad = [a0; a1; a2; a3; a4; a5] =>
+  SP.valid_adrsidxs [0; 0; 0; ty; a4; a5] =>
+  SP.HA.Adrs.val (SP.set_typeidx ad ty) = [0; 0; 0; ty; a4; a5].
+proof. by move=> hv hok; rewrite /SP.set_typeidx hv /= SP.HA.Adrs.insubdK. qed.
+
+lemma val_set_kpidx ad a0 a1 a2 a3 a4 a5 kp :
+  SP.HA.Adrs.val ad = [a0; a1; a2; a3; a4; a5] =>
+  SP.valid_adrsidxs [a0; a1; kp; a3; a4; a5] =>
+  SP.HA.Adrs.val (SP.set_kpidx ad kp) = [a0; a1; kp; a3; a4; a5].
+proof. by move=> hv hok; rewrite /SP.set_kpidx /SP.HA.set_idx hv /= SP.HA.Adrs.insubdK. qed.
+
+lemma val_set_tidx ad a0 a1 a2 a3 a4 a5 t :
+  SP.HA.Adrs.val ad = [a0; a1; a2; a3; a4; a5] =>
+  SP.valid_adrsidxs [a0; a1; a2; a3; t; a5] =>
+  SP.HA.Adrs.val (SP.set_tidx ad t) = [a0; a1; a2; a3; t; a5].
+proof. by move=> hv hok; rewrite /SP.set_tidx /SP.HA.set_idx hv /= SP.HA.Adrs.insubdK. qed.
+
+lemma val_set_chidx ad a0 a1 a2 a3 a4 a5 c :
+  SP.HA.Adrs.val ad = [a0; a1; a2; a3; a4; a5] =>
+  SP.valid_adrsidxs [a0; c; a2; a3; a4; a5] =>
+  SP.HA.Adrs.val (SP.FSSLXMTWES.WTWES.set_chidx ad c) = [a0; c; a2; a3; a4; a5].
+proof.
+by move=> hv hok; rewrite /SP.FSSLXMTWES.WTWES.set_chidx /SP.HA.set_idx hv /= SP.HA.Adrs.insubdK.
+qed.
+
+lemma val_set_hidx ad a0 a1 a2 a3 a4 a5 h :
+  SP.HA.Adrs.val ad = [a0; a1; a2; a3; a4; a5] =>
+  SP.valid_adrsidxs [h; a1; a2; a3; a4; a5] =>
+  SP.HA.Adrs.val (SP.FSSLXMTWES.WTWES.set_hidx ad h) = [h; a1; a2; a3; a4; a5].
+proof.
+by move=> hv hok; rewrite /SP.FSSLXMTWES.WTWES.set_hidx /SP.HA.set_idx hv /= SP.HA.Adrs.insubdK.
+qed.
+
+lemma val_set_thtbidx ad a0 a1 a2 a3 a4 a5 i j :
+  SP.HA.Adrs.val ad = [a0; a1; a2; a3; a4; a5] =>
+  SP.valid_adrsidxs [j; i; a2; a3; a4; a5] =>
+  SP.HA.Adrs.val (SP.set_thtbidx ad i j) = [j; i; a2; a3; a4; a5].
+proof. by move=> hv hok; rewrite /SP.set_thtbidx hv /= SP.HA.Adrs.insubdK. qed.
+
+lemma val_adz : SP.HA.Adrs.val SP.adz = [0; 0; 0; 0; 0; 0].
+proof.
+rewrite /SP.adz SP.HA.Adrs.insubdK // valid_ch // 1:len_n; first by have := n_bounds; smt().
++ by rewrite expr_gt0.
++ by rewrite expr_gt0.
+by have [#] := P_facts; smt().
+qed.
+
+lemma ab_list (l : int list) a0 a1 a2 a3 a4 a5 :
+  l = [a0; a1; a2; a3; a4; a5] => adrs_bytes l = mk_adrs a5 a4 a3 a2 a1 a0.
+proof. by move=> ->; rewrite adrs_bytesE. qed.
+
+(* ------------------------------------------------------------------ *)
+(* WOTS+                                                              *)
+
+lemma em_get (x : SP.dgstblock) (i : int) : 0 <= i < len P =>
+  SP.FSSLXMTWES.WTWES.BaseW.val
+    (SP.FSSLXMTWES.WTWES.EmsgWOTS."_.[_]" (SP.FSSLXMTWES.WTWES.encode_msgWOTS x) i)
+  = nth 0 (wots_digits P (enc x)) i.
+proof.
+move=> hi; have [hs ha] := wots_digits_range (enc x).
+rewrite /SP.FSSLXMTWES.WTWES.encode_msgWOTS SP.FSSLXMTWES.WTWES.EmsgWOTS.getE SP_len hi /=.
+rewrite SP.FSSLXMTWES.WTWES.EmsgWOTS.ofemsgWOTSK 1:size_map 1:hs 1:SP_len //.
+rewrite (nth_map 0 witness) /=; first by rewrite hs.
+rewrite SP.FSSLXMTWES.WTWES.BaseW.insubdK // w_16 -/(enc x).
+have := List.allP (fun v => 0 <= v < 16) (wots_digits P (enc x)).
+by rewrite ha /= => hall; apply hall; apply mem_nth; rewrite hs.
+qed.
+
+lemma digit_range (x : SP.dgstblock) (i : int) : 0 <= i < len P =>
+  0 <= nth 0 (wots_digits P (enc x)) i < 16.
+proof.
+move=> hi; have [hs ha] := wots_digits_range (enc x).
+have := List.allP (fun v => 0 <= v < 16) (wots_digits P (enc x)).
+by rewrite ha /= => hall; apply hall; apply mem_nth; rewrite hs.
+qed.
+
+(* A hypertree position: layer j, tree t on that layer. *)
+pred ht_pos (j t : int) = 0 <= j < P.`d /\ 0 <= t < 2 ^ (P.`hp * (P.`d - j - 1)).
+
+lemma enc_cf ps ad (j t kp c s i : int) (x : SP.dgst) :
+  SP.HA.Adrs.val ad = [0; c; kp; 0; t; j] => ht_pos j t =>
+  0 <= kp < 2 ^ P.`hp => 0 <= c < len P => 0 <= s => 0 <= i => s + i <= 15 =>
+  size x = 8 * P.`n =>
+  enc (SP.FSSLXMTWES.WTWES.cf ps ad s i x)
+  = chain_from P (NBytes.val ps) j t 0 kp c (bits2b x) (range s (s + i)).
+proof.
+move=> hv [hj ht] hkp hc hs hi hsi hx.
+pose g := fun (c' : int) (y : bool list) =>
+  SP.DigestBlock.val (SP.f ps (SP.FSSLXMTWES.WTWES.set_hidx ad (s + c')) y).
+have inv : forall m, 0 <= m <= i =>
+  size (iteri m g x) = 8 * P.`n
+  /\ bits2b (iteri m g x) = chain_from P (NBytes.val ps) j t 0 kp c (bits2b x) (range s (s + m)).
++ move=> m [hm0 hmi]; elim: m hm0 hmi => [|m hm ih] hmi; first by rewrite iteri0 // range_geq.
+  have [ih1 ih2] := ih _; first smt().
+  rewrite iteriS //= /g SP.DigestBlock.valP /= -/(enc _) enc_f ih2.
+  rewrite addrA rangeSr 1:/# /chain_from -cats1 foldl_cat /=.
+  rewrite /ab (val_set_hidx _ 0 c kp 0 t j (s + m) hv); first by apply valid_ch => /#.
+  by rewrite adrs_bytesE.
+have [i1 i2] := inv i _; first smt().
+by rewrite /SP.FSSLXMTWES.WTWES.cf /enc SP.DigestBlock.insubdK // -/g i2.
+qed.
+
+lemma dec_inj_enc (x : SP.dgstblock) (b : bytes) : enc x = b => x = dec b.
+proof. by move=> <-; rewrite dec_enc. qed.
+
+lemma prf_wots ad (h c kp t j : int) :
+  SP.HA.Adrs.val ad = [h; c; kp; 0; t; j] =>
+  adrs_bytes (prf_retype (SP.HA.Adrs.val ad)) = mk_adrs j t WOTS_PRF kp c h.
+proof. by move=> hv; rewrite hv /prf_retype /= adrs_bytesE. qed.
+
+op wsk (ss ps : nbytes) (j t kp : int) : SP.dgstblock list =
+  mkseq (fun c => dec (wots_sk P (NBytes.val ss) (NBytes.val ps) j t kp c)) (len P).
+
+lemma size_wots_sk ss ps j t kp c : size (wots_sk P ss ps j t kp c) = P.`n.
+proof. by rewrite /wots_sk (FIPS205_Hash_Props.size_PRF _ _ _ _ n_okP). qed.
+
+lemma gen_skWOTS_ph ss0 ps0 ad0 (j t kp : int) :
+  SP.HA.Adrs.val ad0 = [0; 0; kp; 0; t; j] => ht_pos j t => 0 <= kp < 2 ^ P.`hp =>
+  phoare [SP.FSSLXMTWES.WTWES.WOTS_TW_ES.gen_skWOTS :
+            arg = (ss0, ps0, ad0) ==> SP.FSSLXMTWES.WTWES.DBLL.val res = wsk ss0 ps0 j t kp] = 1%r.
+proof.
+move=> hv hpos hkp; proc.
+while (skWOTS = mkseq (fun c => dec (wots_sk P (NBytes.val ss0) (NBytes.val ps0) j t kp c)) (size skWOTS)
+       /\ size skWOTS <= SP.len /\ ss = ss0 /\ ps = ps0 /\ ad = ad0) (SP.len - size skWOTS).
++ move=> z; auto => /> &hr h1 h2 h3.
+  split; last by rewrite size_rcons /#.
+  have hc := val_set_chidx ad0 0 0 kp 0 t j (size skWOTS{hr}) hv _.
+  + by move: hpos => [? ?]; apply valid_ch => //; smt(SP_len size_ge0).
+  have hh := val_set_hidx _ 0 (size skWOTS{hr}) kp 0 t j 0 hc _.
+  + by move: hpos => [? ?]; apply valid_ch => //; smt(SP_len size_ge0).
+  rewrite size_rcons (prf_wots _ _ _ _ _ _ hh) {1}h1 (mkseqS _ (size skWOTS{hr})) 1:size_ge0 /=.
+  by rewrite /dec /wots_sk /= /#.
+auto => />; split.
++ by rewrite mkseq0 /=; smt(SP_len len_n n_bounds).
+move=> sk; split; first smt().
+move=> hnot h1 h2; have hs : size sk = len P.
++ have h3 : SP.len <= size sk by rewrite lerNgt.
+  by rewrite -SP_len; apply ler_anti; rewrite h2 h3.
+rewrite SP.FSSLXMTWES.WTWES.DBLL.insubdK; first by rewrite SP_len.
+by rewrite h1 hs.
+qed.
+
+lemma size_chain_fromP ps j t y kp c x js :
+  size x = P.`n => size (chain_from P ps j t y kp c x js) = P.`n.
+proof. by move=> hx; apply size_chain_from => //; exact n_okP. qed.
+
+lemma enc_val_dec (b : bytes) : size b = P.`n => bits2b (SP.DigestBlock.val (dec b)) = b.
+proof. exact enc_dec. qed.
+
+lemma size_val (x : SP.dgstblock) : size (SP.DigestBlock.val x) = 8 * P.`n.
+proof. exact SP.DigestBlock.valP. qed.
+
+lemma chain_ok ad (j t kp c : int) :
+  SP.HA.Adrs.val ad = [0; 0; kp; 0; t; j] => ht_pos j t => 0 <= kp < 2 ^ P.`hp =>
+  0 <= c < len P =>
+  SP.HA.Adrs.val (SP.FSSLXMTWES.WTWES.set_chidx ad c) = [0; c; kp; 0; t; j].
+proof.
+move=> hv [hj ht] hkp hc; apply (val_set_chidx _ 0 0 kp 0 t j c hv).
+by apply valid_ch.
+qed.
+
+op wpk_elem (ss ps : bytes) (j t kp c : int) : bytes =
+  chain_from P ps j t 0 kp c (wots_sk P ss ps j t kp c) (range 0 15).
+
+lemma pkWOTS_from_skWOTS_ph ps0 ad0 ss (j t kp : int) :
+  SP.HA.Adrs.val ad0 = [0; 0; kp; 0; t; j] => ht_pos j t => 0 <= kp < 2 ^ P.`hp =>
+  phoare [SP.FSSLXMTWES.WTWES.WOTS_TW_ES.pkWOTS_from_skWOTS :
+            ps = ps0 /\ ad = ad0 /\ SP.FSSLXMTWES.WTWES.DBLL.val skWOTS = wsk ss ps0 j t kp
+            ==> SP.FSSLXMTWES.WTWES.DBLL.val res
+                = mkseq (fun c => dec (wpk_elem (NBytes.val ss) (NBytes.val ps0) j t kp c)) (len P)] = 1%r.
+proof.
+move=> hv hpos hkp; proc.
+while (pkWOTS = mkseq (fun c => dec (wpk_elem (NBytes.val ss) (NBytes.val ps0) j t kp c)) (size pkWOTS)
+       /\ size pkWOTS <= SP.len /\ SP.FSSLXMTWES.WTWES.DBLL.val skWOTS = wsk ss ps0 j t kp
+       /\ ps = ps0 /\ ad = ad0) (SP.len - size pkWOTS).
++ move=> z; auto => /> &hr h1 h2 hsk h3.
+  rewrite size_rcons {1}h1 (mkseqS _ (size pkWOTS{hr})) 1:size_ge0 /=.
+  have hc : 0 <= size pkWOTS{hr} < len P by smt(size_ge0 SP_len).
+  have -> : SP.FSSLXMTWES.WTWES.cf ps0 (SP.FSSLXMTWES.WTWES.set_chidx ad0 (size pkWOTS{hr})) 0 (SP.w - 1)
+              (SP.DigestBlock.val (nth witness (SP.FSSLXMTWES.WTWES.DBLL.val skWOTS{hr}) (size pkWOTS{hr})))
+            = dec (wpk_elem (NBytes.val ss) (NBytes.val ps0) j t kp (size pkWOTS{hr})).
+  + apply dec_inj_enc.
+    have hca := chain_ok ad0 j t kp (size pkWOTS{hr}) hv hpos hkp hc.
+    have hw : 0 <= SP.w - 1 /\ 0 + (SP.w - 1) <= 15 by rewrite w_16.
+    rewrite (enc_cf _ _ j t kp (size pkWOTS{hr}) 0 (SP.w - 1) _ hca hpos hkp hc _ _ _ (size_val _)) //;
+      1,2: smt().
+    rewrite hsk /wsk nth_mkseq //= enc_val_dec ?size_wots_sk //.
+    by rewrite w_16.
+  smt().
+auto => /> &hr hsk; split.
++ by rewrite mkseq0 /=; smt(SP_len len_n n_bounds).
+move=> pk; split; first smt().
+move=> hnot h1 h2; have hs : size pk = len P.
++ have h3 : SP.len <= size pk by rewrite lerNgt.
+  by rewrite -SP_len; apply ler_anti; rewrite h2 h3.
+rewrite SP.FSSLXMTWES.WTWES.DBLL.insubdK; first by rewrite SP_len.
+by rewrite h1 hs.
+qed.
+
+op wsig_elem (ss ps : bytes) (j t kp : int) (m : bytes) (c : int) : bytes =
+  chain_from P ps j t 0 kp c (wots_sk P ss ps j t kp c) (range 0 (nth 0 (wots_digits P m) c)).
+
+lemma WOTS_sign_ph ss0 ps0 ad0 m0 (j t kp : int) :
+  SP.HA.Adrs.val ad0 = [0; 0; kp; 0; t; j] => ht_pos j t => 0 <= kp < 2 ^ P.`hp =>
+  phoare [SP.FSSLXMTWES.WTWES.WOTS_TW_ES.sign :
+            arg = ((ss0, ps0, ad0), m0)
+            ==> SP.FSSLXMTWES.WTWES.DBLL.val res
+                = mkseq (fun c => dec (wsig_elem (NBytes.val ss0) (NBytes.val ps0) j t kp (enc m0) c))
+                        (len P)] = 1%r.
+proof.
+move=> hv hpos hkp; proc.
+while (sig = mkseq (fun c => dec (wsig_elem (NBytes.val ss0) (NBytes.val ps0) j t kp (enc m0) c)) (size sig)
+       /\ size sig <= SP.len /\ ps = ps0 /\ ad = ad0 /\ em = SP.FSSLXMTWES.WTWES.encode_msgWOTS m0
+       /\ SP.FSSLXMTWES.WTWES.DBLL.val skWOTS = wsk ss0 ps0 j t kp) (SP.len - size sig).
++ move=> z; auto => /> &hr h1 h2 hsk h3.
+  rewrite size_rcons {1}h1 (mkseqS _ (size sig{hr})) 1:size_ge0 /=.
+  have hc : 0 <= size sig{hr} < len P by split; [apply size_ge0 | move=> _; rewrite -SP_len].
+  have hca := chain_ok ad0 j t kp (size sig{hr}) hv hpos hkp hc.
+  rewrite em_get //.
+  have hd := digit_range m0 (size sig{hr}) hc.
+  have -> : SP.FSSLXMTWES.WTWES.cf ps0 (SP.FSSLXMTWES.WTWES.set_chidx ad0 (size sig{hr})) 0
+              (nth 0 (wots_digits P (enc m0)) (size sig{hr}))
+              (SP.DigestBlock.val (nth witness (SP.FSSLXMTWES.WTWES.DBLL.val skWOTS{hr}) (size sig{hr})))
+            = dec (wsig_elem (NBytes.val ss0) (NBytes.val ps0) j t kp (enc m0) (size sig{hr})).
+  + apply dec_inj_enc.
+    rewrite (enc_cf _ _ j t kp (size sig{hr}) 0 (nth 0 (wots_digits P (enc m0)) (size sig{hr}))
+               _ hca hpos hkp hc _ _ _ (size_val _)); 1..3: smt().
+    by rewrite hsk /wsk nth_mkseq //= enc_val_dec ?size_wots_sk.
+  smt().
+wp; call (gen_skWOTS_ph ss0 ps0 ad0 j t kp hv hpos hkp); auto => /> sk hsk; split.
++ by rewrite mkseq0 /=; smt(SP_len len_n n_bounds).
+move=> sg; split; first smt().
+move=> hnot h1 h2 _; have hs : size sg = len P.
++ have h3 : SP.len <= size sg by rewrite lerNgt.
+  by rewrite -SP_len; apply ler_anti; rewrite h2 h3.
+rewrite SP.FSSLXMTWES.WTWES.DBLL.insubdK; first by rewrite SP_len.
+by rewrite h1 hs.
+qed.
+
+op wpkv_elem (ps : bytes) (j t kp : int) (m : bytes) (sig : SP.dgstblock list) (c : int) : bytes =
+  chain_from P ps j t 0 kp c (enc (nth witness sig c)) (range (nth 0 (wots_digits P m) c) 15).
+
+lemma pkWOTS_from_sigWOTS_ph m0 sig0 ps0 ad0 (j t kp : int) :
+  SP.HA.Adrs.val ad0 = [0; 0; kp; 0; t; j] => ht_pos j t => 0 <= kp < 2 ^ P.`hp =>
+  phoare [SP.FSSLXMTWES.WTWES.WOTS_TW_ES.pkWOTS_from_sigWOTS :
+            arg = (m0, sig0, ps0, ad0)
+            ==> SP.FSSLXMTWES.WTWES.DBLL.val res
+                = mkseq (fun c => dec (wpkv_elem (NBytes.val ps0) j t kp (enc m0)
+                                                 (SP.FSSLXMTWES.WTWES.DBLL.val sig0) c))
+                        (len P)] = 1%r.
+proof.
+move=> hv hpos hkp; proc.
+while (pkWOTS = mkseq (fun c => dec (wpkv_elem (NBytes.val ps0) j t kp (enc m0)
+                                               (SP.FSSLXMTWES.WTWES.DBLL.val sig0) c)) (size pkWOTS)
+       /\ size pkWOTS <= SP.len /\ ps = ps0 /\ ad = ad0 /\ sig = sig0
+       /\ em = SP.FSSLXMTWES.WTWES.encode_msgWOTS m0) (SP.len - size pkWOTS).
++ move=> z; auto => /> &hr h1 h2 h3.
+  rewrite size_rcons {1}h1 (mkseqS _ (size pkWOTS{hr})) 1:size_ge0 /=.
+  have hc : 0 <= size pkWOTS{hr} < len P by split; [apply size_ge0 | move=> _; rewrite -SP_len].
+  have hca := chain_ok ad0 j t kp (size pkWOTS{hr}) hv hpos hkp hc.
+  rewrite em_get //.
+  have hd := digit_range m0 (size pkWOTS{hr}) hc.
+  pose dc := nth 0 (wots_digits P (enc m0)) (size pkWOTS{hr}).
+  have -> : SP.FSSLXMTWES.WTWES.cf ps0 (SP.FSSLXMTWES.WTWES.set_chidx ad0 (size pkWOTS{hr})) dc
+              (SP.w - 1 - dc)
+              (SP.DigestBlock.val (nth witness (SP.FSSLXMTWES.WTWES.DBLL.val sig0) (size pkWOTS{hr})))
+            = dec (wpkv_elem (NBytes.val ps0) j t kp (enc m0) (SP.FSSLXMTWES.WTWES.DBLL.val sig0)
+                             (size pkWOTS{hr})).
+  + apply dec_inj_enc.
+    have hw : SP.w - 1 - dc = 15 - dc by rewrite w_16.
+    rewrite (enc_cf _ _ j t kp (size pkWOTS{hr}) dc (SP.w - 1 - dc)
+               _ hca hpos hkp hc _ _ _ (size_val _)); 1..3: smt().
+    have -> : dc + (SP.w - 1 - dc) = 15 by rewrite hw; ring.
+    by rewrite /wpkv_elem -/dc.
+  smt().
+auto => />; split.
++ by rewrite mkseq0 /=; smt(SP_len len_n n_bounds).
+move=> pk; split; first smt().
+move=> hnot h1 h2; have hs : size pk = len P.
++ have h3 : SP.len <= size pk by rewrite lerNgt.
+  by rewrite -SP_len; apply ler_anti; rewrite h2 h3.
+rewrite SP.FSSLXMTWES.WTWES.DBLL.insubdK; first by rewrite SP_len.
+by rewrite h1 hs.
+qed.
+
+(* The same statements with the shape of the address in the precondition,
+   for use inside loops whose indices are program values. *)
+pred wots_ok (ad : SP.adrs) (j t kp : int) =
+  SP.HA.Adrs.val ad = [0; 0; kp; 0; t; j] /\ ht_pos j t /\ 0 <= kp < 2 ^ P.`hp.
+
+lemma gen_skWOTS_pre ss0 ps0 ad0 (j t kp : int) :
+  phoare [SP.FSSLXMTWES.WTWES.WOTS_TW_ES.gen_skWOTS :
+            arg = (ss0, ps0, ad0) /\ wots_ok ad0 j t kp
+            ==> SP.FSSLXMTWES.WTWES.DBLL.val res = wsk ss0 ps0 j t kp] = 1%r.
+proof.
+case: (wots_ok ad0 j t kp) => [[hv [hpos hkp]] | hn].
++ by conseq (gen_skWOTS_ph ss0 ps0 ad0 j t kp hv hpos hkp) => /#.
+by exfalso; move=> &hr.
+qed.
+
+lemma pkWOTS_from_skWOTS_pre ps0 ad0 ss (j t kp : int) :
+  phoare [SP.FSSLXMTWES.WTWES.WOTS_TW_ES.pkWOTS_from_skWOTS :
+            ps = ps0 /\ ad = ad0 /\ wots_ok ad0 j t kp
+            /\ SP.FSSLXMTWES.WTWES.DBLL.val skWOTS = wsk ss ps0 j t kp
+            ==> SP.FSSLXMTWES.WTWES.DBLL.val res
+                = mkseq (fun c => dec (wpk_elem (NBytes.val ss) (NBytes.val ps0) j t kp c)) (len P)] = 1%r.
+proof.
+case: (wots_ok ad0 j t kp) => [[hv [hpos hkp]] | hn].
++ by conseq (pkWOTS_from_skWOTS_ph ps0 ad0 ss j t kp hv hpos hkp) => /#.
+by exfalso; move=> &hr.
+qed.
+
+lemma WOTS_sign_pre ss0 ps0 ad0 m0 (j t kp : int) :
+  phoare [SP.FSSLXMTWES.WTWES.WOTS_TW_ES.sign :
+            arg = ((ss0, ps0, ad0), m0) /\ wots_ok ad0 j t kp
+            ==> SP.FSSLXMTWES.WTWES.DBLL.val res
+                = mkseq (fun c => dec (wsig_elem (NBytes.val ss0) (NBytes.val ps0) j t kp (enc m0) c))
+                        (len P)] = 1%r.
+proof.
+case: (wots_ok ad0 j t kp) => [[hv [hpos hkp]] | hn].
++ by conseq (WOTS_sign_ph ss0 ps0 ad0 m0 j t kp hv hpos hkp) => /#.
+by exfalso; move=> &hr.
+qed.
+
+lemma pkWOTS_from_sigWOTS_pre m0 sig0 ps0 ad0 (j t kp : int) :
+  phoare [SP.FSSLXMTWES.WTWES.WOTS_TW_ES.pkWOTS_from_sigWOTS :
+            arg = (m0, sig0, ps0, ad0) /\ wots_ok ad0 j t kp
+            ==> SP.FSSLXMTWES.WTWES.DBLL.val res
+                = mkseq (fun c => dec (wpkv_elem (NBytes.val ps0) j t kp (enc m0)
+                                                 (SP.FSSLXMTWES.WTWES.DBLL.val sig0) c))
+                        (len P)] = 1%r.
+proof.
+case: (wots_ok ad0 j t kp) => [[hv [hpos hkp]] | hn].
++ by conseq (pkWOTS_from_sigWOTS_ph m0 sig0 ps0 ad0 j t kp hv hpos hkp) => /#.
+by exfalso; move=> &hr.
+qed.
+
+(* ------------------------------------------------------------------ *)
+(* XMSS trees                                                         *)
+
+lemma hp_ge1 : 1 <= P.`hp by have [#] := P_facts.
+lemma d_ge1 : 1 <= P.`d by have [#] := P_facts.
+
+lemma lp_eq : SP.l' = 2 ^ P.`hp by done.
+
+lemma wots_pkGen_leaf ss ps (j t i : int) (pk : SP.dgstblock list) :
+  0 <= i < 2 ^ P.`hp =>
+  pk = mkseq (fun c => dec (wpk_elem ss ps j t i c)) (len P) =>
+  T_l P ps (mk_adrs j t WOTS_PK i 0 0) (flatten (map enc pk)) = xmss_leaf P ss ps j t i.
+proof.
+move=> hi ->; rewrite /xmss_leaf wots_pkGenE.
++ split; first smt(). move=> _; apply (ltr_le_trans (2 ^ P.`hp)); first smt().
+  by apply ler_weexpn2l => //; smt(P_facts).
+congr; congr; rewrite /mkseq -map_comp; apply eq_in_map => c hc /=.
+rewrite /(\o) enc_dec; first by rewrite /wpk_elem; apply size_chain_fromP; apply size_wots_sk.
+by rewrite /wpk_elem; have [#] _ _ -> := P_facts.
+qed.
+
+
+lemma wots_ok_kp ad (j t i : int) :
+  SP.HA.Adrs.val ad = [0; 0; 0; 0; t; j] => ht_pos j t => 0 <= i < 2 ^ P.`hp =>
+  wots_ok (SP.set_kpidx (SP.set_typeidx ad 0) i) j t i.
+proof.
+move=> hv hpos hi; have [hj ht] := hpos.
+have h1 : SP.HA.Adrs.val (SP.set_typeidx ad 0) = [0; 0; 0; 0; t; j].
++ by apply (val_set_typeidx _ 0 0 0 0 t j) => //; apply valid_ch => //; smt(expr_gt0 len_n n_bounds).
+have h2 : SP.HA.Adrs.val (SP.set_kpidx (SP.set_typeidx ad 0) i) = [0; 0; i; 0; t; j].
++ by apply (val_set_kpidx _ 0 0 0 0 t j) => //; apply valid_ch => //; smt(len_n n_bounds).
+by split.
+qed.
+
+lemma pkco_ad ad (j t i : int) :
+  SP.HA.Adrs.val ad = [0; 0; 0; 0; t; j] => ht_pos j t => 0 <= i < 2 ^ P.`hp =>
+  ab (SP.set_kpidx (SP.set_typeidx ad 1) i) = mk_adrs j t WOTS_PK i 0 0.
+proof.
+move=> hv hpos hi; have [hj ht] := hpos.
+have h1 : SP.HA.Adrs.val (SP.set_typeidx ad 1) = [0; 0; 0; 1; t; j].
++ by apply (val_set_typeidx _ 0 0 0 0 t j) => //; apply valid_pkco => //; smt(expr_gt0).
+have h2 : SP.HA.Adrs.val (SP.set_kpidx (SP.set_typeidx ad 1) i) = [0; 0; i; 1; t; j].
++ by apply (val_set_kpidx _ 0 0 0 1 t j) => //; apply valid_pkco.
+by rewrite /ab h2 adrs_bytesE.
+qed.
+
+lemma leaves_ph ss0 ps0 ad0 (j t : int) :
+  SP.HA.Adrs.val ad0 = [0; 0; 0; 0; t; j] => ht_pos j t =>
+  phoare [SP.FSSLXMTWES.FL_SL_XMSS_MT_ES.leaves_from_sspsad :
+            arg = (ss0, ps0, ad0)
+            ==> res = mkseq (fun i => dec (xmss_leaf P (NBytes.val ss0) (NBytes.val ps0) j t i))
+                            (2 ^ P.`hp)] = 1%r.
+proof.
+move=> hv hpos; proc.
+while (leaves = mkseq (fun i => dec (xmss_leaf P (NBytes.val ss0) (NBytes.val ps0) j t i)) (size leaves)
+       /\ size leaves <= SP.l' /\ ss = ss0 /\ ps = ps0 /\ ad = ad0) (SP.l' - size leaves).
++ move=> z; exlim leaves => lv; wp.
+  call (pkWOTS_from_skWOTS_pre ps0 (SP.set_kpidx (SP.set_typeidx ad0 0) (size lv)) ss0 j t (size lv)).
+  call (gen_skWOTS_pre ss0 ps0 (SP.set_kpidx (SP.set_typeidx ad0 0) (size lv)) j t (size lv)).
+  auto => /> h1 h2 h3.
+  have hi : 0 <= size lv < 2 ^ P.`hp by move: h3; rewrite /SP.l'; smt(size_ge0).
+  have [hva _] := wots_ok_kp ad0 j t (size lv) hv hpos hi.
+  split; first by split => //; apply size_ge0.
+  move=> _ _ _ _ _ _ _ sk hsk pk hpk.
+  rewrite !size_rcons {1}h1 (mkseqS _ (size lv)) 1:size_ge0 /=.
+  split; [split|].
+  + congr; apply dec_inj_enc; rewrite enc_pkco (pkco_ad _ j t) // enc_flatten.
+    by apply wots_pkGen_leaf.
+  + by move: h3; rewrite /SP.l'; smt().
+  by smt().
+auto => />; split.
++ by rewrite mkseq0 /= /SP.l'; smt(expr_gt0).
+move=> lv; split; first smt().
+move=> hnot h1 h2; have hs : size lv = 2 ^ P.`hp.
++ have h3 : SP.l' <= size lv by rewrite lerNgt.
+  by rewrite -lp_eq; apply ler_anti; rewrite h2 h3.
+by rewrite h1 hs.
+qed.
+
+lemma updx_eq : SP.FSSLXMTWES.updhbidx = upd_hb.
+proof. by apply fun_ext => hb; apply fun_ext => b; rewrite /SP.FSSLXMTWES.updhbidx /upd_hb. qed.
+
+lemma updf_eq : SP.FTWES.updhbidx = upd_hb.
+proof. by apply fun_ext => hb; apply fun_ext => b; rewrite /SP.FTWES.updhbidx /upd_hb. qed.
+
+op tm (ps : nbytes) (ad : SP.adrs) (z i : int) (x y : SP.dgstblock) : SP.dgstblock =
+  SP.trh ps (SP.set_thtbidx ad z i) (SP.DigestBlock.val x ++ SP.DigestBlock.val y).
+
+lemma trhix_eq ps ad : SP.FSSLXMTWES.trhi ps ad = lift_trh (tm ps ad).
+proof.
+apply fun_ext => hb; apply fun_ext => x; apply fun_ext => y.
+by rewrite /SP.FSSLXMTWES.trhi /lift_trh /tm.
+qed.
+
+lemma trhif_eq ps ad : SP.FTWES.trhi ps ad = lift_trh (tm ps ad).
+proof.
+apply fun_ext => hb; apply fun_ext => x; apply fun_ext => y.
+by rewrite /SP.FTWES.trhi /lift_trh /tm.
+qed.
+
+lemma xmss_ad ad (j t : int) :
+  SP.HA.Adrs.val ad = [0; 0; 0; 0; t; j] => ht_pos j t =>
+  SP.HA.Adrs.val (SP.set_typeidx ad 2) = [0; 0; 0; 2; t; j].
+proof.
+move=> hv [hj ht]; apply (val_set_typeidx _ 0 0 0 0 t j) => //.
+by apply valid_trhx => //; smt(expr_gt0 hp_ge1).
+qed.
+
+lemma enc_tm_x ps ad (j t z i : int) x y :
+  SP.HA.Adrs.val ad = [0; 0; 0; 2; t; j] => ht_pos j t =>
+  1 <= z <= P.`hp => 0 <= i < 2 ^ (P.`hp - z) =>
+  enc (tm ps ad z i x y) = xmss_hash P (NBytes.val ps) j t z i (enc x) (enc y).
+proof.
+move=> hv [hj ht] hz hi; rewrite /tm enc_trh enc_cat /xmss_hash /ab.
+have h := val_set_thtbidx ad 0 0 0 2 t j z i hv _; first by apply valid_trhx => /#.
+by rewrite h adrs_bytesE.
+qed.
+
+lemma size_xmss_leafP ss ps j t i : size (xmss_leaf P ss ps j t i) = P.`n.
+proof. exact (size_xmss_leaf _ _ _ _ _ _ n_okP). qed.
+
+(* The root of the XMSS tree (j, t). *)
+lemma xmss_root_enc ss ps ad (j t : int) :
+  SP.HA.Adrs.val ad = [0; 0; 0; 0; t; j] => ht_pos j t =>
+  enc (SP.FSSLXMTWES.val_bt_trh ps (SP.set_typeidx ad 2)
+         (list2tree (mkseq (fun i => dec (xmss_leaf P (NBytes.val ss) (NBytes.val ps) j t i)) (2 ^ P.`hp))))
+  = xmss_node P (NBytes.val ss) 0 P.`hp (NBytes.val ps) (mk_adrs j t 0 0 0 0).
+proof.
+move=> hv hpos; have hx := xmss_ad ad j t hv hpos.
+rewrite /SP.FSSLXMTWES.val_bt_trh updx_eq trhix_eq.
+rewrite (_: mkseq (fun i => dec (xmss_leaf P (NBytes.val ss) (NBytes.val ps) j t i)) (2 ^ P.`hp)
+          = mkseq (fun i => dec (xmss_leaf P (NBytes.val ss) (NBytes.val ps) j t (0 * 2 ^ P.`hp + i)))
+                  (2 ^ P.`hp)).
++ by apply eq_in_mkseq.
+rewrite -(gnode_list2tree (fun i => dec (xmss_leaf P (NBytes.val ss) (NBytes.val ps) j t i))
+                          (tm ps (SP.set_typeidx ad 2)) P.`hp 0); first smt(hp_ge1).
+rewrite xmss_nodeE (gnode_hom enc _ _ (xmss_leaf P (NBytes.val ss) (NBytes.val ps) j t)
+                       (xmss_hash P (NBytes.val ps) j t) 1 P.`hp P.`hp 0) //; first smt(hp_ge1).
++ by move=> i hi /=; rewrite enc_dec // size_xmss_leafP.
+by move=> z' i' x y hz hi /=; rewrite (enc_tm_x _ _ j t) // /#.
+qed.
+
+lemma lt_ad (j t : int) : ht_pos j t =>
+  SP.HA.Adrs.val (SP.set_ltidx SP.adz j t) = [0; 0; 0; 0; t; j].
+proof.
+move=> [hj ht]; apply (val_set_ltidx _ 0 0 0 0 0 0) => //; first by apply val_adz.
+by apply valid_ch => //; smt(len_n n_bounds expr_gt0).
+qed.
+
+lemma top_pos : ht_pos (P.`d - 1) 0.
+proof.
+rewrite /ht_pos; have -> : P.`d - (P.`d - 1) - 1 = 0 by ring.
+by rewrite /= ?mulr0 ?expr0; smt(d_ge1).
+qed.
+
+lemma gen_root_ph ss0 ps0 :
+  phoare [SP.FSSLXMTWES.FL_SL_XMSS_MT_ES.gen_root :
+            arg = (ss0, ps0, SP.adz)
+            ==> enc res = xmss_node P (NBytes.val ss0) 0 P.`hp (NBytes.val ps0)
+                                    (mk_adrs (P.`d - 1) 0 0 0 0 0)] = 1%r.
+proof.
+proc; wp.
+call (leaves_ph ss0 ps0 (SP.set_ltidx SP.adz (P.`d - 1) 0) (P.`d - 1) 0 (lt_ad _ _ top_pos) top_pos).
+auto => />.
+by rewrite (xmss_root_enc _ _ _ (P.`d - 1) 0 (lt_ad _ _ top_pos) top_pos).
+qed.
+
+(* The byte string of one XMSS signature of the hypertree (Figure 11):
+   the WOTS+ signature, then the authentication path from the leaf up. *)
+op enc_layer (sa : SP.FSSLXMTWES.WTWES.sigWOTS * SP.FSSLXMTWES.apFLXMSSTW) : bytes =
+  flatten (map enc (SP.FSSLXMTWES.WTWES.DBLL.val sa.`1))
+  ++ flatten (map enc (rev (SP.FSSLXMTWES.DBHPL.val sa.`2))).
+
+op enc_ht (sig : SP.FSSLXMTWES.sigFLSLXMSSMTTW) : bytes =
+  flatten (map enc_layer (SP.FSSLXMTWES.SAPDL.val sig)).
+
+lemma wots_sign_enc ss ps (j t kp : int) m :
+  0 <= kp < 2 ^ 32 =>
+  flatten (map enc (mkseq (fun c => dec (wsig_elem ss ps j t kp m c)) (len P)))
+  = wots_sign P m ss ps (mk_adrs j t 0 kp 0 0).
+proof.
+move=> hkp; rewrite wots_signE // /mkseq -map_comp; congr; apply eq_in_map => c hc.
+by rewrite /(\o) enc_dec // /wsig_elem size_chain_fromP // size_wots_sk.
+qed.
+
+lemma hp32 : 2 ^ P.`hp <= 2 ^ 32.
+proof. by apply ler_weexpn2l => //; smt(P_facts). qed.
+
+lemma lt_hp32 (x : int) : 0 <= x < 2 ^ P.`hp => 0 <= x < 2 ^ 32.
+proof.
+move=> [h0 h1]; split => // _.
+by apply (ltr_le_trans (2 ^ P.`hp)) => //; exact hp32.
+qed.
+
+lemma xmss_layer_enc ss ps (m : SP.dgstblock) (j t kp : int) sw ap :
+  ht_pos j t => 0 <= kp < 2 ^ P.`hp =>
+  SP.FSSLXMTWES.WTWES.DBLL.val sw
+    = mkseq (fun c => dec (wsig_elem (NBytes.val ss) (NBytes.val ps) j t kp (enc m) c)) (len P) =>
+  ap = SP.FSSLXMTWES.cons_ap_trh ps (SP.set_typeidx (SP.set_ltidx SP.adz j t) 2)
+         (list2tree (mkseq (fun i => dec (xmss_leaf P (NBytes.val ss) (NBytes.val ps) j t i)) (2 ^ P.`hp)))
+         kp =>
+  enc_layer (sw, ap) = xmss_sign P (enc m) (NBytes.val ss) kp (NBytes.val ps) (mk_adrs j t 0 0 0 0).
+proof.
+move=> hpos hkp hsw ->.
+have hkp32 : 0 <= kp < 2 ^ 32 by apply lt_hp32.
+have hA := xmss_ad _ j t (lt_ad j t hpos) hpos.
+rewrite /enc_layer /= hsw wots_sign_enc // xmss_signE //; congr; first by rewrite /WOTS_HASH.
+rewrite /SP.FSSLXMTWES.cons_ap_trh /SP.FSSLXMTWES.cons_ap_trh_gen updx_eq trhix_eq.
+have h0 : kp %/ 2 ^ P.`hp = 0 by rewrite divz_small // ger0_norm 1:expr_ge0.
+have hc := gnode_cons_ap (fun i => dec (xmss_leaf P (NBytes.val ss) (NBytes.val ps) j t i))
+             (tm ps (SP.set_typeidx (SP.set_ltidx SP.adz j t) 2)) P.`hp kp _ _; 1,2: smt(hp_ge1).
+move: hc; rewrite h0 /= => hc; rewrite hc.
+rewrite SP.FSSLXMTWES.DBHPL.insubdK.
++ by rewrite size_rev size_map size_range; smt(hp_ge1).
+rewrite revK -map_comp; congr; apply eq_in_map => j' /mem_range hj' /=.
+rewrite /(\o) (gnode_hom enc _ _ (xmss_leaf P (NBytes.val ss) (NBytes.val ps) j t)
+                 (xmss_hash P (NBytes.val ps) j t) 1 P.`hp j') //; 1: smt().
++ by rewrite /= (sibling_pow_lt kp P.`hp j').
++ by move=> i hi /=; rewrite enc_dec // size_xmss_leafP.
+by move=> z' i' x y hz hi /=; rewrite (enc_tm_x _ _ j t) // /#.
+qed.

@@ -179,3 +179,60 @@ case: ((g %/ 2 ^ m) %% 2 = 0) => hb /=.
 have hb1 : (g %/ 2 ^ m) %% 2 = 1 by smt(modz_ge0 ltz_pmod).
 by move: hB; rewrite hb1 /= => hB; rewrite /gsibling hb /= -hB /#.
 qed.
+
+(* ------------------------------------------------------------------ *)
+(* Mapping the values of a tree                                       *)
+
+(* A map that commutes with the leaves and with the node hash of every
+   node of a forest of B trees of height H commutes with gnode. *)
+lemma gnode_hom ['a 'b] (f : 'a -> 'b) (L : int -> 'a) (T : int -> int -> 'a -> 'a -> 'a)
+                (L' : int -> 'b) (T' : int -> int -> 'b -> 'b -> 'b) (B H z i : int) :
+  0 <= z <= H => 0 <= i < B * 2 ^ (H - z) =>
+  (forall i, 0 <= i < B * 2 ^ H => f (L i) = L' i) =>
+  (forall z' i' x y, 1 <= z' <= H => 0 <= i' < B * 2 ^ (H - z') =>
+     f (T z' i' x y) = T' z' i' (f x) (f y)) =>
+  f (gnode L T (hts z) i) = gnode L' T' (hts z) i.
+proof.
+move=> [hz hzH]; elim: z hz hzH i => [|z hz ih] hzH i hi hL hT.
++ by rewrite hts0 /= hL.
+rewrite htsS //= hT 1:/# //.
+have h2 : 2 ^ (H - z) = 2 * 2 ^ (H - (z + 1)) by rewrite -exprS 1:/#; congr; ring.
+by rewrite !ih // 1,2:/#; smt(expr_gt0).
+qed.
+
+lemma gfold_hom ['a 'b] (f : 'a -> 'b) (T : int -> int -> 'a -> 'a -> 'a)
+                (T' : int -> int -> 'b -> 'b -> 'b) (auth : int -> 'a) (g : int) (leaf : 'a) (m : int) :
+  0 <= m =>
+  (forall k x y, 0 <= k < m =>
+     f (T (k + 1) (g %/ 2 ^ (k + 1)) x y) = T' (k + 1) (g %/ 2 ^ (k + 1)) (f x) (f y)) =>
+  f (gfold T auth g leaf m) = gfold T' (fun k => f (auth k)) g (f leaf) m.
+proof.
+elim: m => [|m hm ih] hT; first by rewrite /gfold !range_geq.
+rewrite !gfoldS //= -ih => [k x y hk|]; first by apply hT => /#.
+by case: (g %/ 2 ^ m %% 2 = 0) => _; rewrite hT 1:/#.
+qed.
+
+(* ------------------------------------------------------------------ *)
+(* Index ranges                                                       *)
+
+lemma div_pow_lt (x a b : int) :
+  0 <= b <= a => 0 <= x < 2 ^ a => 0 <= x %/ 2 ^ b < 2 ^ (a - b).
+proof.
+move=> hb hx; split; first by apply divz_ge0; [apply expr_gt0 | smt()].
+move=> _; rewrite ltz_divLR 1:expr_gt0 // -exprD_nneg 1,2:/#.
+have -> : a - b + b = a by ring.
+by case: hx.
+qed.
+
+lemma gsibling_range (x N : int) : 0 <= x < 2 * N => 0 <= gsibling x < 2 * N.
+proof. by rewrite /gsibling; smt(divz_eq modz_ge0 ltz_pmod). qed.
+
+lemma sibling_pow_lt (x a b : int) :
+  0 <= b < a => 0 <= x < 2 ^ a => 0 <= gsibling (x %/ 2 ^ b) < 2 ^ (a - b).
+proof.
+move=> hb hx; rewrite (_: 2 ^ (a - b) = 2 * 2 ^ (a - b - 1)).
++ by rewrite -exprS 1:/#; congr; ring.
+apply gsibling_range; rewrite -exprS 1:/#.
+have -> : a - b - 1 + 1 = a - b by ring.
+by apply div_pow_lt => /#.
+qed.
