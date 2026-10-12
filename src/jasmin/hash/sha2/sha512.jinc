@@ -1,0 +1,359 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha512.jinc
+ * ===========
+ *
+ * SHA-512, SHA-384, SHA-512/224 and SHA-512/256 (FIPS 180-4 sections 5 and
+ * 6.4-6.7): one compression function and buffering, four initial values,
+ * and truncation of the 64-byte output.
+ *
+ * Representation:
+ *
+ *     h      u64[8], H_0 .. H_7 as native words
+ *     buf    u8[128], the first (total mod 128) bytes are pending input
+ *     total  bytes absorbed so far, compressed or pending
+ *
+ * The layout and the absorb and finalize logic are those of sha256.jinc
+ * with 128-byte blocks; the differences are the 128-bit length field and
+ * the big-endian u64 output words. The compression function comes from
+ * the Sha2Kernel root (sha512_compress.jinc).
+ *
+ * Security: message, chaining value and digest are secret. Every branch,
+ * loop bound and address depends only on total, lengths, pointers and
+ * compile-time indices.
+ */
+
+from HashWord require "word.jinc"
+from Sha2Kernel require "sha512_compress.jinc"
+
+/*
+ * Initial hash values (FIPS 180-4 section 5.3).
+ *
+ *     SHA-512      5.3.5    first 64 bits of the fractional parts of the
+ *                           square roots of the first eight primes
+ *     SHA-384      5.3.4    the same for the ninth to sixteenth primes
+ *     SHA-512/t    5.3.6    SHA-512 of the string "SHA-512/t" under the
+ *                           SHA-512 IV XORed with 0xa5a5a5a5a5a5a5a5
+ *
+ * tests/hash/tools/check_constants.py regenerates all four.
+ */
+u64[8] SHA512_IV = {
+  0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
+  0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179
+};
+
+u64[8] SHA384_IV = {
+  0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939,
+  0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4
+};
+
+u64[8] SHA512_224_IV = {
+  0x8c3d37c819544da2, 0x73e1996689dcd4d6, 0x1dfab7ae32ff9c82, 0x679dd514582f9fcf,
+  0x0f6d2b697bd44da8, 0x77e36f7304c48942, 0x3f9d85a86a1d36c8, 0x1112e6ad91d692a1
+};
+
+u64[8] SHA512_256_IV = {
+  0x22312194fc2bf72c, 0x9f555fa3c84c64c2, 0x2393b86b6f53b151, 0x963877195940eabd,
+  0x96283ee2a88effe3, 0xbe5e1e2553863992, 0x2b0199fc2c85b8aa, 0x0eb72ddc81c52ca2
+};
+
+inline fn __sha512_load_iv(reg mut ptr u64[8] h, reg const ptr u64[8] iv) -> reg ptr u64[8]
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to 8 {
+    t = iv[i];
+    h[i] = t;
+  }
+  return h;
+}
+
+inline fn __sha512_init(reg mut ptr u64[8] h) -> reg ptr u64[8]
+{
+  h = __sha512_load_iv(h, SHA512_IV);
+  return h;
+}
+
+inline fn __sha384_init(reg mut ptr u64[8] h) -> reg ptr u64[8]
+{
+  h = __sha512_load_iv(h, SHA384_IV);
+  return h;
+}
+
+inline fn __sha512_224_init(reg mut ptr u64[8] h) -> reg ptr u64[8]
+{
+  h = __sha512_load_iv(h, SHA512_224_IV);
+  return h;
+}
+
+inline fn __sha512_256_init(reg mut ptr u64[8] h) -> reg ptr u64[8]
+{
+  h = __sha512_load_iv(h, SHA512_256_IV);
+  return h;
+}
+
+/*
+ * Append inlen bytes from memory at in; the structure is that of
+ * _sha256_absorb_mem with 128-byte blocks. Afterwards total has grown by
+ * inlen and buf holds total mod 128 bytes.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         public × public × public ×
+         msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × public × msf"]
+fn _sha512_absorb_mem(
+  reg mut ptr u64[8] h,
+  reg mut ptr u8[128] buf,
+  reg u64 total in inlen,
+  reg u64 ms
+) -> reg ptr u64[8], reg ptr u8[128], reg u64, reg u64
+{
+  reg u64 fill n end t;
+  reg bool more full;
+
+  fill = total;
+  fill &= 127;
+  total += inlen;
+
+  /* Complete a partly filled block. */
+
+  n = 128;
+  n -= fill;
+  n = inlen < n ? inlen : n;
+  n = fill == 0 ? fill : n;
+  inlen -= n;
+
+  end = fill;
+  end += n;
+  while { more = fill < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)[:u8 in];
+    buf[fill] = (8u)t;
+    fill += 1;
+    in += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  full = fill == 128;
+  if (full) {
+    ms = #update_msf(full, ms);
+    /*
+     * Values needed after a compression call cross it through the stack. A
+     * reloaded value is only transient under the speculative model, so it
+     * is protected before it is used as an address, bound or length again.
+     */
+    () = #spill(total, in, inlen, buf);
+    h, ms = _sha512_compress(h, buf, ms);
+    () = #unspill(total, in, inlen, buf);
+    total = #protect(total, ms);
+    in = #protect(in, ms);
+    inlen = #protect(inlen, ms);
+    buf = #protect_ptr(buf, ms);
+  } else {
+    ms = #update_msf(!full, ms);
+  }
+
+  /*
+   * Whole blocks from memory. Either fill was 0 on entry, or the block
+   * above completed, or inlen is now 0; in all three cases buf has no
+   * pending bytes when this loop runs.
+   */
+
+  while { more = inlen >= 128; } (more) {
+    ms = #update_msf(more, ms);
+    () = #spill(total, in, inlen, buf);
+    h, ms = _sha512_compress_ptr(h, in, ms);
+    () = #unspill(total, in, inlen, buf);
+    total = #protect(total, ms);
+    in = #protect(in, ms);
+    inlen = #protect(inlen, ms);
+    buf = #protect_ptr(buf, ms);
+    in += 128;
+    inlen -= 128;
+  }
+  ms = #update_msf(!more, ms);
+
+  /* Keep the remainder; buf is empty at this point when inlen > 0. */
+
+  fill = 0;
+  while { more = fill < inlen; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)[:u8 in];
+    buf[fill] = (8u)t;
+    fill += 1;
+    in += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return h, buf, total, ms;
+}
+
+/*
+ * Padding and output (FIPS 180-4 sections 5.1.2 and 6.4.2).
+ *
+ * The padded tail is the pending bytes, 0x80, zeros, and the 128-bit
+ * big-endian bit length 8 * total, whose high half is total >> 61 and low
+ * half total << 3. When the pending bytes and 0x80 leave fewer than 16
+ * bytes in the block (fill > 112), the length goes into an extra block.
+ *
+ * out receives H_0 .. H_7 big-endian, all 64 bytes, for every variant.
+ * Truncated variants use a prefix: SHA-384 48 bytes, SHA-512/256 32,
+ * SHA-512/224 28; the remaining bytes of out are the rest of the final
+ * chaining value and must not be published as part of the digest. h and
+ * buf keep final-state data afterwards and need re-initialisation before
+ * reuse.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × public × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × msf"]
+fn _sha512_finalize(
+  reg mut ptr u8[64] out,
+  reg mut ptr u64[8] h,
+  reg mut ptr u8[128] buf,
+  reg u64 total,
+  reg u64 ms
+) -> reg ptr u8[64], reg ptr u64[8], reg ptr u8[128], reg u64
+{
+  reg u64 fill z t x;
+  reg bool more two_blocks;
+  inline int i;
+
+  fill = total;
+  fill &= 127;
+  z = 0;
+
+  t = 0x80;
+  buf[fill] = (8u)t;
+  fill += 1;
+
+  two_blocks = fill > 112;
+  if (two_blocks) {
+    ms = #update_msf(two_blocks, ms);
+    while { more = fill < 128; } (more) {
+      ms = #update_msf(more, ms);
+      buf[fill] = (8u)z;
+      fill += 1;
+    }
+    ms = #update_msf(!more, ms);
+
+    () = #spill(out, buf, total);
+    h, ms = _sha512_compress(h, buf, ms);
+    () = #unspill(out, buf, total);
+    out = #protect_ptr(out, ms);
+    buf = #protect_ptr(buf, ms);
+    total = #protect(total, ms);
+    fill = 0;
+    z = 0;
+  } else {
+    ms = #update_msf(!two_blocks, ms);
+  }
+
+  while { more = fill < 112; } (more) {
+    ms = #update_msf(more, ms);
+    buf[fill] = (8u)z;
+    fill += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  t = total;
+  t >>= 61;
+  t = __bswap64(t);
+  buf.[:u64 112] = t;
+  t = total;
+  t <<= 3;
+  t = __bswap64(t);
+  buf.[:u64 120] = t;
+
+  () = #spill(out, buf);
+  h, ms = _sha512_compress(h, buf, ms);
+  () = #unspill(out, buf);
+  out = #protect_ptr(out, ms);
+  buf = #protect_ptr(buf, ms);
+
+  for i = 0 to 8 {
+    x = h[i];
+    x = __bswap64(x);
+    out[:u64 i] = x;
+  }
+
+  return out, h, buf, ms;
+}
+
+inline fn __sha512_mem_from(
+  reg mut ptr u8[64] out,
+  reg mut ptr u64[8] h,
+  reg u64 in inlen,
+  reg u64 ms
+) -> reg ptr u8[64], reg u64
+{
+  stack u8[128] buf_s;
+  reg ptr u8[128] buf;
+  reg u64 total;
+
+  buf = buf_s;
+  total = 0;
+  /*
+   * out is live across the absorb call and crosses it through the stack;
+   * it comes back transient, so it is protected before use as an output
+   * address.
+   */
+  () = #spill(out);
+  h, buf, total, ms = _sha512_absorb_mem(h, buf, total, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect_ptr(out, ms);
+  out, h, buf, ms = _sha512_finalize(out, h, buf, total, ms);
+
+  return out, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha512_mem(reg mut ptr u8[64] out, reg u64 in inlen, reg u64 ms) -> reg ptr u8[64], reg u64
+{
+  stack u64[8] h;
+
+  h = __sha512_init(h);
+  out, ms = __sha512_mem_from(out, h, in, inlen, ms);
+
+  return out, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha384_mem(reg mut ptr u8[64] out, reg u64 in inlen, reg u64 ms) -> reg ptr u8[64], reg u64
+{
+  stack u64[8] h;
+
+  h = __sha384_init(h);
+  out, ms = __sha512_mem_from(out, h, in, inlen, ms);
+
+  return out, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha512_224_mem(reg mut ptr u8[64] out, reg u64 in inlen, reg u64 ms) -> reg ptr u8[64], reg u64
+{
+  stack u64[8] h;
+
+  h = __sha512_224_init(h);
+  out, ms = __sha512_mem_from(out, h, in, inlen, ms);
+
+  return out, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha512_256_mem(reg mut ptr u8[64] out, reg u64 in inlen, reg u64 ms) -> reg ptr u8[64], reg u64
+{
+  stack u64[8] h;
+
+  h = __sha512_256_init(h);
+  out, ms = __sha512_mem_from(out, h, in, inlen, ms);
+
+  return out, ms;
+}

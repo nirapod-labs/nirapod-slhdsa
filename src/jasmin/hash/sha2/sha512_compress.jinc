@@ -1,0 +1,228 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha512_compress.jinc
+ * ====================
+ *
+ * The SHA-512 compression function (FIPS 180-4 section 6.4.2, steps 1 to
+ * 4), portable scalar kernel shared by SHA-384, SHA-512, SHA-512/224 and
+ * SHA-512/256, reached through the Sha2Kernel include root. Its two entry
+ * points are the kernel contract; kernel variants listed as planned in
+ * src/jasmin/hash/README.md are to provide the same two:
+ *
+ *     _sha512_compress(h, block)    one block from a byte array
+ *     _sha512_compress_ptr(h, p)    one block from caller memory
+ *
+ * Both compute h <- compress(h, M) for the 128-byte block M, with h the
+ * chaining value H_0 .. H_7 as native u64 words and M read big-endian
+ * (section 3.1) through __bswap64 of the HashWord root.
+ *
+ * The structure is that of sha256_compress.jinc with 64-bit words, 80
+ * rounds and the section 4.1.3 rotation amounts; the comments there on
+ * slot rotation and the Ch and Maj forms apply unchanged.
+ *
+ * Security: h and M are secret. The rounds are straight-line code; every
+ * address is fixed at compile time or is the public block pointer. The
+ * misspeculation flag ms is passed through unchanged: the kernel has no
+ * branch, and taking ms as an argument keeps it in a register the kernel
+ * does not clobber, since a flag cannot be spilled and reloaded.
+ *
+ * Residue: the local schedule window holds W_64 .. W_79 of the last block
+ * on return, uncleared here; clearing is an obligation of the export.
+ */
+
+from HashWord require "word.jinc"
+from Hash require "sha2/sha512_k.jinc"
+
+
+/* FIPS 180-4 section 4.1.3, functions (4.10) to (4.13). */
+
+inline fn __Sigma0_512(reg u64 x) -> reg u64
+{
+  reg u64 r t;
+
+  r = x;
+  r >>r= 28;
+  t = x;
+  t >>r= 34;
+  r ^= t;
+  t = x;
+  t >>r= 39;
+  r ^= t;
+  return r;
+}
+
+inline fn __Sigma1_512(reg u64 x) -> reg u64
+{
+  reg u64 r t;
+
+  r = x;
+  r >>r= 14;
+  t = x;
+  t >>r= 18;
+  r ^= t;
+  t = x;
+  t >>r= 41;
+  r ^= t;
+  return r;
+}
+
+inline fn __sigma0_512(reg u64 x) -> reg u64
+{
+  reg u64 r t;
+
+  r = x;
+  r >>r= 1;
+  t = x;
+  t >>r= 8;
+  r ^= t;
+  t = x;
+  t >>= 7;
+  r ^= t;
+  return r;
+}
+
+inline fn __sigma1_512(reg u64 x) -> reg u64
+{
+  reg u64 r t;
+
+  r = x;
+  r >>r= 19;
+  t = x;
+  t >>r= 61;
+  r ^= t;
+  t = x;
+  t >>= 6;
+  r ^= t;
+  return r;
+}
+
+/*
+ * The 80 rounds of section 6.4.2, steps 2 to 4, on W_0 .. W_15 in w.
+ * Variable k (a = 0 .. h = 7) of round t is v[(k - t) mod 8]; see
+ * __sha256_rounds for the slot rotation and the schedule window.
+ */
+inline fn __sha512_rounds(reg mut ptr u64[8] h, stack u64[16] w) -> reg ptr u64[8]
+{
+  reg u64[8] v;
+  reg ptr u64[80] k;
+  reg u64 t1 x y;
+  inline int t i;
+
+  for i = 0 to 8 {
+    v[i] = h[i];
+  }
+
+  for t = 0 to 80 {
+    #[inline]
+    if (t >= 16) {
+      x = w[(t - 2) % 16];
+      t1 = __sigma1_512(x);
+      x = w[(t - 15) % 16];
+      x = __sigma0_512(x);
+      t1 += x;
+      x = w[(t - 7) % 16];
+      t1 += x;
+      x = w[t % 16];
+      t1 += x;
+      w[t % 16] = t1;
+    } else {
+      t1 = w[t];
+    }
+
+    /* T1 = h + Σ1(e) + Ch(e, f, g) + K_t + W_t */
+
+    t1 += v[(7 + 80 - t) % 8];
+    x = __Sigma1_512(v[(4 + 80 - t) % 8]);
+    t1 += x;
+    x = v[(5 + 80 - t) % 8];
+    x ^= v[(6 + 80 - t) % 8];
+    x &= v[(4 + 80 - t) % 8];
+    x ^= v[(6 + 80 - t) % 8];
+    t1 += x;
+    k = SHA512_K;
+    x = k[t];
+    t1 += x;
+
+    /* e' = d + T1 */
+
+    v[(3 + 80 - t) % 8] += t1;
+
+    /* a' = T1 + T2, T2 = Σ0(a) + Maj(a, b, c) */
+
+    x = __Sigma0_512(v[(0 + 80 - t) % 8]);
+    t1 += x;
+    x = v[(0 + 80 - t) % 8];
+    x ^= v[(1 + 80 - t) % 8];
+    x &= v[(2 + 80 - t) % 8];
+    y = v[(0 + 80 - t) % 8];
+    y &= v[(1 + 80 - t) % 8];
+    x ^= y;
+    t1 += x;
+    v[(7 + 80 - t) % 8] = t1;
+  }
+
+  /*
+   * Step 4: H_i += working variable i. After 80 rounds, a multiple of 8,
+   * every role is back in its original slot.
+   */
+
+  for i = 0 to 8 {
+    x = h[i];
+    x += v[i];
+    h[i] = x;
+  }
+
+  return h;
+}
+
+/*
+ * h <- compress(h, block): FIPS 180-4 section 6.4.2 on one 128-byte block.
+ * The block is read only, and completely, before h is first written.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha512_compress(
+  reg mut ptr u64[8] h,
+  reg const ptr u8[128] block,
+  reg u64 ms
+) -> reg ptr u64[8], reg u64
+{
+  stack u64[16] w;
+  reg u64 x;
+  inline int i;
+
+  for i = 0 to 16 {
+    x = block[:u64 i];
+    x = __bswap64(x);
+    w[i] = x;
+  }
+
+  h = __sha512_rounds(h, w);
+
+  return h, ms;
+}
+
+/*
+ * The same compression on the 128 bytes of caller memory at p: readable,
+ * no alignment required, contents secret like block.
+ */
+#[sct = "{ ptr: public, val: secret } × public × msf → { ptr: public, val: secret } × msf"]
+fn _sha512_compress_ptr(reg mut ptr u64[8] h, reg u64 p, reg u64 ms) -> reg ptr u64[8], reg u64
+{
+  stack u64[16] w;
+  reg u64 x;
+  inline int i;
+
+  for i = 0 to 16 {
+    x = [:u64 p + 8 * i];
+    x = __bswap64(x);
+    w[i] = x;
+  }
+
+  h = __sha512_rounds(h, w);
+
+  return h, ms;
+}
+
