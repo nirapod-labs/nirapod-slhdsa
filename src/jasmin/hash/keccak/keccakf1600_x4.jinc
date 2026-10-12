@@ -1,0 +1,61 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * keccakf1600_x4.jinc
+ * ===================
+ *
+ * Four independent Keccak-f[1600] permutations, portable scalar kernel.
+ * This is the 4-way entry point of the `scalar` variant behind the
+ * KeccakKernelX include root:
+ *
+ *     _keccakf1600_x4(st, ms)
+ *
+ * State layout (the multi-way layout of README.md):
+ *
+ *     u64[100], lane j (= x + 5y) of instance k at index 4j + k
+ *
+ * so the four copies of one lane are adjacent, the layout in which one
+ * 256-bit register holds that lane of every instance.
+ *
+ * Method: each instance is gathered into a 25-lane state, permuted by
+ * _keccakf1600, and scattered back. The result is exactly four single-way
+ * permutations. The gather and scatter cost 50 loads and 50 stores per
+ * instance; this path exists so that callers written against the 4-way
+ * interface run on targets without a vector kernel.
+ *
+ * Security: as _keccakf1600; all lanes may be secret, every address is
+ * fixed at compile time. Residue: the local single-instance state holds
+ * instance 3 after its permutation; clearing is the export's obligation.
+ */
+
+from KeccakKernel require "keccakf1600.jinc"
+
+#[sct = "{ ptr: public, val: secret } × msf → { ptr: public, val: secret } × msf"]
+fn _keccakf1600_x4(reg mut ptr u64[100] st, reg u64 ms) -> reg ptr u64[100], reg u64
+{
+  stack u64[25] one;
+  reg u64 t;
+  inline int j k;
+
+  for k = 0 to 4 {
+    for j = 0 to 25 {
+      t = st[4 * j + k];
+      one[j] = t;
+    }
+
+    /* st crosses the call through the stack and is protected on reload. */
+
+    () = #spill(st);
+    one, ms = _keccakf1600(one, ms);
+    () = #unspill(st);
+    st = #protect_ptr(st, ms);
+
+    for j = 0 to 25 {
+      t = one[j];
+      st[4 * j + k] = t;
+    }
+  }
+
+  return st, ms;
+}

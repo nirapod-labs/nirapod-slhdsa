@@ -1,0 +1,348 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sponge_x4_array.jinc
+ * ====================
+ *
+ * Absorb four byte arrays into, and squeeze four byte arrays from, the
+ * 4-way sponge of sponge_x4.jinc, one array per instance, all of the
+ * length HASH_ARRAY_LEN fixed by the enclosing namespace. sponge_x4.jinc
+ * must be required at top level first.
+ *
+ * Contracts are those of _keccak_absorb_array and _keccak_squeeze_array
+ * applied to each instance with the shared pos and rate.
+ *
+ * Instance k's byte b sits at state byte 32 (b / 8) + 8k + b mod 8, so a
+ * lane-aligned run of input moves as u64 words to st[4 (b / 8) + k]; only
+ * the unaligned head and tail go byte by byte, as in sponge_array.jinc.
+ */
+
+/*
+ * XOR n bytes of in_k from offset off into instance k from state byte pos;
+ * returns pos + n and off + n. pos and off are advanced in place rather
+ * than copied: with four input pointers live, x86-64 has no register for
+ * the copies.
+ */
+inline fn __keccak_x4_xor_array(
+  reg mut ptr u64[100] st,
+  reg u64 pos,
+  reg const ptr u8[HASH_ARRAY_LEN] in0 in1 in2 in3,
+  reg u64 off n,
+  reg u64 ms
+) -> reg ptr u64[100], reg u64, reg u64, reg u64
+{
+  reg u64 head end at t v;
+  reg bool more;
+
+  head = pos;
+  head = -head;
+  head &= 7;
+  head = n < head ? n : head;
+  n -= head;
+
+  end = pos;
+  end += head;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    at = pos;
+    at >>= 3;
+    at <<= 5;
+    t = pos;
+    t &= 7;
+    at += t;
+    t = (64u)st[:u8 at];
+    v = (64u)in0[off];
+    t ^= v;
+    st[:u8 at] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    v = (64u)in1[off];
+    t ^= v;
+    st[:u8 at] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    v = (64u)in2[off];
+    t ^= v;
+    st[:u8 at] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    v = (64u)in3[off];
+    t ^= v;
+    st[:u8 at] = (8u)t;
+    pos += 1;
+    off += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  /*
+   * Lane-aligned run: pos is a multiple of 8, so lane pos / 8 of
+   * instance 0 is at byte 4 pos.
+   */
+
+  while { more = n >= 8; } (more) {
+    ms = #update_msf(more, ms);
+    at = pos;
+    at <<= 2;
+    t = st.[:u64 at];
+    v = in0.[:u64 off];
+    t ^= v;
+    st.[:u64 at] = t;
+    at += 8;
+    t = st.[:u64 at];
+    v = in1.[:u64 off];
+    t ^= v;
+    st.[:u64 at] = t;
+    at += 8;
+    t = st.[:u64 at];
+    v = in2.[:u64 off];
+    t ^= v;
+    st.[:u64 at] = t;
+    at += 8;
+    t = st.[:u64 at];
+    v = in3.[:u64 off];
+    t ^= v;
+    st.[:u64 at] = t;
+    pos += 8;
+    off += 8;
+    n -= 8;
+  }
+  ms = #update_msf(!more, ms);
+
+  end = pos;
+  end += n;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    at = pos;
+    at >>= 3;
+    at <<= 5;
+    t = pos;
+    t &= 7;
+    at += t;
+    t = (64u)st[:u8 at];
+    v = (64u)in0[off];
+    t ^= v;
+    st[:u8 at] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    v = (64u)in1[off];
+    t ^= v;
+    st[:u8 at] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    v = (64u)in2[off];
+    t ^= v;
+    st[:u8 at] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    v = (64u)in3[off];
+    t ^= v;
+    st[:u8 at] = (8u)t;
+    pos += 1;
+    off += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return st, pos, off, ms;
+}
+
+/*
+ * Copy n bytes of instance k from state byte pos into out_k from offset
+ * off; returns pos + n and off + n, advanced in place as in
+ * __keccak_x4_xor_array.
+ */
+inline fn __keccak_x4_extract_array(
+  reg mut ptr u8[HASH_ARRAY_LEN] out0 out1 out2 out3,
+  reg u64 off,
+  reg const ptr u64[100] st,
+  reg u64 pos n,
+  reg u64 ms
+) -> reg ptr u8[HASH_ARRAY_LEN], reg ptr u8[HASH_ARRAY_LEN],
+     reg ptr u8[HASH_ARRAY_LEN], reg ptr u8[HASH_ARRAY_LEN], reg u64, reg u64, reg u64
+{
+  reg u64 head end at t;
+  reg bool more;
+
+  head = pos;
+  head = -head;
+  head &= 7;
+  head = n < head ? n : head;
+  n -= head;
+
+  end = pos;
+  end += head;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    at = pos;
+    at >>= 3;
+    at <<= 5;
+    t = pos;
+    t &= 7;
+    at += t;
+    t = (64u)st[:u8 at];
+    out0[off] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    out1[off] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    out2[off] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    out3[off] = (8u)t;
+    pos += 1;
+    off += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  while { more = n >= 8; } (more) {
+    ms = #update_msf(more, ms);
+    at = pos;
+    at <<= 2;
+    t = st.[:u64 at];
+    out0.[:u64 off] = t;
+    at += 8;
+    t = st.[:u64 at];
+    out1.[:u64 off] = t;
+    at += 8;
+    t = st.[:u64 at];
+    out2.[:u64 off] = t;
+    at += 8;
+    t = st.[:u64 at];
+    out3.[:u64 off] = t;
+    pos += 8;
+    off += 8;
+    n -= 8;
+  }
+  ms = #update_msf(!more, ms);
+
+  end = pos;
+  end += n;
+  while { more = pos < end; } (more) {
+    ms = #update_msf(more, ms);
+    at = pos;
+    at >>= 3;
+    at <<= 5;
+    t = pos;
+    t &= 7;
+    at += t;
+    t = (64u)st[:u8 at];
+    out0[off] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    out1[off] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    out2[off] = (8u)t;
+    at += 8;
+    t = (64u)st[:u8 at];
+    out3[off] = (8u)t;
+    pos += 1;
+    off += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return out0, out1, out2, out3, off, pos, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × public × public × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × public × msf"]
+fn _keccak_x4_absorb_array(
+  reg mut ptr u64[100] st,
+  reg u64 pos rate,
+  reg const ptr u8[HASH_ARRAY_LEN] in0 in1 in2 in3,
+  reg u64 ms
+) -> reg ptr u64[100], reg u64, reg u64
+{
+  reg u64 off inlen n;
+  reg bool more full;
+
+  off = 0;
+  inlen = HASH_ARRAY_LEN;
+
+  while { more = inlen != 0; } (more) {
+    ms = #update_msf(more, ms);
+
+    n = rate;
+    n -= pos;
+    n = inlen < n ? inlen : n;
+    inlen -= n;
+    st, pos, off, ms = __keccak_x4_xor_array(st, pos, in0, in1, in2, in3, off, n, ms);
+
+    full = pos == rate;
+    if (full) {
+      ms = #update_msf(full, ms);
+      () = #spill(rate, in0, in1, in2, in3, off, inlen);
+      st, ms = _keccakf1600_x4(st, ms);
+      () = #unspill(rate, in0, in1, in2, in3, off, inlen);
+      rate = #protect(rate, ms);
+      in0 = #protect_ptr(in0, ms);
+      in1 = #protect_ptr(in1, ms);
+      in2 = #protect_ptr(in2, ms);
+      in3 = #protect_ptr(in3, ms);
+      off = #protect(off, ms);
+      inlen = #protect(inlen, ms);
+      pos = 0;
+    } else {
+      ms = #update_msf(!full, ms);
+    }
+  }
+  ms = #update_msf(!more, ms);
+
+  return st, pos, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × public × msf"]
+fn _keccak_x4_squeeze_array(
+  reg mut ptr u8[HASH_ARRAY_LEN] out0 out1 out2 out3,
+  reg mut ptr u64[100] st,
+  reg u64 pos rate,
+  reg u64 ms
+) -> reg ptr u8[HASH_ARRAY_LEN], reg ptr u8[HASH_ARRAY_LEN], reg ptr u8[HASH_ARRAY_LEN],
+     reg ptr u8[HASH_ARRAY_LEN], reg ptr u64[100], reg u64, reg u64
+{
+  reg u64 off outlen n;
+  reg bool more empty;
+
+  off = 0;
+  outlen = HASH_ARRAY_LEN;
+
+  while { more = outlen != 0; } (more) {
+    ms = #update_msf(more, ms);
+
+    empty = pos == rate;
+    if (empty) {
+      ms = #update_msf(empty, ms);
+      () = #spill(rate, out0, out1, out2, out3, off, outlen);
+      st, ms = _keccakf1600_x4(st, ms);
+      () = #unspill(rate, out0, out1, out2, out3, off, outlen);
+      rate = #protect(rate, ms);
+      out0 = #protect_ptr(out0, ms);
+      out1 = #protect_ptr(out1, ms);
+      out2 = #protect_ptr(out2, ms);
+      out3 = #protect_ptr(out3, ms);
+      off = #protect(off, ms);
+      outlen = #protect(outlen, ms);
+      pos = 0;
+    } else {
+      ms = #update_msf(!empty, ms);
+    }
+
+    n = rate;
+    n -= pos;
+    n = outlen < n ? outlen : n;
+    outlen -= n;
+    out0, out1, out2, out3, off, pos, ms =
+      __keccak_x4_extract_array(out0, out1, out2, out3, off, st, pos, n, ms);
+  }
+  ms = #update_msf(!more, ms);
+
+  return out0, out1, out2, out3, st, pos, ms;
+}

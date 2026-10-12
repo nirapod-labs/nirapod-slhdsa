@@ -1,0 +1,82 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sponge_x4.jinc
+ * ==============
+ *
+ * Four sponges advanced together, for independent hashes whose inputs have
+ * the same shape (FIPS 205 WOTS+ chain steps, FORS and tree nodes of one
+ * layer). The four instances share pos and rate and follow the single-way
+ * transitions of sponge.jinc in lockstep; each instance computes exactly
+ * what sponge.jinc computes on its own input.
+ *
+ * State: u64[100], lane j of instance k at index 4j + k, so byte b of
+ * instance k's state string is st[:u8 32 * (b / 8) + 8 * k + b mod 8].
+ *
+ * The permutation is _keccakf1600_x4 from the KeccakKernelX root. Array
+ * inputs and outputs are in sponge_x4_array.jinc (instance file).
+ *
+ * Security: as sponge.jinc. pos, rate and ds are public and shared by the
+ * four instances.
+ */
+
+from KeccakKernelX require "keccakf1600_x4.jinc"
+
+inline fn __keccak_x4_init(reg mut ptr u64[100] st) -> reg ptr u64[100]
+{
+  reg u64 z;
+  inline int i;
+
+  z = 0;
+  for i = 0 to 100 {
+    st[i] = z;
+  }
+  return st;
+}
+
+/*
+ * _keccak_finalize on each instance: domain byte at pos, 0x80 at rate - 1,
+ * one 4-way permutation. Squeezing then starts with pos = 0.
+ */
+#[sct = "{ ptr: public, val: secret } × public × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _keccak_x4_finalize(
+  reg mut ptr u64[100] st,
+  reg u64 pos rate ds,
+  reg u64 ms
+) -> reg ptr u64[100], reg u64
+{
+  reg u64 lane last t;
+  inline int k;
+
+  /* byte pos of instance 0, then rate - 1 likewise; instance k is 8k further */
+
+  lane = pos;
+  lane >>= 3;
+  lane <<= 5;
+  pos &= 7;
+  lane += pos;
+
+  rate -= 1;
+  last = rate;
+  last >>= 3;
+  last <<= 5;
+  rate &= 7;
+  last += rate;
+
+  for k = 0 to 4 {
+    t = (64u)st[:u8 lane];
+    t ^= ds;
+    st[:u8 lane] = (8u)t;
+    t = (64u)st[:u8 last];
+    t ^= 0x80;
+    st[:u8 last] = (8u)t;
+    lane += 8;
+    last += 8;
+  }
+
+  st, ms = _keccakf1600_x4(st, ms);
+
+  return st, ms;
+}
