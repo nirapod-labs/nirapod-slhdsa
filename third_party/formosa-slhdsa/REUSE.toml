@@ -1,0 +1,9 @@
+version = 1
+
+# Files imported unchanged from formosa-crypto/formosa-slhdsa at
+# d2d4d032f4660525bc41e45e06f1aef44cd3a827; see PROVENANCE.md here.
+[[annotations]]
+path = ["LICENSE", "README.md", "easycrypt.project", "config/**", "proofs/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "2024 MM45"
+SPDX-License-Identifier = "MIT"

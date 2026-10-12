@@ -13,6 +13,7 @@
 #   make check-own        proofs/spec, without the scans
 #   make check-spec       the scans, then proofs/spec only
 #   make check-imported   the imported crypto-specs theories, re-checked here
+#   make check-formosa    the imported SPHINCS+ security proof, re-checked here
 #   make check-correctness the correctness proofs, once per extracted model
 #   make check-pair PAIR=<arch>/<variant>   one model only
 #   make scan-admits      fail if any checked file contains a proof hole or
@@ -36,7 +37,8 @@
 #
 # Variables: EASYCRYPT (the binary of the pinned toolchain), EC_PROVERS and
 # EC_TIMEOUT (this project's theories), IMPORTED_PROVERS and
-# IMPORTED_TIMEOUT (the imported crypto-specs theories), JASMIN2EC and
+# IMPORTED_TIMEOUT (the imported crypto-specs theories), FORMOSA_PROVERS
+# and FORMOSA_TIMEOUT (the imported security proof), JASMIN2EC and
 # JASMIN_SRC (the pinned jasmin2ec and the root of the Jasmin sources, for
 # extraction), PYTHON (the scans).
 
@@ -46,6 +48,7 @@ PYTHON     ?= python3
 JASMIN_SRC ?= ../src
 
 CRYPTO_SPECS := ../third_party/crypto-specs
+FORMOSA      := ../third_party/formosa-slhdsa
 
 EC_PATH := -R spec \
            -R $(CRYPTO_SPECS)/common -R $(CRYPTO_SPECS)/fips202 \
@@ -62,6 +65,12 @@ IMPORTED_TIMEOUT ?= 30
 
 OWN_FLAGS      := -no-eco $(EC_PATH) $(EC_PROVERS) -timeout $(EC_TIMEOUT)
 IMPORTED_FLAGS := -no-eco $(EC_PATH) $(IMPORTED_PROVERS) -timeout $(IMPORTED_TIMEOUT)
+
+# The SPHINCS+ security proof keeps the prover selection and timeout of its
+# own easycrypt.project.
+FORMOSA_PROVERS ?= -p Alt-Ergo@2.6 -p CVC5@1.0 -p Z3@4.12
+FORMOSA_TIMEOUT ?= 11
+FORMOSA_FLAGS   := -no-eco -I $(FORMOSA)/proofs $(FORMOSA_PROVERS) -timeout $(FORMOSA_TIMEOUT)
 
 OWN_FILES      := $(shell find spec \
                     \( -name '*.ec' -o -name '*.eca' \) 2>/dev/null | LC_ALL=C sort)
@@ -104,10 +113,12 @@ pair_flags   = -no-eco $(EC_PATH) -I extracted/$(1) \
                $(EC_PROVERS) -timeout $(EC_TIMEOUT)
 IMPORTED_FILES := $(shell find $(CRYPTO_SPECS) \( -name '*.ec' -o -name '*.eca' \) \
                     2>/dev/null | LC_ALL=C sort)
+FORMOSA_FILES  := $(shell find $(FORMOSA)/proofs \( -name '*.ec' -o -name '*.eca' \) \
+                    2>/dev/null | LC_ALL=C sort)
 
-.PHONY: check check-spec check-own check-imported check-correctness scan-admits check-constants
+.PHONY: check check-spec check-own check-imported check-formosa check-correctness scan-admits check-constants
 
-check: scan-admits check-constants check-imported check-own check-correctness
+check: scan-admits check-constants check-imported check-formosa check-own check-correctness
 
 check-spec: scan-admits check-constants
 	@$(MAKE) --no-print-directory LABEL=check-spec FILES="$(SPEC_FILES)" FLAGS="$(OWN_FLAGS)" compile-files
@@ -117,6 +128,9 @@ check-own:
 
 check-imported:
 	@$(MAKE) --no-print-directory LABEL=check-imported FILES="$(IMPORTED_FILES)" FLAGS="$(IMPORTED_FLAGS)" compile-files
+
+check-formosa:
+	@$(MAKE) --no-print-directory LABEL=check-formosa FILES="$(FORMOSA_FILES)" FLAGS="$(FORMOSA_FLAGS)" compile-files
 
 check-correctness:
 	@for p in $(PAIRS); do \
@@ -133,7 +147,7 @@ check-pair:
 # The hole scan reads code only (tools/scan_holes.py strips comments), so a hole
 # that upstream left commented out is not counted, and any hole in code is.
 scan-admits:
-	@$(PYTHON) -I tools/scan_holes.py $(OWN_FILES) $(IMPORTED_FILES) \
+	@$(PYTHON) -I tools/scan_holes.py $(OWN_FILES) $(IMPORTED_FILES) $(FORMOSA_FILES) \
 	  $(shell find correctness extracted \( -name '*.ec' -o -name '*.eca' \) 2>/dev/null) \
 	  && echo "scan-admits: PASS" \
 	  || { echo "scan-admits: FAIL"; exit 1; }
@@ -183,7 +197,7 @@ inventory-pair:
 	@$(PYTHON) -I tools/inventory.py --pair $(PAIR) --easycrypt "$(EASYCRYPT)" \
 	  --flags "$(call pair_flags,$(PAIR))" --namespace JazzEC=$(CRYPTO_SPECS)/arrays \
 	  --generated extracted --theorems "$(THEOREMS)" --$(MODE) $(call inventory_file,$(PAIR)) \
-	  $(OWN_FILES) $(IMPORTED_FILES) $(call pair_files,$(PAIR))
+	  $(OWN_FILES) $(IMPORTED_FILES) $(FORMOSA_FILES) $(call pair_files,$(PAIR))
 
 # ------------------------------------------------------------------
 # Extraction
