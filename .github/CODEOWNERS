@@ -5,10 +5,10 @@
 
 *                   @athexweb3 @orvenweb3
 
-/toolchain/         @athexweb3
-/src/jasmin/hash/   @athexweb3
-/.github/           @athexweb3
-/tools/ci/          @athexweb3
+/toolchain/         @athexweb3 @orvenweb3
+/src/jasmin/hash/   @athexweb3 @orvenweb3
+/.github/           @athexweb3 @orvenweb3
+/tools/ci/          @athexweb3 @orvenweb3
 
 /src/jasmin/slhdsa/ @orvenweb3
 /src/c/             @orvenweb3
