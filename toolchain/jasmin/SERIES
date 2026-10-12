@@ -39,3 +39,7 @@ patches/0025-linearization-report-invalid-instruction-operands-as.patch ff2b46c6
 patches/0026-armv8a-lower-an-AND-with-a-complemented-operand-to-B.patch ca6731eb6f2d1801ec0ecf45f04d6c94ee991361ec2ae179dabbe4344b2ebc22
 patches/0027-armv8a-store-an-immediate-through-a-scratch-register.patch 789958f6b7f9f6e291d77b3826c117085b891f8a7830f1e553d6b3fdb051d939
 patches/0028-armv8a-load-a-32-bit-word-zero-extended-to-64-bits.patch 746e0764cdafdffde5a4649268856c7795021438696d4c126a1bbfc920da763c
+patches-simd/0001-armv8a-add-the-SIMD-FP-registers-and-basic-Advanced-.patch 946c0e2f85aa7b8f1a393f4ac95d59e7421c57f90f39171303a66a4d15aa32cf
+patches-simd/0002-armv8a-add-the-SHA-256-and-SHA-512-instructions.patch 515407dc350082c5e2f2690d764f0aa4db2f66201029616466413cb60f85c498
+patches-simd/0003-armv8a-add-the-SHA-3-instructions.patch ca89a29e98e856c085bc46be13e33915e49bac1e2e36328ba37c893b6ca963d7
+patches-simd/0004-armv8a-add-Advanced-SIMD-permutations-and-element-mo.patch d5b3accfaa053e47a452beeb6cc8e68cefed2af42860a518d8316e5cab37ecb6

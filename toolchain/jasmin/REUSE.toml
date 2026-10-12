@@ -16,3 +16,14 @@ SPDX-License-Identifier = "Apache-2.0"
 path = "patches/**"
 SPDX-FileCopyrightText = ["Jasmin contributors", "nirapod-slhdsa contributors"]
 SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "PATCHES-SIMD.md"
+SPDX-FileCopyrightText = "nirapod-slhdsa contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# The Advanced SIMD series, distributed under Jasmin's licence like patches/.
+[[annotations]]
+path = "patches-simd/**"
+SPDX-FileCopyrightText = ["Jasmin contributors", "nirapod-slhdsa contributors"]
+SPDX-License-Identifier = "MIT"

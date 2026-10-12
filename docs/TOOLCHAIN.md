@@ -5,7 +5,7 @@ toolchain, rebuilt from its pinned inputs by `toolchain/build.sh`:
 
 | Component | Pin | Where |
 |---|---|---|
-| Jasmin compiler and analysers | jasmin-lang/jasmin `2bf326d583659c1fbd0e5b90f7c09fe0c0456e35` plus a patch series | `toolchain/jasmin/PIN`, `toolchain/jasmin/SERIES`, `toolchain/jasmin/PATCHES.md` |
+| Jasmin compiler and analysers | jasmin-lang/jasmin `2bf326d583659c1fbd0e5b90f7c09fe0c0456e35` plus a patch series | `toolchain/jasmin/PIN`, `toolchain/jasmin/SERIES`, `toolchain/jasmin/PATCHES.md`, `toolchain/jasmin/PATCHES-SIMD.md` |
 | Rocq environment of the compiler proofs | Rocq 9.0.1, mathcomp 2.4.0, coq-elpi 2.5.2, Hierarchy Builder 1.9.1, coqword `86ed49aeca65`, OCaml 4.14.4 | `toolchain/jasmin/PIN` |
 | opam package universe | ocaml/opam-repository `f8293643f2af`, rocq-prover/opam `564ab90f5874` | `toolchain/jasmin/PIN` |
 | EasyCrypt | easycrypt/easycrypt `e7eff05dcef1` (main, after r2026.09), Why3 1.8.2 | `toolchain/easycrypt/PIN` |
@@ -112,7 +112,7 @@ generated assembly program has the same observable behaviour. The theorem rests
 on the assumptions printed in `assumptions.log`. `make -C proofs all` checks it
 again for the tree that is built, so it covers the lowerings and
 assembly-generation changes of the patch series (`toolchain/jasmin/PATCHES.md`
-gives the status of each patch).
+and `toolchain/jasmin/PATCHES-SIMD.md` give the status of each patch).
 
 For the pinned tree and series, `assumptions.log` lists, for the end-to-end theorem:
 the axioms of Rocq's primitive 63-bit integers (`Uint63Axioms`,

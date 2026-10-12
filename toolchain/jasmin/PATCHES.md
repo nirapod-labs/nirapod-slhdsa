@@ -17,6 +17,9 @@ Upstream Jasmin is distributed under the MIT licence, reproduced in
 `jasmin-license.txt` next to this file from the pinned commit. The patches
 modify Jasmin and are distributed under the same terms.
 
+The Advanced SIMD and cryptographic-extension patches for `armv8a`, listed in
+`SERIES` after these, are described in `PATCHES-SIMD.md`.
+
 ## Series
 
 Pin: `2bf326d583659c1fbd0e5b90f7c09fe0c0456e35` (jasmin-lang/jasmin, main,
