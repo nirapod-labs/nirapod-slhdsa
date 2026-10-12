@@ -33,6 +33,11 @@
  *     xmss_layer_enc                   a WOTS+ signature with the
  *                                      authentication path built from the
  *                                      tree encodes Algorithm 10
+ *     ht_sign_ph                       hypertree signing encodes
+ *                                      Algorithm 12
+ *     ht_root_ph                       the root recomputed from any
+ *                                      hypertree signature is the node
+ *                                      Algorithm 13 compares with PK.root
  *
  * The parameter set is the abstract P of SPHINCS_Instance.
  *)
@@ -802,4 +807,253 @@ rewrite /(\o) (gnode_hom enc _ _ (xmss_leaf P (NBytes.val ss) (NBytes.val ps) j 
 + by rewrite /= (sibling_pow_lt kp P.`hp j').
 + by move=> i hi /=; rewrite enc_dec // size_xmss_leafP.
 by move=> z' i' x y hz hi /=; rewrite (enc_tm_x _ _ j t) // /#.
+qed.
+
+lemma leaves_pre ss0 ps0 ad0 (j t : int) :
+  phoare [SP.FSSLXMTWES.FL_SL_XMSS_MT_ES.leaves_from_sspsad :
+            arg = (ss0, ps0, ad0) /\ SP.HA.Adrs.val ad0 = [0; 0; 0; 0; t; j] /\ ht_pos j t
+            ==> res = mkseq (fun i => dec (xmss_leaf P (NBytes.val ss0) (NBytes.val ps0) j t i))
+                            (2 ^ P.`hp)] = 1%r.
+proof.
+case: (SP.HA.Adrs.val ad0 = [0; 0; 0; 0; t; j] /\ ht_pos j t) => [[hv hpos] | hn].
++ by conseq (leaves_ph ss0 ps0 ad0 j t hv hpos) => /#.
+by exfalso; move=> &hr.
+qed.
+
+(* ------------------------------------------------------------------ *)
+(* The hypertree                                                      *)
+
+lemma ht_pos_layer (it j : int) :
+  0 <= it < 2 ^ (P.`hp * (P.`d - 1)) => 0 <= j < P.`d =>
+  ht_pos j (ht_tree P it j).
+proof.
+move=> hit hj; rewrite /ht_pos; split => //; rewrite /ht_tree.
+have -> : P.`hp * (P.`d - j - 1) = P.`hp * (P.`d - 1) - P.`hp * j by ring.
+apply div_pow_lt => //; split; first smt(mulr_ge0 hp_ge1).
+by move=> _; apply ler_wpmul2l; smt(hp_ge1).
+qed.
+
+lemma tidx_step (it il j : int) :
+  0 <= il < 2 ^ P.`hp => 0 <= j =>
+  (it * 2 ^ P.`hp + il) %/ 2 ^ (P.`hp * j) %/ 2 ^ P.`hp = ht_tree P it j
+  /\ (it * 2 ^ P.`hp + il) %/ 2 ^ (P.`hp * j) %% 2 ^ P.`hp = ht_leaf P it il j
+  /\ (it * 2 ^ P.`hp + il) %/ 2 ^ (P.`hp * (j + 1)) = ht_tree P it j.
+proof.
+move=> hil hj; have h1 := hp_ge1.
+have hs : (it * 2 ^ P.`hp + il) %/ 2 ^ (P.`hp * (j + 1))
+          = (it * 2 ^ P.`hp + il) %/ 2 ^ (P.`hp * j) %/ 2 ^ P.`hp.
++ have -> : P.`hp * (j + 1) = P.`hp * j + P.`hp by ring.
+  rewrite exprD_nneg; [smt(mulr_ge0) | smt() |].
+  by rewrite divzMr; 1,2: by apply expr_ge0.
+rewrite hs.
+have hdiv : (it * 2 ^ P.`hp + il) %/ 2 ^ P.`hp = it.
++ by rewrite divzMDl 1:gtr_eqF 1:expr_gt0 // divz_small // ger0_norm 1:expr_ge0.
+case: (j = 0) => [-> /= | hj0].
++ rewrite /ht_tree /ht_leaf /= ?expr0 ?divz1 hdiv /=.
+  by rewrite modzMDl modz_small // ger0_norm 1:expr_ge0.
+have hsplit : (it * 2 ^ P.`hp + il) %/ 2 ^ (P.`hp * j) = ht_tree P it (j - 1).
++ have he : 2 ^ (P.`hp * j) = 2 ^ P.`hp * 2 ^ (P.`hp * (j - 1)).
+  + rewrite -exprD_nneg; [smt() | smt(mulr_ge0) | congr; ring].
+  rewrite /ht_tree he divzMr; 1,2: by apply expr_ge0.
+  by rewrite hdiv.
+rewrite hsplit /ht_leaf hj0 /= ht_treeS 1,2:/#.
+by rewrite (_: j - 1 + 1 = j) 1:/#.
+qed.
+
+lemma ht_sign_ph ss0 ps0 m0 idx0 (it il : int) :
+  SP.Index.val idx0 = it * 2 ^ P.`hp + il => 0 <= il < 2 ^ P.`hp =>
+  0 <= it < 2 ^ (P.`hp * (P.`d - 1)) =>
+  phoare [SP.FSSLXMTWES.FL_SL_XMSS_MT_ES.sign :
+            arg = ((ss0, ps0, SP.adz), m0, idx0)
+            ==> enc_ht res = ht_sign P (enc m0) (NBytes.val ss0) (NBytes.val ps0) it il] = 1%r.
+proof.
+move=> hidx hil hit; proc.
+pose sigx := fun j => xmss_sign P (ht_msg P (enc m0) (NBytes.val ss0) (NBytes.val ps0) it j)
+                        (NBytes.val ss0) (ht_leaf P it il j) (NBytes.val ps0)
+                        (mk_adrs j (ht_tree P it j) 0 0 0 0).
+wp; while (0 <= size sapl <= P.`d /\ ss = ss0 /\ ps = ps0 /\ ad = SP.adz
+       /\ tidx = (it * 2 ^ P.`hp + il) %/ 2 ^ (P.`hp * size sapl)
+       /\ enc root = ht_msg P (enc m0) (NBytes.val ss0) (NBytes.val ps0) it (size sapl)
+       /\ map enc_layer sapl = map sigx (range 0 (size sapl))) (P.`d - size sapl).
++ move=> z; exlim sapl, tidx, root => sa ti r.
+  wp.
+  call (leaves_pre ss0 ps0 (SP.set_ltidx SP.adz (size sa) (ti %/ 2 ^ P.`hp)) (size sa) (ti %/ 2 ^ P.`hp)).
+  call (WOTS_sign_pre ss0 ps0
+          (SP.set_kpidx (SP.set_typeidx (SP.set_ltidx SP.adz (size sa) (ti %/ 2 ^ P.`hp)) 0) (ti %% 2 ^ P.`hp))
+          r (size sa) (ti %/ 2 ^ P.`hp) (ti %% 2 ^ P.`hp)).
+  auto => /> h0 hd hr hmap hlt; rewrite /SP.l'.
+  have [ht [hl ht1]] := tidx_step it il (size sa) hil h0.
+  rewrite ht hl.
+  have hpos := ht_pos_layer it (size sa) hit _; first smt().
+  have hkp := ht_leaf_range P it il (size sa) hil.
+  have hlt' := lt_ad (size sa) (ht_tree P it (size sa)) hpos.
+  have hw := wots_ok_kp _ _ _ _ hlt' hpos hkp.
+  split; first by move: hw; rewrite /wots_ok /ht_pos.
+  move=> _ _ _ _ _ _ _ _ sw hsw; split; first by move: hpos; rewrite /ht_pos.
+  move=> _ _; rewrite !size_rcons.
+  split; last smt().
+  split; first smt().
+  split; first by rewrite ht1.
+  split.
+  + by rewrite (xmss_root_enc _ _ _ (size sa) (ht_tree P it (size sa)) hlt' hpos) /ht_msg /#.
+  rewrite map_rcons rangeSr // map_rcons hmap; congr.
+  by rewrite /sigx -hr; apply (xmss_layer_enc ss0 ps0 r (size sa) (ht_tree P it (size sa)) (ht_leaf P it il (size sa))).
+auto => />; split.
++ by split; [smt(d_ge1) | rewrite range_geq].
+move=> r sa; split; first smt().
+move=> hnot h0 hd _ hmap.
+have hs : size sa = P.`d by smt().
+rewrite /enc_ht SP.FSSLXMTWES.SAPDL.insubdK 1:hs //.
+by rewrite (ht_signE P _ _ _ _ _ P_in hil) -hs -hmap.
+qed.
+
+(* ------------------------------------------------------------------ *)
+(* Hypertree verification                                             *)
+
+lemma size_flatten_enc (xs : SP.dgstblock list) : size (flatten (map enc xs)) = P.`n * size xs.
+proof.
+rewrite (size_flatten_n _ P.`n) ?size_map //.
+by move=> b /mapP [x [_ ->]]; rewrite size_enc.
+qed.
+
+lemma slice_flatten_enc (xs : SP.dgstblock list) (k : int) :
+  0 <= k < size xs =>
+  slice (flatten (map enc xs)) (k * P.`n) ((k + 1) * P.`n) = enc (nth witness xs k).
+proof.
+move=> hk; rewrite (slice_flatten _ P.`n); 1: smt(n_bounds).
++ by move=> b /mapP [x [_ ->]]; rewrite size_enc.
++ by rewrite size_map.
+by rewrite (nth_map witness).
+qed.
+
+lemma size_enc_layer (sa : SP.FSSLXMTWES.WTWES.sigWOTS * SP.FSSLXMTWES.apFLXMSSTW) :
+  size (enc_layer sa) = xmss_sig_length P.
+proof.
+rewrite /enc_layer size_cat !size_flatten_enc size_rev SP.FSSLXMTWES.WTWES.DBLL.valP.
+by rewrite SP.FSSLXMTWES.DBHPL.valP SP_len /xmss_sig_length; ring.
+qed.
+
+lemma wots_pkFromSig_enc ps (j t kp : int) (m : SP.dgstblock) (sw : SP.FSSLXMTWES.WTWES.sigWOTS) :
+  0 <= kp < 2 ^ 32 =>
+  T_l P ps (mk_adrs j t WOTS_PK kp 0 0)
+    (flatten (map enc (mkseq (fun c => dec (wpkv_elem ps j t kp (enc m)
+                                              (SP.FSSLXMTWES.WTWES.DBLL.val sw) c)) (len P))))
+  = wots_pkFromSig P (flatten (map enc (SP.FSSLXMTWES.WTWES.DBLL.val sw))) (enc m) ps
+                   (mk_adrs j t WOTS_HASH kp 0 0).
+proof.
+move=> hkp; rewrite wots_pkFromSigE //; congr; congr.
+rewrite /mkseq -map_comp; apply eq_in_map => c /mem_iota hc.
+rewrite /(\o) /= enc_dec.
++ by rewrite /wpkv_elem size_chain_fromP // size_enc.
+rewrite /wpkv_elem slice_flatten_enc.
++ by rewrite SP.FSSLXMTWES.WTWES.DBLL.valP SP_len /#.
+by have [#] _ _ -> := P_facts.
+qed.
+
+lemma auth_rev (ap : SP.FSSLXMTWES.apFLXMSSTW) :
+  SP.FSSLXMTWES.DBHPL.val ap
+  = rev (map (fun k => nth witness (rev (SP.FSSLXMTWES.DBHPL.val ap)) k) (range 0 P.`hp)).
+proof.
+rewrite -{1}(revK (SP.FSSLXMTWES.DBHPL.val ap)); congr.
+have hs : size (rev (SP.FSSLXMTWES.DBHPL.val ap)) = P.`hp by rewrite size_rev SP.FSSLXMTWES.DBHPL.valP.
+apply (eq_from_nth witness); first by rewrite size_map size_range hs; smt(hp_ge1).
+move=> k; rewrite hs => hk; rewrite (nth_map 0) 1:size_range 1:/#.
+by rewrite nth_range.
+qed.
+
+lemma xmss_verify_layer ps (j t kp : int) (r : SP.dgstblock) sw ap pk :
+  ht_pos j t => 0 <= kp < 2 ^ P.`hp =>
+  SP.FSSLXMTWES.WTWES.DBLL.val pk
+    = mkseq (fun c => dec (wpkv_elem (NBytes.val ps) j t kp (enc r) (SP.FSSLXMTWES.WTWES.DBLL.val sw) c))
+            (len P) =>
+  enc (SP.FSSLXMTWES.val_ap_trh ps (SP.set_typeidx (SP.set_ltidx SP.adz j t) 2) ap kp
+         (SP.pkco ps (SP.set_kpidx (SP.set_typeidx (SP.set_ltidx SP.adz j t) 1) kp)
+            (flatten (map SP.DigestBlock.val (SP.FSSLXMTWES.WTWES.DBLL.val pk)))))
+  = xmss_pkFromSig P kp (enc_layer (sw, ap)) (enc r) (NBytes.val ps) (mk_adrs j t 0 0 0 0).
+proof.
+move=> hpos hkp hpk.
+have hkp32 := lt_hp32 kp hkp.
+have hlt := lt_ad j t hpos.
+have hA := xmss_ad _ j t hlt hpos.
+rewrite xmss_pkFromSigE //; first smt(hp_ge1).
+rewrite /SP.FSSLXMTWES.val_ap_trh /SP.FSSLXMTWES.val_ap_trh_gen updx_eq trhix_eq.
+rewrite {1}auth_rev.
+have h0 : kp %/ 2 ^ P.`hp = 0 by rewrite divz_small // ger0_norm 1:expr_ge0.
+pose lf := SP.pkco ps (SP.set_kpidx (SP.set_typeidx (SP.set_ltidx SP.adz j t) 1) kp)
+             (flatten (map SP.DigestBlock.val (SP.FSSLXMTWES.WTWES.DBLL.val pk))).
+have hv := gfold_val_ap (tm ps (SP.set_typeidx (SP.set_ltidx SP.adz j t) 2))
+             (fun k => nth witness (rev (SP.FSSLXMTWES.DBHPL.val ap)) k) kp lf P.`hp _.
++ smt(hp_ge1).
+move: hv; rewrite h0 => hv; rewrite -hv.
+rewrite (gfold_hom enc _ (xmss_hash P (NBytes.val ps) j t)); first smt(hp_ge1).
++ move=> k x y hk; rewrite (enc_tm_x _ _ j t) //; first smt().
+  by apply div_pow_lt; smt().
+have hsw : size (flatten (map enc (SP.FSSLXMTWES.WTWES.DBLL.val sw))) = len P * P.`n.
++ by rewrite size_flatten_enc SP.FSSLXMTWES.WTWES.DBLL.valP SP_len; ring.
+have hsa : size (flatten (map enc (rev (SP.FSSLXMTWES.DBHPL.val ap)))) = P.`hp * P.`n.
++ by rewrite size_flatten_enc size_rev SP.FSSLXMTWES.DBHPL.valP; ring.
+have hW : slice (enc_layer (sw, ap)) 0 (len P * P.`n)
+          = flatten (map enc (SP.FSSLXMTWES.WTWES.DBLL.val sw)).
++ have hln : 0 <= len P * P.`n by apply mulr_ge0; smt(len_n n_bounds).
+  rewrite /enc_layer /= slice_cat_l; first by rewrite hsw; smt().
+  by rewrite -hsw slice_whole.
+have hAu : slice (enc_layer (sw, ap)) (len P * P.`n) ((len P + P.`hp) * P.`n)
+           = flatten (map enc (rev (SP.FSSLXMTWES.DBHPL.val ap))).
++ rewrite /enc_layer /= slice_cat_r; first by rewrite hsw.
+  have -> : (len P + P.`hp) * P.`n - size (flatten (map enc (SP.FSSLXMTWES.WTWES.DBLL.val sw)))
+            = size (flatten (map enc (rev (SP.FSSLXMTWES.DBHPL.val ap)))) by rewrite hsw hsa; ring.
+  by rewrite hsw /= slice_whole.
+rewrite hW hAu.
+rewrite (gfold_eq_auth _ _ (fun k => slice (flatten (map enc (rev (SP.FSSLXMTWES.DBHPL.val ap))))
+                                           (k * P.`n) ((k + 1) * P.`n))); first smt(hp_ge1).
++ move=> k hk /=; rewrite slice_flatten_enc //.
+  by rewrite size_rev SP.FSSLXMTWES.DBHPL.valP.
+congr.
+rewrite /lf enc_pkco (pkco_ad _ j t) // enc_flatten hpk.
+by apply wots_pkFromSig_enc.
+qed.
+
+op ht_fold (ps : bytes) (it il : int) (sig : SP.FSSLXMTWES.sigFLSLXMSSMTTW) (m : bytes) (i : int) : bytes =
+  foldl (fun (node : bytes) (j : int) =>
+           xmss_pkFromSig P (ht_leaf P it il j) (enc_layer (nth witness (SP.FSSLXMTWES.SAPDL.val sig) j))
+             node ps (mk_adrs j (ht_tree P it j) 0 0 0 0))
+        m (range 0 i).
+
+lemma ht_root_ph m0 sig0 idx0 ps0 (it il : int) :
+  SP.Index.val idx0 = it * 2 ^ P.`hp + il => 0 <= il < 2 ^ P.`hp =>
+  0 <= it < 2 ^ (P.`hp * (P.`d - 1)) =>
+  phoare [SP.FSSLXMTWES.FL_SL_XMSS_MT_ES.root_from_sigFLSLXMSSMTTW :
+            arg = (m0, sig0, idx0, ps0, SP.adz)
+            ==> enc res = ht_fold (NBytes.val ps0) it il sig0 (enc m0) P.`d] = 1%r.
+proof.
+move=> hidx hil hit; proc.
+while (0 <= i <= P.`d /\ ps = ps0 /\ ad = SP.adz /\ sig = sig0
+       /\ tidx = (it * 2 ^ P.`hp + il) %/ 2 ^ (P.`hp * i)
+       /\ enc root = ht_fold (NBytes.val ps0) it il sig0 (enc m0) i) (P.`d - i).
++ move=> z; exlim i, tidx, root => i0 ti r.
+  wp.
+  call (pkWOTS_from_sigWOTS_pre r (nth witness (SP.FSSLXMTWES.SAPDL.val sig0) i0).`1 ps0
+          (SP.set_kpidx (SP.set_typeidx (SP.set_ltidx SP.adz i0 (ti %/ 2 ^ P.`hp)) 0) (ti %% 2 ^ P.`hp))
+          i0 (ti %/ 2 ^ P.`hp) (ti %% 2 ^ P.`hp)).
+  auto => /> h0 hd hr hlt; rewrite /SP.l'.
+  have [ht [hl ht1]] := tidx_step it il i0 hil h0.
+  rewrite ht hl.
+  have hpos := ht_pos_layer it i0 hit _; first smt().
+  have hkp := ht_leaf_range P it il i0 hil.
+  have hlt' := lt_ad i0 (ht_tree P it i0) hpos.
+  have hw := wots_ok_kp _ _ _ _ hlt' hpos hkp.
+  split; first by move: hw; rewrite /wots_ok /ht_pos.
+  move=> _ _ _ _ _ _ _ _ pk hpk.
+  split; last smt().
+  split; first smt().
+  split; first by rewrite ht1.
+  rewrite (xmss_verify_layer _ _ _ _ r _ _ pk hpos hkp hpk).
+  rewrite /ht_fold (rangeSr 0 i0) 1:/# -cats1 foldl_cat /=.
+  rewrite -/(ht_fold (NBytes.val ps0) it il sig0 (enc m0) i0) -hr.
+  by case: (nth witness (SP.FSSLXMTWES.SAPDL.val sig0) i0).
+auto => />; split.
++ by split; [smt(d_ge1) | rewrite /ht_fold range_geq].
+move=> i r; split; first smt().
+move=> hnot h0 hd hr.
+by rewrite hr (_: i = P.`d) 1:/#.
 qed.
