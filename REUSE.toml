@@ -1,7 +1,7 @@
 version = 1
 
 [[annotations]]
-path = ["README.md", "AUTHORS", "NOTICE", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "CITATION.cff", ".gitignore", "docs/**", ".github/pull_request_template.md", ".github/ISSUE_TEMPLATE/**"]
+path = ["README.md", "**/README.md", "AUTHORS", "NOTICE", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "CITATION.cff", ".gitignore", "docs/**", ".github/pull_request_template.md", ".github/ISSUE_TEMPLATE/**"]
 SPDX-FileCopyrightText = "nirapod-slhdsa contributors"
 SPDX-License-Identifier = "Apache-2.0"
 

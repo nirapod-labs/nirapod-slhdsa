@@ -1,5 +1,7 @@
 # Build outputs
 /build/
+__pycache__/
+*.pyc
 *.o
 *.a
 *.so
