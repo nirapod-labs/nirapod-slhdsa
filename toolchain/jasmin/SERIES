@@ -37,3 +37,4 @@ patches/0023-changes-changelog-entry-for-the-safety-checker-fixes.patch eb9173fe
 patches/0024-safetylib-implement-the-safety-checker-for-ARMv8-A.patch f74fcc3a734c6adefac99953aad45e5e5a00499b60eed2396ad536ba673e0602
 patches/0025-linearization-report-invalid-instruction-operands-as.patch ff2b46c62c9b94f7295840e6fb13ce977a107c9556319e0bf90a752fb377e96c
 patches/0026-armv8a-lower-an-AND-with-a-complemented-operand-to-B.patch ca6731eb6f2d1801ec0ecf45f04d6c94ee991361ec2ae179dabbe4344b2ebc22
+patches/0027-armv8a-store-an-immediate-through-a-scratch-register.patch 789958f6b7f9f6e291d77b3826c117085b891f8a7830f1e553d6b3fdb051d939
