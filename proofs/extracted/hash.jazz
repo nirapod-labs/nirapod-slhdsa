@@ -1,0 +1,18 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * hash.jazz
+ * =========
+ *
+ * Extraction entry for the hash-function correctness proofs. It contains no
+ * code of its own: it requires the production SHA-2 and sponge sources, so
+ * that jasmin2ec extracts their functions from the source files themselves,
+ * under the include roots of each (architecture, variant). HMAC, MGF1, the
+ * FIPS 202 functions and the multi-way code are not extracted.
+ * `make -C proofs extract` runs it; see proofs/README.md.
+ */
+
+from Hash require "sha2/sha256.jinc"
+from Hash require "sha2/sha512.jinc"
+from Hash require "keccak/sponge.jinc"
