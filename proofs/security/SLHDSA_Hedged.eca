@@ -377,3 +377,207 @@ wp; call prf_dist; auto.
 qed.
 
 end section PRFProjection.
+
+(* ------------------------------------------------------------------ *)
+(* H_msg on its own inputs                                            *)
+
+(* H_msg(R, PK.seed, PK.root, M') followed by the digest split of
+   Algorithm 19, lines 6 to 10, in the model's representation: the FORS
+   message bits and the index of the FORS instance. *)
+op hmsg (k : nbytes) (x : bytes * bytes * bytes) : SP.FTWES.msgFORSTW * SP.index =
+  let digest = H_msg P (NBytes.val k) x.`1 x.`2 x.`3 in
+  let (md, it, il) = split_digest P digest in
+  (SP.FTWES.BLKAL.insubd (take (P.`k * P.`a) (msb_bits md)), SP.Index.insubd (it * 2 ^ P.`hp + il)).
+
+(* The inputs of H_msg in a message of the instance. *)
+op pmsg (m : bytes * bytes) : bytes * bytes * bytes =
+  (slice m.`1 0 P.`n, slice m.`1 P.`n (2 * P.`n), m.`2).
+
+lemma mco_hmsg k m : SP.FTWES.mco k m = hmsg k (pmsg m).
+proof. by []. qed.
+
+clone KeyedHashFunctions as HMsg with
+  type key_t <- nbytes,
+  type in_t <- bytes * bytes * bytes,
+  type out_t <- SP.FTWES.msgFORSTW * SP.index,
+  op f <- hmsg
+proof *.
+
+clone HMsg.ITSR as HMsg_ITSR with
+  op g <- SP.FTWES.g,
+  op dkey <- dnbytes
+proof *.
+realize dkey_ll by exact dnbytes_ll.
+
+(* An ITSR adversary against mco made into one against H_msg: each query
+   and the final pair are mapped to the inputs of H_msg. *)
+module PI (C : SP.FTWES.MCO_ITSR.Adv_ITSR) (O : HMsg_ITSR.Oracle_ITSR) = {
+  module O' : SP.FTWES.MCO_ITSR.Oracle_ITSR = {
+    proc init() : unit = { }
+
+    proc query(x : bytes * bytes) : nbytes = {
+      var k;
+      k <@ O.query(pmsg x);
+      return k;
+    }
+
+    proc get_targets() : (nbytes * (bytes * bytes)) list = {
+      return [];
+    }
+  }
+
+  proc find() : nbytes * (bytes * bytes * bytes) = {
+    var k, x;
+    (k, x) <@ C(O').find();
+    return (k, pmsg x);
+  }
+}.
+
+op pi (kx : nbytes * (bytes * bytes)) : nbytes * (bytes * bytes * bytes) = (kx.`1, pmsg kx.`2).
+
+(* What W's records say about the ITSR targets: every target is a recorded
+   query (PK || r, M') with randomizer k, every recorded query is a
+   target, and every cached randomizer is that of a target. *)
+pred itsr_rel (pkb : bytes) (rec : (bytes * bytes * nbytes) list)
+              (mmap : (bytes * bytes, nbytes) fmap) (ts : (nbytes * (bytes * bytes)) list) =
+     size pkb = 2 * P.`n
+  /\ (forall k x, (k, x) \in ts => exists r, x.`1 = pkb ++ r /\ (r, x.`2, k) \in rec)
+  /\ (forall e, e \in rec => (e.`3, (pkb ++ e.`1, e.`2)) \in ts)
+  /\ (forall m, m \in mmap => (oget mmap.[m], m) \in ts).
+
+lemma pmsg_cat (pkb r M : bytes) :
+  size pkb = 2 * P.`n => pmsg (pkb ++ r, M) = (slice pkb 0 P.`n, slice pkb P.`n (2 * P.`n), M).
+proof.
+move=> hp; have hn := n_bounds.
+by rewrite /pmsg /= !slice_cat_l // hp; smt().
+qed.
+
+(* The ITSR win of the instance game, for W's forgery, is an ITSR win for
+   H_msg: the same index tuples, and a pair that is new on the inputs of
+   H_msg, because W reuses the opt_rand of a recorded query whenever the
+   message and randomizer match one. *)
+lemma itsr_final (pkb : bytes) rec mmap ts (k : nbytes) (M d : bytes) :
+  itsr_rel pkb rec mmap ts =>
+  let x = (pkb ++ pick rec M k d, M) in
+     (forall t, t \in SP.FTWES.MCO_ITSR.h k x =>
+         t \in flatten (map (fun (kx : nbytes * (bytes * bytes)) => SP.FTWES.MCO_ITSR.h kx.`1 kx.`2) ts))
+  /\ ! (k, x) \in ts
+  => (forall t, t \in HMsg_ITSR.h k (pmsg x) =>
+         t \in flatten (map (fun (kx : nbytes * (bytes * bytes * bytes)) => HMsg_ITSR.h kx.`1 kx.`2) (map pi ts)))
+  /\ ! (k, pmsg x) \in map pi ts.
+proof.
+move=> [hp [hts [hrec hmm]]] /= [hcov hnew].
+have hh : forall k' x', SP.FTWES.MCO_ITSR.h k' x' = HMsg_ITSR.h k' (pmsg x').
++ by move=> k' x'; rewrite /SP.FTWES.MCO_ITSR.h /HMsg_ITSR.h.
+split.
++ move=> t; rewrite -hh => /hcov; rewrite -map_comp.
+  have -> : (fun (kx : nbytes * (bytes * bytes * bytes)) => HMsg_ITSR.h kx.`1 kx.`2) \o pi
+            = (fun (kx : nbytes * (bytes * bytes)) => SP.FTWES.MCO_ITSR.h kx.`1 kx.`2).
+  + by apply fun_ext => kx; rewrite /(\o) /pi /= hh.
+  by [].
+move: hnew; apply contra => /mapP [[k' x'] [hin /= [hk hx]]].
+have [r' [hx1 hrin]] := hts _ _ hin.
+have hM : x'.`2 = M.
++ by move: hx; rewrite /pmsg /=; smt().
+have := pickP rec M k' d _; first by exists (r', x'.`2, k'); rewrite -hM.
+by move/hrec; rewrite hk.
+qed.
+
+section ITSRProjection.
+
+declare module A <: DSI.Stateless.Adv_EUFCMA
+  {-W, -SP.FTWES.R_ITSR_EUFCMA, -SP.R_MFORSTWESNPRFEUFCMA_EUFCMA,
+   -SP.FTWES.MCO_ITSR.O_ITSR_Default, -HMsg_ITSR.O_ITSR_Default}.
+
+local lemma itsr_oracle :
+  equiv [W(A, SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).O_CMA).O_CMA).O'.sign
+         ~ W(A, SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A))), HMsg_ITSR.O_ITSR_Default).O').O_CMA).O_CMA).O'.sign :
+         ={m, W.pkb, W.rec, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA}
+         /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+         /\ itsr_rel W.pkb{1} W.rec{1} SP.FTWES.R_ITSR_EUFCMA.mmap{1} SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+         ==> ={res, W.pkb, W.rec, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA}
+         /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+         /\ itsr_rel W.pkb{1} W.rec{1} SP.FTWES.R_ITSR_EUFCMA.mmap{1} SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}].
+proof.
+proc.
+inline SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).O_CMA).O_CMA.sign
+       SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A))), HMsg_ITSR.O_ITSR_Default).O').O_CMA).O_CMA.sign.
+inline SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).O_CMA.sign
+       SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A))), HMsg_ITSR.O_ITSR_Default).O').O_CMA.sign.
+inline SP.FTWES.MCO_ITSR.O_ITSR_Default.query
+       PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A))), HMsg_ITSR.O_ITSR_Default).O'.query
+       HMsg_ITSR.O_ITSR_Default.query.
+seq 3 3 : (={r, m0, m1, m, W.pkb, W.rec, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA}
+           /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+           /\ itsr_rel W.pkb{1} W.rec{1} SP.FTWES.R_ITSR_EUFCMA.mmap{1} SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+           /\ m1{1} = (W.pkb{1} ++ NBytes.val r{1}, m{1})).
++ by auto.
+seq 2 2 : (={r, m0, m1, m, mk0, W.pkb, W.rec, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA}
+           /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+           /\ m1{1} = (W.pkb{1} ++ NBytes.val r{1}, m{1})
+           /\ size W.pkb{1} = 2 * P.`n
+           /\ (forall k x, (k, x) \in SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} =>
+                 (k, x) = (mk0{1}, m1{1}) \/ exists r, x.`1 = W.pkb{1} ++ r /\ (r, x.`2, k) \in W.rec{1})
+           /\ (forall e, e \in W.rec{1} => (e.`3, (W.pkb{1} ++ e.`1, e.`2)) \in SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1})
+           /\ (forall mm, mm \in SP.FTWES.R_ITSR_EUFCMA.mmap{1} =>
+                 (oget SP.FTWES.R_ITSR_EUFCMA.mmap{1}.[mm], mm) \in SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1})
+           /\ (mk0{1}, m1{1}) \in SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}).
++ if => //.
+  + auto => /> &1 &2 hp hts hrec hmm _ k _.
+    rewrite get_set_sameE /= map_rcons /=.
+    split; first by rewrite /pi.
+    split.
+    + move=> k1 x1; rewrite mem_rcons /= => -[[-> ->] // | h].
+      by right; apply hts.
+    split; first by move=> e he; rewrite mem_rcons; right; apply hrec.
+    split; last by rewrite mem_rcons.
+    move=> mm; rewrite mem_set get_setE mem_rcons.
+    case: (mm = (W.pkb{2} ++ NBytes.val r{2}, m{2})) => [-> // | hne /= hin].
+    by right; apply hmm.
+  auto => /> &1 &2 hp hts hrec hmm hin; smt().
+wp; call (: true); first by sim.
+wp; call (: true); first by sim.
+auto => /> &1 &2 hp hts hrec hmm hin; split.
++ move=> k1 x1 /hts [[-> ->] /= | [r0 [h1 h2]]].
+  + by exists (NBytes.val r{2}); rewrite mem_rcons.
+  by exists r0; rewrite mem_rcons; smt().
+by move=> e; rewrite mem_rcons => -[-> // | /hrec].
+qed.
+
+lemma itsr_proj &m :
+  Pr[SP.FTWES.MCO_ITSR.ITSR(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A))), SP.FTWES.MCO_ITSR.O_ITSR_Default).main() @ &m : res]
+  <= Pr[HMsg_ITSR.ITSR(PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)))), HMsg_ITSR.O_ITSR_Default).main() @ &m : res].
+proof.
+byequiv => //; proc.
+inline SP.FTWES.MCO_ITSR.O_ITSR_Default.init HMsg_ITSR.O_ITSR_Default.init SP.FTWES.MCO_ITSR.O_ITSR_Default.get_targets HMsg_ITSR.O_ITSR_Default.get_targets PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A))), HMsg_ITSR.O_ITSR_Default).find.
+inline SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).find
+       SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A))), HMsg_ITSR.O_ITSR_Default).O').find.
+inline SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).O_CMA).forge
+       SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A))), HMsg_ITSR.O_ITSR_Default).O').O_CMA).forge.
+inline W(A, SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).O_CMA).O_CMA).forge
+       W(A, SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(W(A))), HMsg_ITSR.O_ITSR_Default).O').O_CMA).O_CMA).forge.
+seq 1 1 : (={glob A} /\ SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = []); first by auto.
+seq 4 4 : (={glob A, SP.FTWES.R_ITSR_EUFCMA.ad, SP.FTWES.R_ITSR_EUFCMA.ps, SP.FTWES.R_ITSR_EUFCMA.skFORSs, pk, sk} /\ SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = []).
++ sim / (SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = []) : (={glob A, SP.FTWES.R_ITSR_EUFCMA.ad, SP.FTWES.R_ITSR_EUFCMA.ps, SP.FTWES.R_ITSR_EUFCMA.skFORSs, pk, sk}).
+seq 1 1 : (={glob A, SP.FTWES.R_ITSR_EUFCMA.ad, SP.FTWES.R_ITSR_EUFCMA.ps, SP.FTWES.R_ITSR_EUFCMA.skFORSs, SP.FTWES.R_ITSR_EUFCMA.mmap, pk, sk} /\ SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = []
+           /\ SP.FTWES.R_ITSR_EUFCMA.mmap{1} = empty).
++ by auto.
+seq 7 7 : (={glob A, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA, root, pk0} /\ SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = []
+           /\ SP.FTWES.R_ITSR_EUFCMA.mmap{1} = empty).
++ sim / (SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = [] /\ SP.FTWES.R_ITSR_EUFCMA.mmap{1} = empty)
+      : (={glob A, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA, root, pk0}).
+seq 3 3 : (={glob A, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA, pk1, W.pkb, W.rec} /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+           /\ itsr_rel W.pkb{1} W.rec{1} SP.FTWES.R_ITSR_EUFCMA.mmap{1} SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}).
++ auto => /> *; split; first by rewrite size_cat nval_size size_enc; ring.
+  by move=> m; rewrite mem_empty.
+wp; call (: ={W.pkb, W.rec, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA}
+            /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+            /\ itsr_rel W.pkb{1} W.rec{1} SP.FTWES.R_ITSR_EUFCMA.mmap{1} SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}).
++ by conseq itsr_oracle.
+skip => /> &1 &2 _ _ _ _ mr tsl recr mmr hp ht hr hm hcov hnew.
+have hrel : itsr_rel W.pkb{2} recr mmr tsl by done.
+by apply (itsr_final _ _ _ _ _ _ _ hrel).
+
+qed.
+
+end section ITSRProjection.
