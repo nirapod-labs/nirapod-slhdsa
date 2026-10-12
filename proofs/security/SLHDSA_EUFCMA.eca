@@ -1,0 +1,324 @@
+(*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * SLHDSA_EUFCMA.eca
+ * =================
+ *
+ * EUF-CMA of the FIPS 205 external interface (Algorithms 22 to 25, pure and
+ * pre-hash requests under one key) for the parameter set P, from the
+ * machine-checked EUF-CMA bound of SPHINCS+ in the imported security proof.
+ *
+ * Scheme. SLH_Internal is the internal scheme of FIPS 205 section 9:
+ *
+ *     keygen   SK.seed, SK.prf and PK.seed are n bytes drawn uniformly
+ *              (the RBG of Algorithm 21), then slh_keygen_internal
+ *     sign     slh_sign_internal with addrnd absent (deterministic)
+ *     verify   slh_verify_internal
+ *
+ * and External(SLH_Internal) (ExternalFraming.ec) its external interface.
+ *
+ * Results.
+ *
+ *     internal_le_sp           a forger against SLH_Internal yields, through
+ *                              the reduction R, a forger against the SPHINCS+
+ *                              instance of SPHINCS_Instance with at least
+ *                              the same success probability
+ *     slhdsa_euf_cma           the external interface: the success
+ *                              probability of any forger A is at most the
+ *                              SPHINCS+ bound of the imported proof for the
+ *                              adversary R(B(A)), plus the probability that
+ *                              A's forgery and one of its signed requests are
+ *                              distinct pre-hash requests whose pre-hash
+ *                              digests collide
+ *
+ * The SPHINCS+ bound is a sum of advantages against the PRF property of
+ * PRF and PRF_msg, the interleaved target subset resilience of H_msg with
+ * the index function, and the multi-target properties (TCR, DSPR, PRE, UD)
+ * of F, H and T_l under the address types; it is reproduced in the
+ * statement exactly as the imported proof states it.
+ *
+ * Hypotheses: A terminates whenever its signing oracle does, and A does not
+ * read or write the state of the games and reductions involved (the module
+ * restrictions of the statement). Nothing is assumed about the hash
+ * functions.
+ *
+ * Departures from FIPS 205.
+ *
+ *  - Hedged signing (addrnd present, Algorithm 19 with opt_rand fresh
+ *    randomness) is not covered: the imported SPHINCS+ scheme derives its
+ *    randomizer deterministically from the message seed. Its EUF-CMA under
+ *    hedged signing is open here.
+ *  - The randomness of key generation is modelled as uniform n-byte strings.
+ *)
+
+require import AllCore List Distr DList.
+from Jasmin require import JWord.
+require import Bytes FIPS205_Params FIPS205_Internal FIPS205_External FIPS205_XMSS FIPS205_Address_Props.
+require import ExternalFraming.
+require SPHINCS_Refinement.
+
+clone include SPHINCS_Refinement.
+
+(* ------------------------------------------------------------------ *)
+(* The internal scheme of FIPS 205 section 9                          *)
+
+module SLH_Internal : DSI.Stateless.Scheme = {
+  proc keygen() : bytes * bytes = {
+    var ss, sprf, ps, k;
+    ss <$ dnbytes;
+    sprf <$ dnbytes;
+    ps <$ dnbytes;
+    k <- slh_keygen_internal P (NBytes.val ss) (NBytes.val sprf) (NBytes.val ps);
+    return (k.`2, k.`1);
+  }
+
+  proc sign(sk : bytes, m : bytes) : bytes = {
+    return slh_sign_internal P m sk None;
+  }
+
+  proc verify(pk : bytes, m : bytes, s : bytes) : bool = {
+    return slh_verify_internal P m s pk;
+  }
+}.
+
+lemma SLH_verify_ll : islossless SLH_Internal.verify.
+proof. by proc. qed.
+
+(* ------------------------------------------------------------------ *)
+(* Termination of SPHINCS+ verification                               *)
+
+lemma pkWOTS_from_sigWOTS_ll : islossless SP.FSSLXMTWES.WTWES.WOTS_TW_ES.pkWOTS_from_sigWOTS.
+proof.
+proc; while true (SP.len - size pkWOTS); first by move=> z; auto; smt(size_rcons).
+by auto; smt().
+qed.
+
+lemma root_from_sig_ll : islossless SP.FSSLXMTWES.FL_SL_XMSS_MT_ES.root_from_sigFLSLXMSSMTTW.
+proof.
+proc; while true (P.`d - i).
++ by move=> z; wp; call pkWOTS_from_sigWOTS_ll; auto; smt().
+by auto; smt().
+qed.
+
+lemma pkFORS_from_sig_ll : islossless SP.FTWES.FL_FORS_ES.pkFORS_from_sigFORSTW.
+proof.
+proc; wp; while true (P.`k - size roots); first by move=> z; auto; smt(size_rcons).
+by auto; smt().
+qed.
+
+lemma SP_verify_ll : islossless SP.SPHINCS_PLUS.verify.
+proof. by proc; call root_from_sig_ll; call pkFORS_from_sig_ll; auto. qed.
+
+(* ------------------------------------------------------------------ *)
+(* From the internal scheme to SPHINCS+                               *)
+
+(* The reduction: run A on the byte encoding of the SPHINCS+ public key,
+   sign A's messages M as the pairs (PK, M), encode the signatures, and
+   decode A's forgery. *)
+module R (A : DSI.Stateless.Adv_EUFCMA) (O : SP.DSS.Stateless.SOracle_CMA) = {
+  var pkb : bytes
+
+  module O' = {
+    proc sign(m : bytes) : bytes = {
+      var s;
+      s <@ O.sign((pkb, m));
+      return enc_sig s;
+    }
+  }
+
+  proc forge(pk : SP.pkSPHINCSPLUSTW) : (bytes * bytes) * SP.sigSPHINCSPLUSTW = {
+    var m, s;
+    pkb <- NBytes.val pk.`2 ++ enc pk.`1;
+    (m, s) <@ A(O').forge(pkb);
+    return ((pkb, m), dec_sig s);
+  }
+}.
+
+(* The secret key of SLH_Internal held by the oracle, the SPHINCS+ secret
+   key and the public key bytes held by the reduction, with the common
+   root. *)
+pred keys_rel (skI : bytes) (skS : nbytes * nbytes * nbytes) (pkb : bytes) =
+  exists (r : SP.dgstblock),
+    pkb = NBytes.val skS.`3 ++ enc r
+    /\ skI = NBytes.val skS.`2 ++ NBytes.val skS.`1 ++ NBytes.val skS.`3 ++ enc r.
+
+section Reduction.
+
+declare module A <: DSI.Stateless.Adv_EUFCMA
+  {-R, -DSI.Stateless.O_CMA_Default, -SP.DSS.Stateless.O_CMA_Default}.
+
+lemma verify_pre (rootA : SP.dgstblock) psA (M b : bytes) :
+  phoare [SP.SPHINCS_PLUS.verify :
+            arg = ((rootA, psA), (NBytes.val psA ++ enc rootA, M), dec_sig b) /\ size b = sig_length P
+            ==> res = slh_verify_internal P M b (NBytes.val psA ++ enc rootA)] = 1%r.
+proof.
+case: (size b = sig_length P) => hb.
++ by conseq (verify_refine rootA psA M b hb) => /#.
+by exfalso; move=> &hr.
+qed.
+
+lemma oracle_eq :
+  equiv [DSI.Stateless.O_CMA_Default(SLH_Internal).sign
+         ~ R(A, SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS)).O'.sign :
+         ={m} /\ keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} R.pkb{2}
+         /\ SP.DSS.Stateless.O_CMA_Default.qs{2} = map (fun x => (R.pkb{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}
+         ==> ={res} /\ keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} R.pkb{2}
+         /\ SP.DSS.Stateless.O_CMA_Default.qs{2} = map (fun x => (R.pkb{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}].
+proof.
+proc; inline SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS).sign SLH_Internal.sign.
+conseq (_: m{1} = m{2}
+           /\ (exists r, R.pkb{2} = NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`3 ++ enc r
+                /\ DSI.Stateless.O_CMA_Default.sk{1}
+                    = NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`2
+                      ++ NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`1
+                      ++ NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`3 ++ enc r)
+           /\ SP.DSS.Stateless.O_CMA_Default.qs{2}
+               = map (fun x => (R.pkb{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}
+           ==> _) => //.
+elim* => r.
+exlim (SP.DSS.Stateless.O_CMA_Default.sk{2}).`1, (SP.DSS.Stateless.O_CMA_Default.sk{2}).`2,
+      (SP.DSS.Stateless.O_CMA_Default.sk{2}).`3, m{2} => ms ss ps M.
+wp; call{2} (sign_refine ms ss ps r M).
+auto => /> &1 &2; split; first by case: (SP.DSS.Stateless.O_CMA_Default.sk{2}).
+move=> _ sg -> /=; split; first by exists r.
+by rewrite map_rcons.
+qed.
+
+lemma internal_le_sp &m :
+  Pr[DSI.Stateless.EUF_CMA(SLH_Internal, A, DSI.Stateless.O_CMA_Default).main() @ &m : res]
+  <= Pr[SP.DSS.Stateless.EUF_CMA(SP.SPHINCS_PLUS, R(A), SP.DSS.Stateless.O_CMA_Default).main() @ &m : res].
+proof.
+byequiv => //; proc.
+inline SLH_Internal.keygen SP.SPHINCS_PLUS.keygen.
+inline DSI.Stateless.O_CMA_Default(SLH_Internal).init SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS).init.
+inline R(A, SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS)).forge.
+inline DSI.Stateless.O_CMA_Default(SLH_Internal).fresh SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS).fresh.
+inline SLH_Internal.verify.
+swap{1} 1 1.
+seq 3 4 : (={glob A} /\ sprf{1} = ms{2} /\ ss{1} = ss{2} /\ ps{1} = ps{2} /\ ad{2} = SP.adz).
++ by wp; rnd; rnd; rnd; wp; skip.
+exlim ss{2}, ps{2} => s0 p0.
+seq 0 1 : (={glob A} /\ sprf{1} = ms{2} /\ ss{1} = s0 /\ ss{2} = s0 /\ ps{1} = p0 /\ ps{2} = p0
+           /\ enc root{2} = xmss_node P (NBytes.val s0) 0 P.`hp (NBytes.val p0) (mk_adrs (P.`d - 1) 0 0 0 0 0)).
++ by call{2} (gen_root_ph s0 p0); skip => /> /#.
+seq 6 9 : (keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} R.pkb{2}
+           /\ SP.DSS.Stateless.O_CMA_Default.qs{2}
+               = map (fun x => (R.pkb{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}
+           /\ m{1} = m0{2} /\ sig{1} = s{2} /\ pk{1} = R.pkb{2}
+           /\ pk{2} = (root{2}, ps{2}) /\ R.pkb{2} = NBytes.val ps{2} ++ enc root{2}).
++ call (_: keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} R.pkb{2}
+           /\ SP.DSS.Stateless.O_CMA_Default.qs{2}
+               = map (fun x => (R.pkb{2}, x)) DSI.Stateless.O_CMA_Default.qs{1}).
+  + by conseq oracle_eq.
+  wp; skip => /> &2 hr.
+  rewrite (keygen_bytes s0 ms{2} p0 root{2} hr) /=.
+  by exists root{2}.
+exlim sig{1}, root{2}, ps{2}, m{1} => b r p M.
+case (size b = sig_length P).
++ wp; call{2} (verify_pre r p M b).
+  wp; skip => &1 &2 H; move: H => [#] hb hr hp hM _ hqs hm hsig hpk1 hpk2 hpkb hsz /=.
+  split; first smt().
+  move=> _ v hv [hval hfresh]; split.
+  + by move: hval; rewrite hv hpk1 hpkb hb hr hp hM.
+  move: hfresh; rewrite hqs -hm; apply contra => /mapP [x [hx /= ->]] //.
+wp; call{2} SP_verify_ll.
+by auto => />.
+qed.
+
+end section Reduction.
+
+(* ------------------------------------------------------------------ *)
+(* The external interface                                             *)
+
+section Composition.
+
+declare module A <: DSE.Stateless.Adv_EUFCMA {
+   -SP.SKG_PRF.O_PRF_Default, -SP.MKG_PRF.O_PRF_Default,
+   -SP.FTWES.MCO_ITSR.O_ITSR_Default, -SP.FTWES.F_OpenPRE.O_SMDTOpenPRE_Default,
+   -SP.FTWES.FP_OPRETCRDSPR.FP_OpenPRE.O_SMDTOpenPRE_Default, -SP.FTWES.FP_OPRETCRDSPR.FP_TCR.O_SMDTTCR_Default,
+   -SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.O_SMDTDSPR_Default, -SP.FTWES.FP_OPRETCRDSPR.R_TCR_OpenPRE,
+   -SP.FTWES.FP_OPRETCRDSPR.R_DSPR_OpenPRE, -SP.FTWES.TRHC.O_THFC_Default,
+   -SP.FTWES.TRHC_TCR.O_SMDTTCR_Default, -SP.FTWES.TRCOC.O_THFC_Default,
+   -SP.FTWES.TRCOC_TCR.O_SMDTTCR_Default, -SP.FTWES.O_CMA_MFORSTWESNPRF,
+   -SP.FTWES.O_CMA_MFORSTWESNPRF_AV, -SP.FTWES.R_ITSR_EUFCMA,
+   -SP.FTWES.R_FSMDTOpenPRE_EUFCMA, -SP.FTWES.R_TRHSMDTTCRC_EUFCMA,
+   -SP.FTWES.R_TRCOSMDTTCRC_EUFCMA, -SP.FSSLXMTWES.PKCOC.O_THFC_Default,
+   -SP.FSSLXMTWES.PKCOC_TCR.O_SMDTTCR_Default, -SP.FSSLXMTWES.TRHC.O_THFC_Default,
+   -SP.FSSLXMTWES.TRHC_TCR.O_SMDTTCR_Default, -SP.FSSLXMTWES.WTWES.FC.O_THFC_Default,
+   -SP.FSSLXMTWES.WTWES.FC_UD.O_SMDTUD_Default, -SP.FSSLXMTWES.WTWES.FC_TCR.O_SMDTTCR_Default,
+   -SP.FSSLXMTWES.WTWES.FC_PRE.O_SMDTPRE_Default, -SP.FSSLXMTWES.WTWES.O_MEUFGCMA_WOTSTWESNPRF,
+   -SP.FSSLXMTWES.WTWES.R_SMDTPREC_Game4WOTSTWES, -SP.FSSLXMTWES.WTWES.R_SMDTUDC_Game23WOTSTWES,
+   -SP.FSSLXMTWES.WTWES.R_SMDTTCRC_Game34WOTSTWES, -SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA,
+   -SP.FSSLXMTWES.R_SMDTTCRCPKCO_EUFNAGCMA, -SP.FSSLXMTWES.R_SMDTTCRCTRH_EUFNAGCMA,
+   -SP.DSS.Stateless.O_CMA_Default, -SP.R_SKGPRF_EUFCMA,
+   -SP.R_MKGPRF_EUFCMA, -SP.R_MFORSTWESNPRFEUFCMA_EUFCMA,
+   -SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA, -R,
+   -DSI.Stateless.O_CMA_Default, -DSE.Stateless.O_CMA_Default,
+   -Rec
+}.
+
+declare axiom A_forge_ll (O <: DSE.Stateless.SOracle_CMA{-A}) :
+  islossless O.sign => islossless A(O).forge.
+
+lemma RB_ll (O <: SP.DSS.Stateless.SOracle_CMA{-R, -A}) :
+  islossless O.sign => islossless R(B(A), O).forge.
+proof.
+move=> hO; proc; inline B(A, R(B(A), O).O').forge; wp; call (: true); last by auto.
++ by apply A_forge_ll.
+by proc; inline *; sp; if; auto; call hO; auto.
+qed.
+
+lemma slhdsa_euf_cma &m :
+  Pr[DSE.Stateless.EUF_CMA(External(SLH_Internal), A,
+      DSE.Stateless.O_CMA_Default).main() @ &m : res]
+  <= `|Pr[SP.SKG_PRF.PRF(SP.R_SKGPRF_EUFCMA(R(B(A))),
+      SP.SKG_PRF.O_PRF_Default).main (false) @ &m : res] -
+      Pr[SP.SKG_PRF.PRF(SP.R_SKGPRF_EUFCMA(R(B(A))),
+      SP.SKG_PRF.O_PRF_Default).main (true) @ &m : res]|
+   + `|Pr[SP.MKG_PRF.PRF(SP.R_MKGPRF_EUFCMA(R(B(A))),
+       SP.MKG_PRF.O_PRF_Default).main (false) @ &m : res] -
+       Pr[SP.MKG_PRF.PRF(SP.R_MKGPRF_EUFCMA(R(B(A))),
+       SP.MKG_PRF.O_PRF_Default).main (true) @ &m : res]|
+   + Pr[SP.FTWES.MCO_ITSR.ITSR(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A)))),
+       SP.FTWES.MCO_ITSR.O_ITSR_Default).main() @ &m : res]
+   + StdOrder.RealOrder.maxr 0%r (Pr[SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.SM_DT_DSPR(SP.FTWES.FP_OPRETCRDSPR.R_DSPR_OpenPRE(SP.FTWES.R_FPOpenPRE_FOpenPRE(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A))))),
+       SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.O_SMDTDSPR_Default).main () @ &m : res] -
+       Pr[SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.SM_DT_SPprob(SP.FTWES.FP_OPRETCRDSPR.R_DSPR_OpenPRE(SP.FTWES.R_FPOpenPRE_FOpenPRE(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A))))),
+       SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.O_SMDTDSPR_Default).main () @ &m : res])
+   + 3%r * Pr[SP.FTWES.FP_OPRETCRDSPR.FP_TCR.SM_DT_TCR(SP.FTWES.FP_OPRETCRDSPR.R_TCR_OpenPRE(SP.FTWES.R_FPOpenPRE_FOpenPRE(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A))))),
+       SP.FTWES.FP_OPRETCRDSPR.FP_TCR.O_SMDTTCR_Default).main () @ &m : res]
+   + Pr[SP.FTWES.TRHC_TCR.SM_DT_TCR_C(SP.FTWES.R_TRHSMDTTCRC_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A)))),
+       SP.FTWES.TRHC_TCR.O_SMDTTCR_Default, SP.FTWES.TRHC.O_THFC_Default).main() @ &m : res]
+   + Pr[SP.FTWES.TRCOC_TCR.SM_DT_TCR_C(SP.FTWES.R_TRCOSMDTTCRC_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A)))),
+       SP.FTWES.TRCOC_TCR.O_SMDTTCR_Default, SP.FTWES.TRCOC.O_THFC_Default).main() @ &m : res]
+   + (SP.w -
+       2)%r * `|Pr[SP.FSSLXMTWES.WTWES.FC_UD.SM_DT_UD_C(SP.FSSLXMTWES.WTWES.R_SMDTUDC_Game23WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_UD.O_SMDTUD_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main (false) @ &m : res] -
+       Pr[SP.FSSLXMTWES.WTWES.FC_UD.SM_DT_UD_C(SP.FSSLXMTWES.WTWES.R_SMDTUDC_Game23WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_UD.O_SMDTUD_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main (true) @ &m : res]|
+   + Pr[SP.FSSLXMTWES.WTWES.FC_TCR.SM_DT_TCR_C(SP.FSSLXMTWES.WTWES.R_SMDTTCRC_Game34WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_TCR.O_SMDTTCR_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main () @ &m : res]
+   + Pr[SP.FSSLXMTWES.WTWES.FC_PRE.SM_DT_PRE_C(SP.FSSLXMTWES.WTWES.R_SMDTPREC_Game4WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_PRE.O_SMDTPRE_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main () @ &m : res]
+   + Pr[SP.FSSLXMTWES.PKCOC_TCR.SM_DT_TCR_C(SP.FSSLXMTWES.R_SMDTTCRCPKCO_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A)))),
+       SP.FSSLXMTWES.PKCOC_TCR.O_SMDTTCR_Default,
+       SP.FSSLXMTWES.PKCOC.O_THFC_Default).main () @ &m : res]
+   + Pr[SP.FSSLXMTWES.TRHC_TCR.SM_DT_TCR_C(SP.FSSLXMTWES.R_SMDTTCRCTRH_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A)))),
+       SP.FSSLXMTWES.TRHC_TCR.O_SMDTTCR_Default,
+       SP.FSSLXMTWES.TRHC.O_THFC_Default).main () @ &m : res]
+   + Pr[EUF_CMA_Rec(SLH_Internal, A).main() @ &m :
+          exists y, y \in DSE.Stateless.O_CMA_Default.qs /\ ph_collision Rec.forged y].
+proof.
+have h1 := euf_cma_external SLH_Internal A SLH_verify_ll &m.
+have h2 := internal_le_sp (B(A)) &m.
+have h3 := SP.EUFCMA_SPHINCS_PLUS (R(B(A))) _ &m.
++ by move=> O hO; apply (RB_ll O hO).
+smt().
+qed.
+
+end section Composition.
