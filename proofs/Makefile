@@ -25,13 +25,12 @@
 # stale result; compiling every file separately is what makes a passing run
 # mean that every proof in the tree was checked by this run.
 #
-# Variables: EASYCRYPT (the binary), EC_PROVERS (prover selection; the
-# default uses the provers of the EasyCrypt pin), EC_TIMEOUT (seconds per
-# SMT call), PYTHON (the scans).
+# Variables: EASYCRYPT (the binary of the pinned toolchain), EC_PROVERS and
+# EC_TIMEOUT (this project's theories), IMPORTED_PROVERS and
+# IMPORTED_TIMEOUT (the imported crypto-specs theories), PYTHON (the
+# scans).
 
 EASYCRYPT  ?= easycrypt
-EC_PROVERS ?=
-EC_TIMEOUT ?= 10
 PYTHON     ?= python3
 
 CRYPTO_SPECS := ../third_party/crypto-specs
@@ -40,7 +39,17 @@ EC_PATH := -R spec \
            -R $(CRYPTO_SPECS)/common -R $(CRYPTO_SPECS)/fips202 \
            -I JazzEC:$(CRYPTO_SPECS)/arrays
 
-EC_FLAGS := -no-eco $(EC_PATH) $(EC_PROVERS) -timeout $(EC_TIMEOUT)
+# Provers and SMT timeout (seconds). Prover names carry a minimum version;
+# EasyCrypt runs the lowest installed version that satisfies it, so with the
+# provers of the EasyCrypt pin these select fixed binaries. The imported
+# theories keep the selection of their upstream project file.
+EC_PROVERS       ?= -p Z3@4.16
+EC_TIMEOUT       ?= 10
+IMPORTED_PROVERS ?= -p CVC5@1.2 -p Z3@4.8
+IMPORTED_TIMEOUT ?= 30
+
+OWN_FLAGS      := -no-eco $(EC_PATH) $(EC_PROVERS) -timeout $(EC_TIMEOUT)
+IMPORTED_FLAGS := -no-eco $(EC_PATH) $(IMPORTED_PROVERS) -timeout $(IMPORTED_TIMEOUT)
 
 OWN_FILES      := $(shell find spec \
                     \( -name '*.ec' -o -name '*.eca' \) 2>/dev/null | LC_ALL=C sort)
@@ -54,13 +63,13 @@ IMPORTED_FILES := $(shell find $(CRYPTO_SPECS) \( -name '*.ec' -o -name '*.eca' 
 check: scan-admits check-constants check-imported check-own
 
 check-spec: scan-admits check-constants
-	@$(MAKE) --no-print-directory LABEL=check-spec FILES="$(SPEC_FILES)" compile-files
+	@$(MAKE) --no-print-directory LABEL=check-spec FILES="$(SPEC_FILES)" FLAGS="$(OWN_FLAGS)" compile-files
 
 check-own:
-	@$(MAKE) --no-print-directory LABEL=check-own FILES="$(OWN_FILES)" compile-files
+	@$(MAKE) --no-print-directory LABEL=check-own FILES="$(OWN_FILES)" FLAGS="$(OWN_FLAGS)" compile-files
 
 check-imported:
-	@$(MAKE) --no-print-directory LABEL=check-imported FILES="$(IMPORTED_FILES)" compile-files
+	@$(MAKE) --no-print-directory LABEL=check-imported FILES="$(IMPORTED_FILES)" FLAGS="$(IMPORTED_FLAGS)" compile-files
 
 # The hole scan reads code only (tools/scan_holes.py strips comments), so a hole
 # that upstream left commented out is not counted, and any hole in code is.
@@ -81,6 +90,6 @@ compile-files:
 	@test -n "$(FILES)" || { echo "$(LABEL): no files"; exit 1; }
 	@n=0; for f in $(FILES); do \
 	  printf 'check %s\n' "$$f"; \
-	  $(EASYCRYPT) compile $(EC_FLAGS) "$$f" || { echo "FAIL $$f"; exit 1; }; \
+	  $(EASYCRYPT) compile $(FLAGS) "$$f" || { echo "FAIL $$f"; exit 1; }; \
 	  n=$$((n+1)); \
 	done; echo "$(LABEL): PASS $$n files"
