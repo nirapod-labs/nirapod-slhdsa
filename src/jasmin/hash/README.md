@@ -28,6 +28,7 @@ keccak/keccakf1600.jinc    Keccak-f[1600] kernel (scalar)
 keccak/sponge.jinc         incremental sponge, memory input and output
 keccak/sponge_array.jinc   the same for fixed-length arrays (instance file)
 keccak/fips202.jinc        one-shot SHA-3 and SHAKE from memory
+keccak/aarch64/scalar/     Keccak-f[1600] kernel for AArch64 with the state in registers
 sha2/sha256_k.jinc         SHA-256 round constants, shared by its kernels
 sha2/sha256_compress.jinc  SHA-256 compression kernel (scalar)
 sha2/sha256.jinc           SHA-224/256 initial values, buffering, padding
@@ -50,6 +51,7 @@ for every target and variant.
 | Variant | Target | Kernels | State |
 |---|---|---|---|
 | `scalar` | x86-64, AArch64 | `keccakf1600.jinc`, `sha256_compress.jinc`, `sha512_compress.jinc` in this directory | implemented |
+| `aarch64/scalar` | AArch64 | single-way Keccak with the 25 lanes in registers | implemented, `keccak/aarch64/scalar/` |
 | `avx2` | x86-64 | 4-way Keccak, 8-way SHA-256, 4-way SHA-512 | planned |
 | `shani` | x86-64 | single-stream SHA-256 | planned |
 | `sha3` | AArch64 | NEON Keccak with EOR3/RAX1/XAR/BCAX | planned |
@@ -76,7 +78,7 @@ Four include roots:
 
 ```sh
 jasminc -arch armv8a -I Hash=src/jasmin/hash -I HashWord=src/jasmin/hash/aarch64 \
-        -I KeccakKernel=src/jasmin/hash/keccak -I Sha2Kernel=src/jasmin/hash/sha2 ...
+        -I KeccakKernel=src/jasmin/hash/keccak/aarch64/scalar -I Sha2Kernel=src/jasmin/hash/sha2 ...
 
 jasminc -arch x86-64 -I Hash=src/jasmin/hash -I HashWord=src/jasmin/hash/x86_64 \
         -I KeccakKernel=src/jasmin/hash/keccak -I Sha2Kernel=src/jasmin/hash/sha2 ...
@@ -125,6 +127,7 @@ also keeps secret-derived data on return:
 | Function | Local stack residue on return |
 |---|---|
 | `_keccakf1600` (scalar kernel) | state after round 23 (25 lanes); C and D of round 24 |
+| `_keccakf1600` (`aarch64/scalar`) | lanes (1, 4) to (3, 4) of round 24's θ input; lane (0, 0) of its χ output |
 | `_sha256_compress*` (scalar kernel) | message schedule W_48 .. W_63 |
 | `_sha512_compress*` (scalar kernel) | message schedule W_64 .. W_79 |
 | `_sha3_*_mem`, `_shake*_mem` | the final sponge state |
@@ -420,8 +423,14 @@ Mach-O output; the pattern accepts both.
 - **Keccak, x86-64 scalar.** C and D live in stack scratch, and the emitted
   kernel names ten general-purpose registers (rax, rbx, rcx, rdx, rsi, rdi,
   r8 to r11).
-- **Keccak, AArch64.** The register use of the shared kernel's emitted
-  code is not inspected yet.
+- **Keccak, AArch64.** The `aarch64/scalar` kernel keeps the 25 lanes in
+  registers. 28 are allocatable (x0 to x17 and x19 to x28; the pinned
+  toolchain never allocates x29, the frame pointer), and the kernel names
+  all of them: the misspeculation flag and two temporaries take the rest.
+  Each round parks four lanes in the stack during θ and one during χ, so
+  besides the round constant it makes five stores and five loads. The
+  emitted kernel has no register moves, and ρ and π are 24 rotates per
+  round (576 `ror` in all).
 - **Values across kernel calls.** Kernels are local functions. The
   compiler's register allocation covers caller and callee together: a value
   live across a call keeps a register the callee does not write, or the

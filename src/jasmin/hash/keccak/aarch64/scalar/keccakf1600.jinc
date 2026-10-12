@@ -1,0 +1,222 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * keccakf1600.jinc (AArch64, scalar)
+ * ==================================
+ *
+ * Keccak-f[1600] (FIPS 202 sections 3.3 and 3.4) with the 25 lanes held
+ * in general-purpose registers for the whole permutation. Entry point and
+ * contract are those of the shared scalar kernel (keccak/keccakf1600.jinc):
+ *
+ *     _keccakf1600(st, ms)
+ *
+ * Register budget. The backend allocates 28 general-purpose registers
+ * (x0-x17 and x19-x28; x18 is the platform register, x29 the frame pointer
+ * and x30 the link register). The lanes take 25 and the misspeculation
+ * flag, which may not be spilled, takes one; two remain for temporaries.
+ * The state pointer goes to the stack after the lanes are loaded and is
+ * protected when it returns for the final store.
+ *
+ * Rounds are unrolled at compile time, so the kernel has no branch and
+ * ms passes through unchanged. Each round, on lanes a[x + 5y]:
+ *
+ *     θ    Five column parities and D need four more registers than are
+ *          free. Lanes (1, 4) to (4, 4) go to the stack, each once its column
+ *          parity is formed, and return to the registers that C values free
+ *          once their last use has passed. D is applied with the column
+ *          parity rotation folded into EOR's shifted operand (ROT by 1 is a
+ *          right rotation by 63, the form A64 operands accept):
+ *              D[x] = C[x - 1] ^ ROT(C[x + 1], 1)
+ *     ρ π  One 24-cycle of register moves, each a single rotate; one lane
+ *          (1, 0) is held in a temporary to open the cycle.
+ *     χ    Row by row with BIC (and-not). Row 0 has two temporaries and
+ *          parks its new lane (0, 0) in the stack as soon as it is formed;
+ *          rows 1 to 4 use the register it frees as a third temporary.
+ *     ι    The round constant, loaded from the shared table, into a[0] as
+ *          it returns from the stack.
+ *
+ * Security: all lanes may be secret; straight-line code, addresses fixed
+ * at compile time. Residue: lanes (1, 4) to (3, 4) of round 24's θ input
+ * and lane (0, 0) of its χ output remain in the local stack slots (lane
+ * (0, 0) is stored in the slot lane (4, 4) used); clearing is the export's
+ * obligation.
+ */
+
+from Hash require "keccak/keccak_constants.jinc"
+
+/*
+ * Column parity of column x into c.
+ */
+inline fn __parity(reg u64[25] a, inline int x) -> reg u64
+{
+  reg u64 c;
+
+  c = a[x] ^ a[x + 5];
+  c ^= a[x + 10];
+  c ^= a[x + 15];
+  c ^= a[x + 20];
+  return c;
+}
+
+inline fn __keccak_round_regs(reg u64[25] a, inline int ir) -> reg u64[25]
+{
+  stack u64 s0 s21 s22 s23 s24;
+  reg u64 c0 c1 c2 c3 c4 d t0 t1 t2;
+  reg ptr u64[24] rc;
+  inline int x y i s k cur r;
+
+  /*
+   * θ
+   *
+   * The parities of columns 0 and 1 take the two free registers. Each
+   * later parity and D take the register of a lane of the last plane,
+   * saved to the stack once its own column parity no longer needs it.
+   */
+
+  c0 = __parity(a, 0);
+  c1 = __parity(a, 1);
+  s21 = a[21];
+  c2 = __parity(a, 2);
+  s22 = a[22];
+  c3 = __parity(a, 3);
+  s23 = a[23];
+  c4 = __parity(a, 4);
+  s24 = a[24];
+
+  /*
+   * D[x] = C[x - 1] ^ ROT(C[x + 1], 1), applied to column x. The order
+   * 0, 2, 3, 1, 4 frees C1 after D2, C4 after D3, C2 after D1, and C3 and C0
+   * after D4; each saved lane returns into the register freed just before
+   * its column's D is applied.
+   */
+
+  d = c4 ^ (c1 >>r 63);
+  for y = 0 to 5 {
+    a[5 * y] ^= d;
+  }
+
+  d = c1 ^ (c3 >>r 63);
+  a[22] = s22;
+  for y = 0 to 5 {
+    a[2 + 5 * y] ^= d;
+  }
+
+  d = c2 ^ (c4 >>r 63);
+  a[23] = s23;
+  for y = 0 to 5 {
+    a[3 + 5 * y] ^= d;
+  }
+
+  d = c0 ^ (c2 >>r 63);
+  a[21] = s21;
+  for y = 0 to 5 {
+    a[1 + 5 * y] ^= d;
+  }
+
+  d = c3 ^ (c0 >>r 63);
+  a[24] = s24;
+  for y = 0 to 5 {
+    a[4 + 5 * y] ^= d;
+  }
+
+  /*
+   * ρ and π
+   *
+   * π moves lane i = x + 5y to i', with
+   *
+   *     source((x', y')) = ((x' + 3y') mod 5, x').
+   *
+   * Following source() from lane 1 visits all 24 lanes other than (0, 0)
+   * once, so each destination is written from its source before the source
+   * is itself overwritten; lane 1 is saved first to close the cycle.
+   */
+
+  t0 = a[1];
+  cur = 1;
+  for k = 0 to 24 {
+    x = cur % 5;
+    y = cur / 5;
+    s = (x + 3 * y) % 5 + 5 * x;
+    r = __keccak_rho((x + 3 * y) % 5, x);
+    #[inline]
+    if (s == 1) {
+      a[cur] = t0 <<r r;
+    } else {
+      a[cur] = a[s] <<r r;
+    }
+    cur = s;
+  }
+
+  /*
+   * χ, one row at a time:
+   *
+   *     a0' = a0 ^ (~a1 & a2)   ...   a4' = a4 ^ (~a0 & a1)
+   *
+   * Each old value is read by three new ones. Row 0 has two temporaries:
+   * a0' is formed and goes to the stack, a1' is held in t1, and a2', a3'
+   * and a4' are then each the last reader of their own old lane. In rows 1
+   * to 4, a2, a3 and a4 are updated before a0 and a1, whose old values the
+   * last two terms still need.
+   */
+
+  t0 = #BIC(a[2], a[1]);
+  t0 ^= a[0];
+  s0 = t0;
+  t1 = #BIC(a[3], a[2]);
+  t1 ^= a[1];
+  t0 = #BIC(a[4], a[3]);
+  a[2] ^= t0;
+  t0 = #BIC(a[0], a[4]);
+  a[3] ^= t0;
+  t0 = #BIC(a[1], a[0]);
+  a[4] ^= t0;
+  a[1] = t1;
+
+  for y = 1 to 5 {
+    i = 5 * y;
+    t0 = #BIC(a[i + 2], a[i + 1]);
+    t1 = #BIC(a[i + 3], a[i + 2]);
+    t2 = #BIC(a[i + 4], a[i + 3]);
+    a[i + 2] ^= t2;
+    t2 = #BIC(a[i], a[i + 4]);
+    a[i + 3] ^= t2;
+    t2 = #BIC(a[i + 1], a[i]);
+    a[i + 4] ^= t2;
+    a[i] ^= t0;
+    a[i + 1] ^= t1;
+  }
+
+  /* ι */
+
+  rc = KECCAK_RC;
+  t0 = rc[ir];
+  a[0] = s0;
+  a[0] ^= t0;
+
+  return a;
+}
+
+#[sct = "{ ptr: public, val: secret } × msf → { ptr: public, val: secret } × msf"]
+fn _keccakf1600(reg mut ptr u64[25] st, reg u64 ms) -> reg ptr u64[25], reg u64
+{
+  reg u64[25] a;
+  inline int i ir;
+
+  for i = 0 to 25 {
+    a[i] = st[i];
+  }
+  () = #spill(st);
+
+  for ir = 0 to KECCAK_ROUNDS {
+    a = __keccak_round_regs(a, ir);
+  }
+
+  () = #unspill(st);
+  st = #protect_ptr(st, ms);
+  for i = 0 to 25 {
+    st[i] = a[i];
+  }
+
+  return st, ms;
+}
