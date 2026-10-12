@@ -1,0 +1,562 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Test exports for SHA-2, HMAC and MGF1. Not part of the library: each
+ * export copies between C memory and the Jasmin calling form of one
+ * primitive so the C harness drives the production code directly.
+ *
+ * Every export protects its arguments before use, because export arguments
+ * are only transient under the speculative constant-time model.
+ */
+from Hash require "sha2/sha256.jinc"
+from Hash require "sha2/sha512.jinc"
+from Hash require "sha2/hmac.jinc"
+
+inline fn __h256_load(reg mut ptr u32[8] h, reg u64 p) -> reg ptr u32[8]
+{
+  reg u32 t;
+  inline int i;
+
+  for i = 0 to 8 {
+    t = [:u32 p + 4 * i];
+    h[i] = t;
+  }
+  return h;
+}
+
+inline fn __h256_store(reg u64 p, reg const ptr u32[8] h)
+{
+  reg u32 t;
+  inline int i;
+
+  for i = 0 to 8 {
+    t = h[i];
+    [:u32 p + 4 * i] = t;
+  }
+}
+
+inline fn __h512_load(reg mut ptr u64[8] h, reg u64 p) -> reg ptr u64[8]
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to 8 {
+    t = [:u64 p + 8 * i];
+    h[i] = t;
+  }
+  return h;
+}
+
+inline fn __h512_store(reg u64 p, reg const ptr u64[8] h)
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to 8 {
+    t = h[i];
+    [:u64 p + 8 * i] = t;
+  }
+}
+
+inline fn __bytes_load64(reg mut ptr u8[64] b, reg u64 p) -> reg ptr u8[64]
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to 8 {
+    t = [:u64 p + 8 * i];
+    b[:u64 i] = t;
+  }
+  return b;
+}
+
+inline fn __bytes_store64(reg u64 p, reg const ptr u8[64] b)
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to 8 {
+    t = b[:u64 i];
+    [:u64 p + 8 * i] = t;
+  }
+}
+
+inline fn __bytes_load128(reg mut ptr u8[128] b, reg u64 p) -> reg ptr u8[128]
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to 16 {
+    t = [:u64 p + 8 * i];
+    b[:u64 i] = t;
+  }
+  return b;
+}
+
+inline fn __bytes_store128(reg u64 p, reg const ptr u8[128] b)
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to 16 {
+    t = b[:u64 i];
+    [:u64 p + 8 * i] = t;
+  }
+}
+
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha224(reg u64 out in inlen)
+{
+  stack u8[32] d;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+  () = #spill(out);
+  d, ms = _sha224_mem(d, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 28 {
+    t = (64u)d[i];
+    [:u8 out + i] = (8u)t;
+  }
+}
+
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha256(reg u64 out in inlen)
+{
+  stack u8[32] d;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+  () = #spill(out);
+  d, ms = _sha256_mem(d, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 32 {
+    t = (64u)d[i];
+    [:u8 out + i] = (8u)t;
+  }
+}
+
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha384(reg u64 out in inlen)
+{
+  stack u8[64] d;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+  () = #spill(out);
+  d, ms = _sha384_mem(d, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 48 {
+    t = (64u)d[i];
+    [:u8 out + i] = (8u)t;
+  }
+}
+
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha512(reg u64 out in inlen)
+{
+  stack u8[64] d;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+  () = #spill(out);
+  d, ms = _sha512_mem(d, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 64 {
+    t = (64u)d[i];
+    [:u8 out + i] = (8u)t;
+  }
+}
+
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha512_224(reg u64 out in inlen)
+{
+  stack u8[64] d;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+  () = #spill(out);
+  d, ms = _sha512_224_mem(d, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 28 {
+    t = (64u)d[i];
+    [:u8 out + i] = (8u)t;
+  }
+}
+
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha512_256(reg u64 out in inlen)
+{
+  stack u8[64] d;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+  () = #spill(out);
+  d, ms = _sha512_256_mem(d, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 32 {
+    t = (64u)d[i];
+    [:u8 out + i] = (8u)t;
+  }
+}
+
+#[ct = "public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha256_init(reg u64 hp)
+{
+  stack u32[8] h;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  h = __sha256_init(h);
+  __h256_store(hp, h);
+}
+
+#[ct = "public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha224_init(reg u64 hp)
+{
+  stack u32[8] h;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  h = __sha224_init(h);
+  __h256_store(hp, h);
+}
+
+#[ct = "public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha512_init(reg u64 hp)
+{
+  stack u64[8] h;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  h = __sha512_init(h);
+  __h512_store(hp, h);
+}
+
+#[ct = "public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha384_init(reg u64 hp)
+{
+  stack u64[8] h;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  h = __sha384_init(h);
+  __h512_store(hp, h);
+}
+
+#[ct = "public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha512_224_init(reg u64 hp)
+{
+  stack u64[8] h;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  h = __sha512_224_init(h);
+  __h512_store(hp, h);
+}
+
+#[ct = "public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha512_256_init(reg u64 hp)
+{
+  stack u64[8] h;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  h = __sha512_256_init(h);
+  __h512_store(hp, h);
+}
+
+#[ct = "public × public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha256_absorb(reg u64 hp bp total in inlen) -> reg u64
+{
+  stack u32[8] h;
+  stack u8[64] buf;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+  h = __h256_load(h, hp);
+  buf = __bytes_load64(buf, bp);
+  () = #spill(hp, bp);
+  h, buf, total, ms = _sha256_absorb_mem(h, buf, total, in, inlen, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  __h256_store(hp, h);
+  __bytes_store64(bp, buf);
+
+  return total;
+}
+
+#[ct = "public × public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha256_finalize(reg u64 out hp bp total)
+{
+  stack u32[8] h;
+  stack u8[64] buf;
+  stack u8[32] d;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  h = __h256_load(h, hp);
+  buf = __bytes_load64(buf, bp);
+  () = #spill(out, hp, bp);
+  d, h, buf, ms = _sha256_finalize(d, h, buf, total, ms);
+  () = #unspill(out, hp, bp);
+  out = #protect(out, ms);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  __h256_store(hp, h);
+  __bytes_store64(bp, buf);
+
+  for i = 0 to 4 {
+    t = d[:u64 i];
+    [:u64 out + 8 * i] = t;
+  }
+}
+
+#[ct = "public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha256_compress(reg u64 hp block)
+{
+  stack u32[8] h;
+  stack u8[64] b;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  block = #protect(block, ms);
+  h = __h256_load(h, hp);
+  b = __bytes_load64(b, block);
+  () = #spill(hp);
+  h, ms = _sha256_compress(h, b, ms);
+  () = #unspill(hp);
+  hp = #protect(hp, ms);
+  __h256_store(hp, h);
+}
+
+#[ct = "public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha256_compress_ptr(reg u64 hp block)
+{
+  stack u32[8] h;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  block = #protect(block, ms);
+  h = __h256_load(h, hp);
+  () = #spill(hp);
+  h, ms = _sha256_compress_ptr(h, block, ms);
+  () = #unspill(hp);
+  hp = #protect(hp, ms);
+  __h256_store(hp, h);
+}
+
+#[ct = "public × public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha512_absorb(reg u64 hp bp total in inlen) -> reg u64
+{
+  stack u64[8] h;
+  stack u8[128] buf;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+  h = __h512_load(h, hp);
+  buf = __bytes_load128(buf, bp);
+  () = #spill(hp, bp);
+  h, buf, total, ms = _sha512_absorb_mem(h, buf, total, in, inlen, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  __h512_store(hp, h);
+  __bytes_store128(bp, buf);
+
+  return total;
+}
+
+#[ct = "public × public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha512_finalize(reg u64 out hp bp total)
+{
+  stack u64[8] h;
+  stack u8[128] buf;
+  stack u8[64] d;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  h = __h512_load(h, hp);
+  buf = __bytes_load128(buf, bp);
+  () = #spill(out, hp, bp);
+  d, h, buf, ms = _sha512_finalize(d, h, buf, total, ms);
+  () = #unspill(out, hp, bp);
+  out = #protect(out, ms);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  __h512_store(hp, h);
+  __bytes_store128(bp, buf);
+
+  for i = 0 to 8 {
+    t = d[:u64 i];
+    [:u64 out + 8 * i] = t;
+  }
+}
+
+#[ct = "public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha512_compress(reg u64 hp block)
+{
+  stack u64[8] h;
+  stack u8[128] b;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  block = #protect(block, ms);
+  h = __h512_load(h, hp);
+  b = __bytes_load128(b, block);
+  () = #spill(hp);
+  h, ms = _sha512_compress(h, b, ms);
+  () = #unspill(hp);
+  hp = #protect(hp, ms);
+  __h512_store(hp, h);
+}
+
+#[ct = "public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha512_compress_ptr(reg u64 hp block)
+{
+  stack u64[8] h;
+  reg u64 ms;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  block = #protect(block, ms);
+  h = __h512_load(h, hp);
+  () = #spill(hp);
+  h, ms = _sha512_compress_ptr(h, block, ms);
+  () = #unspill(hp);
+  hp = #protect(hp, ms);
+  __h512_store(hp, h);
+}
+
+#[ct = "public × public × public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_hmac_sha256(reg u64 out key keylen msg msglen)
+{
+  stack u8[64] k0 buf;
+  stack u32[8] inner outer;
+  stack u8[32] tag;
+  reg u64 ms total t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  key = #protect(key, ms);
+  keylen = #protect(keylen, ms);
+  msg = #protect(msg, ms);
+  msglen = #protect(msglen, ms);
+  () = #spill(out, msg, msglen);
+  k0, ms = _hmac_sha256_keyblock_mem(k0, key, keylen, ms);
+  inner, outer, ms = __hmac_sha256_init(inner, outer, k0, ms);
+  () = #unspill(msg, msglen);
+  msg = #protect(msg, ms);
+  msglen = #protect(msglen, ms);
+  total = 64;
+  inner, buf, total, ms = _sha256_absorb_mem(inner, buf, total, msg, msglen, ms);
+  tag, inner, buf, ms = __hmac_sha256_finalize(tag, inner, buf, total, outer, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 4 {
+    t = tag[:u64 i];
+    [:u64 out + 8 * i] = t;
+  }
+}
+
+#[ct = "public × public × public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_hmac_sha512(reg u64 out key keylen msg msglen)
+{
+  stack u8[128] k0 buf;
+  stack u64[8] inner outer;
+  stack u8[64] tag;
+  reg u64 ms total t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  key = #protect(key, ms);
+  keylen = #protect(keylen, ms);
+  msg = #protect(msg, ms);
+  msglen = #protect(msglen, ms);
+  () = #spill(out, msg, msglen);
+  k0, ms = _hmac_sha512_keyblock_mem(k0, key, keylen, ms);
+  inner, outer, ms = __hmac_sha512_init(inner, outer, k0, ms);
+  () = #unspill(msg, msglen);
+  msg = #protect(msg, ms);
+  msglen = #protect(msglen, ms);
+  total = 128;
+  inner, buf, total, ms = _sha512_absorb_mem(inner, buf, total, msg, msglen, ms);
+  tag, inner, buf, ms = __hmac_sha512_finalize(tag, inner, buf, total, outer, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 8 {
+    t = tag[:u64 i];
+    [:u64 out + 8 * i] = t;
+  }
+}

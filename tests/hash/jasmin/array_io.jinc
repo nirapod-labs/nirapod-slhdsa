@@ -1,0 +1,30 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Copy between C memory and a stack byte array of length HASH_ARRAY_LEN,
+ * fixed by the enclosing namespace. Test exports only.
+ */
+
+inline fn __array_load(reg mut ptr u8[HASH_ARRAY_LEN] a, reg u64 p) -> reg ptr u8[HASH_ARRAY_LEN]
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to HASH_ARRAY_LEN {
+    t = (64u)[:u8 p + i];
+    a[i] = (8u)t;
+  }
+  return a;
+}
+
+inline fn __array_store(reg u64 p, reg const ptr u8[HASH_ARRAY_LEN] a)
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to HASH_ARRAY_LEN {
+    t = (64u)a[i];
+    [:u8 p + i] = (8u)t;
+  }
+}

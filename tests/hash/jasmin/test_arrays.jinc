@@ -1,0 +1,1545 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * GENERATED FILE. DO NOT EDIT.
+ *
+ * Generator:   tests/hash/tools/gen_test_arrays.py
+ * Regenerate:  python3 -I tests/hash/tools/gen_test_arrays.py > tests/hash/jasmin/test_arrays.jinc
+ *
+ * Test exports for the fixed-length array forms: one namespace per tested
+ * length (1, 7, 16, 22, 32, 64, 65, 129, 200), instantiating the array files of the
+ * hash primitives and the test copy helpers, and
+ * the MGF1 instances at the FIPS 205 sizes. Every export protects its
+ * arguments before use.
+ */
+from Hash require "keccak/sponge.jinc"
+from Hash require "sha2/sha256.jinc"
+from Hash require "sha2/sha512.jinc"
+
+namespace A1 {
+  param int HASH_ARRAY_LEN = 1;
+  from Hash require "keccak/sponge_array.jinc"
+  from Hash require "sha2/sha256_array.jinc"
+  from Hash require "sha2/sha512_array.jinc"
+  require "array_io.jinc"
+}
+
+namespace A7 {
+  param int HASH_ARRAY_LEN = 7;
+  from Hash require "keccak/sponge_array.jinc"
+  from Hash require "sha2/sha256_array.jinc"
+  from Hash require "sha2/sha512_array.jinc"
+  require "array_io.jinc"
+}
+
+namespace A16 {
+  param int HASH_ARRAY_LEN = 16;
+  from Hash require "keccak/sponge_array.jinc"
+  from Hash require "sha2/sha256_array.jinc"
+  from Hash require "sha2/sha512_array.jinc"
+  require "array_io.jinc"
+}
+
+namespace A22 {
+  param int HASH_ARRAY_LEN = 22;
+  from Hash require "keccak/sponge_array.jinc"
+  from Hash require "sha2/sha256_array.jinc"
+  from Hash require "sha2/sha512_array.jinc"
+  require "array_io.jinc"
+}
+
+namespace A32 {
+  param int HASH_ARRAY_LEN = 32;
+  from Hash require "keccak/sponge_array.jinc"
+  from Hash require "sha2/sha256_array.jinc"
+  from Hash require "sha2/sha512_array.jinc"
+  require "array_io.jinc"
+}
+
+namespace A64 {
+  param int HASH_ARRAY_LEN = 64;
+  from Hash require "keccak/sponge_array.jinc"
+  from Hash require "sha2/sha256_array.jinc"
+  from Hash require "sha2/sha512_array.jinc"
+  require "array_io.jinc"
+}
+
+namespace A65 {
+  param int HASH_ARRAY_LEN = 65;
+  from Hash require "keccak/sponge_array.jinc"
+  from Hash require "sha2/sha256_array.jinc"
+  from Hash require "sha2/sha512_array.jinc"
+  require "array_io.jinc"
+}
+
+namespace A129 {
+  param int HASH_ARRAY_LEN = 129;
+  from Hash require "keccak/sponge_array.jinc"
+  from Hash require "sha2/sha256_array.jinc"
+  from Hash require "sha2/sha512_array.jinc"
+  require "array_io.jinc"
+}
+
+namespace A200 {
+  param int HASH_ARRAY_LEN = 200;
+  from Hash require "keccak/sponge_array.jinc"
+  from Hash require "sha2/sha256_array.jinc"
+  from Hash require "sha2/sha512_array.jinc"
+  require "array_io.jinc"
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_absorb_array_1(reg u64 p pos rate in) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[1] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  in = #protect(in, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  buf = A1::__array_load(buf, in);
+  () = #spill(p);
+  st, pos, ms = A1::_keccak_absorb_array(st, pos, rate, buf, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_1(reg u64 out p pos rate) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[1] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  () = #spill(out, p);
+  buf, st, pos, ms = A1::_keccak_squeeze_array(buf, st, pos, rate, ms);
+  () = #unspill(out, p);
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  A1::__array_store(out, buf);
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha256_absorb_array_1(reg u64 hp bp total in) -> reg u64
+{
+  stack u32[8] h;
+  stack u8[64] blk;
+  stack u8[1] buf;
+  reg u64 ms t;
+  reg u32 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u32 hp + 4 * i];
+    h[i] = x;
+  }
+  for i = 0 to 8 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A1::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A1::_sha256_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u32 hp + 4 * i] = x;
+  }
+  for i = 0 to 8 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha512_absorb_array_1(reg u64 hp bp total in) -> reg u64
+{
+  stack u64[8] h;
+  stack u8[128] blk;
+  stack u8[1] buf;
+  reg u64 ms t;
+  reg u64 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u64 hp + 8 * i];
+    h[i] = x;
+  }
+  for i = 0 to 16 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A1::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A1::_sha512_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u64 hp + 8 * i] = x;
+  }
+  for i = 0 to 16 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_absorb_array_7(reg u64 p pos rate in) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[7] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  in = #protect(in, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  buf = A7::__array_load(buf, in);
+  () = #spill(p);
+  st, pos, ms = A7::_keccak_absorb_array(st, pos, rate, buf, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_7(reg u64 out p pos rate) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[7] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  () = #spill(out, p);
+  buf, st, pos, ms = A7::_keccak_squeeze_array(buf, st, pos, rate, ms);
+  () = #unspill(out, p);
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  A7::__array_store(out, buf);
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha256_absorb_array_7(reg u64 hp bp total in) -> reg u64
+{
+  stack u32[8] h;
+  stack u8[64] blk;
+  stack u8[7] buf;
+  reg u64 ms t;
+  reg u32 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u32 hp + 4 * i];
+    h[i] = x;
+  }
+  for i = 0 to 8 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A7::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A7::_sha256_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u32 hp + 4 * i] = x;
+  }
+  for i = 0 to 8 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha512_absorb_array_7(reg u64 hp bp total in) -> reg u64
+{
+  stack u64[8] h;
+  stack u8[128] blk;
+  stack u8[7] buf;
+  reg u64 ms t;
+  reg u64 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u64 hp + 8 * i];
+    h[i] = x;
+  }
+  for i = 0 to 16 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A7::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A7::_sha512_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u64 hp + 8 * i] = x;
+  }
+  for i = 0 to 16 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_absorb_array_16(reg u64 p pos rate in) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[16] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  in = #protect(in, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  buf = A16::__array_load(buf, in);
+  () = #spill(p);
+  st, pos, ms = A16::_keccak_absorb_array(st, pos, rate, buf, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_16(reg u64 out p pos rate) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[16] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  () = #spill(out, p);
+  buf, st, pos, ms = A16::_keccak_squeeze_array(buf, st, pos, rate, ms);
+  () = #unspill(out, p);
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  A16::__array_store(out, buf);
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha256_absorb_array_16(reg u64 hp bp total in) -> reg u64
+{
+  stack u32[8] h;
+  stack u8[64] blk;
+  stack u8[16] buf;
+  reg u64 ms t;
+  reg u32 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u32 hp + 4 * i];
+    h[i] = x;
+  }
+  for i = 0 to 8 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A16::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A16::_sha256_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u32 hp + 4 * i] = x;
+  }
+  for i = 0 to 8 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha512_absorb_array_16(reg u64 hp bp total in) -> reg u64
+{
+  stack u64[8] h;
+  stack u8[128] blk;
+  stack u8[16] buf;
+  reg u64 ms t;
+  reg u64 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u64 hp + 8 * i];
+    h[i] = x;
+  }
+  for i = 0 to 16 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A16::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A16::_sha512_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u64 hp + 8 * i] = x;
+  }
+  for i = 0 to 16 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_absorb_array_22(reg u64 p pos rate in) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[22] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  in = #protect(in, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  buf = A22::__array_load(buf, in);
+  () = #spill(p);
+  st, pos, ms = A22::_keccak_absorb_array(st, pos, rate, buf, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_22(reg u64 out p pos rate) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[22] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  () = #spill(out, p);
+  buf, st, pos, ms = A22::_keccak_squeeze_array(buf, st, pos, rate, ms);
+  () = #unspill(out, p);
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  A22::__array_store(out, buf);
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha256_absorb_array_22(reg u64 hp bp total in) -> reg u64
+{
+  stack u32[8] h;
+  stack u8[64] blk;
+  stack u8[22] buf;
+  reg u64 ms t;
+  reg u32 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u32 hp + 4 * i];
+    h[i] = x;
+  }
+  for i = 0 to 8 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A22::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A22::_sha256_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u32 hp + 4 * i] = x;
+  }
+  for i = 0 to 8 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha512_absorb_array_22(reg u64 hp bp total in) -> reg u64
+{
+  stack u64[8] h;
+  stack u8[128] blk;
+  stack u8[22] buf;
+  reg u64 ms t;
+  reg u64 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u64 hp + 8 * i];
+    h[i] = x;
+  }
+  for i = 0 to 16 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A22::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A22::_sha512_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u64 hp + 8 * i] = x;
+  }
+  for i = 0 to 16 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_absorb_array_32(reg u64 p pos rate in) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[32] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  in = #protect(in, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  buf = A32::__array_load(buf, in);
+  () = #spill(p);
+  st, pos, ms = A32::_keccak_absorb_array(st, pos, rate, buf, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_32(reg u64 out p pos rate) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[32] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  () = #spill(out, p);
+  buf, st, pos, ms = A32::_keccak_squeeze_array(buf, st, pos, rate, ms);
+  () = #unspill(out, p);
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  A32::__array_store(out, buf);
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha256_absorb_array_32(reg u64 hp bp total in) -> reg u64
+{
+  stack u32[8] h;
+  stack u8[64] blk;
+  stack u8[32] buf;
+  reg u64 ms t;
+  reg u32 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u32 hp + 4 * i];
+    h[i] = x;
+  }
+  for i = 0 to 8 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A32::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A32::_sha256_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u32 hp + 4 * i] = x;
+  }
+  for i = 0 to 8 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha512_absorb_array_32(reg u64 hp bp total in) -> reg u64
+{
+  stack u64[8] h;
+  stack u8[128] blk;
+  stack u8[32] buf;
+  reg u64 ms t;
+  reg u64 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u64 hp + 8 * i];
+    h[i] = x;
+  }
+  for i = 0 to 16 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A32::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A32::_sha512_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u64 hp + 8 * i] = x;
+  }
+  for i = 0 to 16 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_absorb_array_64(reg u64 p pos rate in) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[64] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  in = #protect(in, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  buf = A64::__array_load(buf, in);
+  () = #spill(p);
+  st, pos, ms = A64::_keccak_absorb_array(st, pos, rate, buf, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_64(reg u64 out p pos rate) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[64] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  () = #spill(out, p);
+  buf, st, pos, ms = A64::_keccak_squeeze_array(buf, st, pos, rate, ms);
+  () = #unspill(out, p);
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  A64::__array_store(out, buf);
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha256_absorb_array_64(reg u64 hp bp total in) -> reg u64
+{
+  stack u32[8] h;
+  stack u8[64] blk;
+  stack u8[64] buf;
+  reg u64 ms t;
+  reg u32 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u32 hp + 4 * i];
+    h[i] = x;
+  }
+  for i = 0 to 8 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A64::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A64::_sha256_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u32 hp + 4 * i] = x;
+  }
+  for i = 0 to 8 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha512_absorb_array_64(reg u64 hp bp total in) -> reg u64
+{
+  stack u64[8] h;
+  stack u8[128] blk;
+  stack u8[64] buf;
+  reg u64 ms t;
+  reg u64 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u64 hp + 8 * i];
+    h[i] = x;
+  }
+  for i = 0 to 16 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A64::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A64::_sha512_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u64 hp + 8 * i] = x;
+  }
+  for i = 0 to 16 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_absorb_array_65(reg u64 p pos rate in) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[65] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  in = #protect(in, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  buf = A65::__array_load(buf, in);
+  () = #spill(p);
+  st, pos, ms = A65::_keccak_absorb_array(st, pos, rate, buf, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_65(reg u64 out p pos rate) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[65] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  () = #spill(out, p);
+  buf, st, pos, ms = A65::_keccak_squeeze_array(buf, st, pos, rate, ms);
+  () = #unspill(out, p);
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  A65::__array_store(out, buf);
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha256_absorb_array_65(reg u64 hp bp total in) -> reg u64
+{
+  stack u32[8] h;
+  stack u8[64] blk;
+  stack u8[65] buf;
+  reg u64 ms t;
+  reg u32 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u32 hp + 4 * i];
+    h[i] = x;
+  }
+  for i = 0 to 8 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A65::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A65::_sha256_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u32 hp + 4 * i] = x;
+  }
+  for i = 0 to 8 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha512_absorb_array_65(reg u64 hp bp total in) -> reg u64
+{
+  stack u64[8] h;
+  stack u8[128] blk;
+  stack u8[65] buf;
+  reg u64 ms t;
+  reg u64 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u64 hp + 8 * i];
+    h[i] = x;
+  }
+  for i = 0 to 16 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A65::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A65::_sha512_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u64 hp + 8 * i] = x;
+  }
+  for i = 0 to 16 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_absorb_array_129(reg u64 p pos rate in) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[129] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  in = #protect(in, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  buf = A129::__array_load(buf, in);
+  () = #spill(p);
+  st, pos, ms = A129::_keccak_absorb_array(st, pos, rate, buf, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_129(reg u64 out p pos rate) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[129] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  () = #spill(out, p);
+  buf, st, pos, ms = A129::_keccak_squeeze_array(buf, st, pos, rate, ms);
+  () = #unspill(out, p);
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  A129::__array_store(out, buf);
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha256_absorb_array_129(reg u64 hp bp total in) -> reg u64
+{
+  stack u32[8] h;
+  stack u8[64] blk;
+  stack u8[129] buf;
+  reg u64 ms t;
+  reg u32 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u32 hp + 4 * i];
+    h[i] = x;
+  }
+  for i = 0 to 8 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A129::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A129::_sha256_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u32 hp + 4 * i] = x;
+  }
+  for i = 0 to 8 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha512_absorb_array_129(reg u64 hp bp total in) -> reg u64
+{
+  stack u64[8] h;
+  stack u8[128] blk;
+  stack u8[129] buf;
+  reg u64 ms t;
+  reg u64 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u64 hp + 8 * i];
+    h[i] = x;
+  }
+  for i = 0 to 16 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A129::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A129::_sha512_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u64 hp + 8 * i] = x;
+  }
+  for i = 0 to 16 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_absorb_array_200(reg u64 p pos rate in) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[200] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  in = #protect(in, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  buf = A200::__array_load(buf, in);
+  () = #spill(p);
+  st, pos, ms = A200::_keccak_absorb_array(st, pos, rate, buf, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_200(reg u64 out p pos rate) -> reg u64
+{
+  stack u64[25] st;
+  stack u8[200] buf;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  () = #spill(out, p);
+  buf, st, pos, ms = A200::_keccak_squeeze_array(buf, st, pos, rate, ms);
+  () = #unspill(out, p);
+  out = #protect(out, ms);
+  p = #protect(p, ms);
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+  A200::__array_store(out, buf);
+  return pos;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha256_absorb_array_200(reg u64 hp bp total in) -> reg u64
+{
+  stack u32[8] h;
+  stack u8[64] blk;
+  stack u8[200] buf;
+  reg u64 ms t;
+  reg u32 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u32 hp + 4 * i];
+    h[i] = x;
+  }
+  for i = 0 to 8 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A200::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A200::_sha256_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u32 hp + 4 * i] = x;
+  }
+  for i = 0 to 8 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+#[ct = "public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_sha512_absorb_array_200(reg u64 hp bp total in) -> reg u64
+{
+  stack u64[8] h;
+  stack u8[128] blk;
+  stack u8[200] buf;
+  reg u64 ms t;
+  reg u64 x;
+  inline int i;
+
+  ms = #init_msf();
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  total = #protect(total, ms);
+  in = #protect(in, ms);
+  for i = 0 to 8 {
+    x = [:u64 hp + 8 * i];
+    h[i] = x;
+  }
+  for i = 0 to 16 {
+    t = [:u64 bp + 8 * i];
+    blk[:u64 i] = t;
+  }
+  buf = A200::__array_load(buf, in);
+  () = #spill(hp, bp);
+  h, blk, total, ms = A200::_sha512_absorb_array(h, blk, total, buf, ms);
+  () = #unspill(hp, bp);
+  hp = #protect(hp, ms);
+  bp = #protect(bp, ms);
+  for i = 0 to 8 {
+    x = h[i];
+    [:u64 hp + 8 * i] = x;
+  }
+  for i = 0 to 16 {
+    t = blk[:u64 i];
+    [:u64 bp + 8 * i] = t;
+  }
+  return total;
+}
+
+namespace M256_64_30 {
+  param int MGF1_SEED_LEN = 64;
+  param int MGF1_OUT_LEN = 30;
+  from Hash require "sha2/mgf1.jinc"
+}
+
+namespace S256_64_30 {
+  param int HASH_ARRAY_LEN = 64;
+  require "array_io.jinc"
+}
+
+namespace O256_64_30 {
+  param int HASH_ARRAY_LEN = 30;
+  require "array_io.jinc"
+}
+
+#[ct = "public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_mgf1_sha256_64_30(reg u64 out seed)
+{
+  stack u8[64] s;
+  stack u8[30] o;
+  reg u64 ms;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  seed = #protect(seed, ms);
+  s = S256_64_30::__array_load(s, seed);
+  () = #spill(out);
+  o, ms = M256_64_30::_mgf1_sha256(o, s, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+  O256_64_30::__array_store(out, o);
+}
+
+namespace M256_64_34 {
+  param int MGF1_SEED_LEN = 64;
+  param int MGF1_OUT_LEN = 34;
+  from Hash require "sha2/mgf1.jinc"
+}
+
+namespace S256_64_34 {
+  param int HASH_ARRAY_LEN = 64;
+  require "array_io.jinc"
+}
+
+namespace O256_64_34 {
+  param int HASH_ARRAY_LEN = 34;
+  require "array_io.jinc"
+}
+
+#[ct = "public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_mgf1_sha256_64_34(reg u64 out seed)
+{
+  stack u8[64] s;
+  stack u8[34] o;
+  reg u64 ms;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  seed = #protect(seed, ms);
+  s = S256_64_34::__array_load(s, seed);
+  () = #spill(out);
+  o, ms = M256_64_34::_mgf1_sha256(o, s, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+  O256_64_34::__array_store(out, o);
+}
+
+namespace M512_112_39 {
+  param int MGF1_SEED_LEN = 112;
+  param int MGF1_OUT_LEN = 39;
+  from Hash require "sha2/mgf1.jinc"
+}
+
+namespace S512_112_39 {
+  param int HASH_ARRAY_LEN = 112;
+  require "array_io.jinc"
+}
+
+namespace O512_112_39 {
+  param int HASH_ARRAY_LEN = 39;
+  require "array_io.jinc"
+}
+
+#[ct = "public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_mgf1_sha512_112_39(reg u64 out seed)
+{
+  stack u8[112] s;
+  stack u8[39] o;
+  reg u64 ms;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  seed = #protect(seed, ms);
+  s = S512_112_39::__array_load(s, seed);
+  () = #spill(out);
+  o, ms = M512_112_39::_mgf1_sha512(o, s, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+  O512_112_39::__array_store(out, o);
+}
+
+namespace M512_112_42 {
+  param int MGF1_SEED_LEN = 112;
+  param int MGF1_OUT_LEN = 42;
+  from Hash require "sha2/mgf1.jinc"
+}
+
+namespace S512_112_42 {
+  param int HASH_ARRAY_LEN = 112;
+  require "array_io.jinc"
+}
+
+namespace O512_112_42 {
+  param int HASH_ARRAY_LEN = 42;
+  require "array_io.jinc"
+}
+
+#[ct = "public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_mgf1_sha512_112_42(reg u64 out seed)
+{
+  stack u8[112] s;
+  stack u8[42] o;
+  reg u64 ms;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  seed = #protect(seed, ms);
+  s = S512_112_42::__array_load(s, seed);
+  () = #spill(out);
+  o, ms = M512_112_42::_mgf1_sha512(o, s, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+  O512_112_42::__array_store(out, o);
+}
+
+namespace M512_128_47 {
+  param int MGF1_SEED_LEN = 128;
+  param int MGF1_OUT_LEN = 47;
+  from Hash require "sha2/mgf1.jinc"
+}
+
+namespace S512_128_47 {
+  param int HASH_ARRAY_LEN = 128;
+  require "array_io.jinc"
+}
+
+namespace O512_128_47 {
+  param int HASH_ARRAY_LEN = 47;
+  require "array_io.jinc"
+}
+
+#[ct = "public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_mgf1_sha512_128_47(reg u64 out seed)
+{
+  stack u8[128] s;
+  stack u8[47] o;
+  reg u64 ms;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  seed = #protect(seed, ms);
+  s = S512_128_47::__array_load(s, seed);
+  () = #spill(out);
+  o, ms = M512_128_47::_mgf1_sha512(o, s, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+  O512_128_47::__array_store(out, o);
+}
+
+namespace M512_128_49 {
+  param int MGF1_SEED_LEN = 128;
+  param int MGF1_OUT_LEN = 49;
+  from Hash require "sha2/mgf1.jinc"
+}
+
+namespace S512_128_49 {
+  param int HASH_ARRAY_LEN = 128;
+  require "array_io.jinc"
+}
+
+namespace O512_128_49 {
+  param int HASH_ARRAY_LEN = 49;
+  require "array_io.jinc"
+}
+
+#[ct = "public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_mgf1_sha512_128_49(reg u64 out seed)
+{
+  stack u8[128] s;
+  stack u8[49] o;
+  reg u64 ms;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  seed = #protect(seed, ms);
+  s = S512_128_49::__array_load(s, seed);
+  () = #spill(out);
+  o, ms = M512_128_49::_mgf1_sha512(o, s, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+  O512_128_49::__array_store(out, o);
+}

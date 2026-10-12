@@ -1,0 +1,242 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Test exports for the Keccak primitives. They are not part of the library:
+ * each one copies between C memory and the Jasmin calling form of one
+ * primitive, so the C harness can drive the production code directly.
+ *
+ * Every export protects its arguments before use, because export arguments
+ * are only transient under the speculative constant-time model.
+ */
+
+from Hash require "keccak/fips202.jinc"
+
+inline fn __state_load(reg ptr u64[25] st, reg u64 p) -> reg ptr u64[25]
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to 25 {
+    t = [:u64 p + 8 * i];
+    st[i] = t;
+  }
+  return st;
+}
+
+inline fn __state_store(reg u64 p, reg ptr u64[25] st)
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to 25 {
+    t = st[i];
+    [:u64 p + 8 * i] = t;
+  }
+}
+
+#[ct = "public -> ()"]
+export fn nirapod_slhdsa_hashtest_keccakf1600(reg u64 p)
+{
+  stack u64[25] st;
+  reg u64 ms;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+
+  st = __state_load(st, p);
+  () = #spill(p);
+  st, ms = _keccakf1600(st, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  __state_store(p, st);
+}
+
+#[ct = "public × public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_absorb(reg u64 p pos rate in inlen) -> reg u64
+{
+  stack u64[25] st;
+  reg u64 ms;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+
+  st = __state_load(st, p);
+  () = #spill(p);
+  st, pos, ms = _keccak_absorb_mem(st, pos, rate, in, inlen, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  __state_store(p, st);
+
+  return pos;
+}
+
+#[ct = "public × public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_keccak_finalize(reg u64 p pos rate ds)
+{
+  stack u64[25] st;
+  reg u64 ms;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  ds = #protect(ds, ms);
+
+  st = __state_load(st, p);
+  () = #spill(p);
+  st, ms = _keccak_finalize(st, pos, rate, ds, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  __state_store(p, st);
+}
+
+#[ct = "public × public × public × public × public -> public"]
+export fn nirapod_slhdsa_hashtest_keccak_squeeze(reg u64 p pos rate out outlen) -> reg u64
+{
+  stack u64[25] st;
+  reg u64 ms;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  pos = #protect(pos, ms);
+  rate = #protect(rate, ms);
+  out = #protect(out, ms);
+  outlen = #protect(outlen, ms);
+
+  st = __state_load(st, p);
+  () = #spill(p);
+  st, pos, ms = _keccak_squeeze_mem(st, pos, rate, out, outlen, ms);
+  () = #unspill(p);
+  p = #protect(p, ms);
+  __state_store(p, st);
+
+  return pos;
+}
+
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha3_224(reg u64 out in inlen)
+{
+  stack u8[28] d;
+  reg u64 ms t;
+  reg u32 w;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+
+  () = #spill(out);
+  d, ms = _sha3_224_mem(d, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 3 {
+    t = d[:u64 i];
+    [:u64 out + 8 * i] = t;
+  }
+  w = d[:u32 6];
+  [:u32 out + 24] = w;
+}
+
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha3_256(reg u64 out in inlen)
+{
+  stack u8[32] d;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+
+  () = #spill(out);
+  d, ms = _sha3_256_mem(d, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 4 {
+    t = d[:u64 i];
+    [:u64 out + 8 * i] = t;
+  }
+}
+
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha3_384(reg u64 out in inlen)
+{
+  stack u8[48] d;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+
+  () = #spill(out);
+  d, ms = _sha3_384_mem(d, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 6 {
+    t = d[:u64 i];
+    [:u64 out + 8 * i] = t;
+  }
+}
+
+#[ct = "public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_sha3_512(reg u64 out in inlen)
+{
+  stack u8[64] d;
+  reg u64 ms t;
+  inline int i;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+
+  () = #spill(out);
+  d, ms = _sha3_512_mem(d, in, inlen, ms);
+  () = #unspill(out);
+  out = #protect(out, ms);
+
+  for i = 0 to 8 {
+    t = d[:u64 i];
+    [:u64 out + 8 * i] = t;
+  }
+}
+
+#[ct = "public × public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_shake128(reg u64 out outlen in inlen)
+{
+  reg u64 ms;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  outlen = #protect(outlen, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+
+  ms = _shake128_mem(out, outlen, in, inlen, ms);
+}
+
+#[ct = "public × public × public × public -> ()"]
+export fn nirapod_slhdsa_hashtest_shake256(reg u64 out outlen in inlen)
+{
+  reg u64 ms;
+
+  ms = #init_msf();
+  out = #protect(out, ms);
+  outlen = #protect(outlen, ms);
+  in = #protect(in, ms);
+  inlen = #protect(inlen, ms);
+
+  ms = _shake256_mem(out, outlen, in, inlen, ms);
+}

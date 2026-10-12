@@ -1,0 +1,11 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Test compilation unit for the hash primitives: every test export of
+ * tests/hash, compiled once per target and kernel variant (see Makefile).
+ */
+
+require "test_keccak.jinc"
+require "test_sha2.jinc"
+require "test_arrays.jinc"
