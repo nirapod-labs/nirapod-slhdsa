@@ -276,8 +276,9 @@ switch_repositories() {
 
 # Each prover is installed as <name>-<version>, the form under which Why3
 # detects several versions of one prover side by side. Any other copy of a
-# prover in the switch is removed first, so that Why3 finds exactly the
-# pinned set.
+# prover in the switch is removed first. Why3 also searches the rest of
+# PATH; switch_easycrypt_config stops the build if it finds any prover
+# beyond the pinned set.
 switch_provers() {
   local bin name version url sum member file got tmp
   bin=$(opam var bin)
@@ -323,14 +324,37 @@ switch_easycrypt_config() {
     > "$WORK/tmp/easycrypt-config-paths"
   [ -s "$WORK/tmp/easycrypt-config-paths" ] \
     || die "EasyCrypt reports no configuration file"
-  ! grep -Fv "$lib/" "$WORK/tmp/easycrypt-config-paths" \
-    || die "EasyCrypt reads configuration outside $lib (listed above)"
-  grep -q '^known provers: .*Z3@' "$LOG/easycrypt-config.txt" \
-    || die "EasyCrypt knows no Z3; see $LOG/easycrypt-config.txt"
-  # A prover whose version Why3 cannot read is recorded with an empty
-  # version, which EasyCrypt shows as 0.0.0: an unidentified binary.
-  ! grep -q '^known provers: .*@0\.0\.0' "$LOG/easycrypt-config.txt" \
-    || die "Why3 could not read the version of a prover; see $LOG/easycrypt-config.txt"
+  ! awk -v lib="$lib/" 'index($0, lib) != 1' "$WORK/tmp/easycrypt-config-paths" \
+    | grep . || die "EasyCrypt reads configuration outside $lib (listed above)"
+  switch_check_provers
+}
+
+# Why3 detects provers on the whole PATH, not only in the switch, and
+# EasyCrypt resolves a name such as Z3@4.12 to the lowest known version at
+# least the one named. The provers EasyCrypt knows must therefore be
+# exactly those of prover_assets, by name and version: a distribution z3 on
+# PATH, or a binary whose version Why3 cannot read (shown as 0.0.0), stops
+# the build. Variants such as Z3[noBV] are configurations of the same
+# binary and are not compared.
+switch_check_provers() {
+  local want got
+  want=$(prover_assets "$PLATFORM" | while read -r name version _; do
+           case $name in
+             (z3) echo "Z3@$version" ;;
+             (cvc5) echo "CVC5@$version" ;;
+             (alt-ergo) echo "Alt-Ergo@$version" ;;
+             (*) die "no Why3 name for prover $name" ;;
+           esac
+         done | LC_ALL=C sort)
+  got=$(sed -n 's/^known provers: //p' "$LOG/easycrypt-config.txt" | tr ',' '\n' \
+        | sed 's/^ *//' | { grep -v '\[' || true; } | LC_ALL=C sort)
+  if [ "$got" != "$want" ]; then
+    diff <(echo "$want") <(echo "$got") | sed 's/^/  /' >&2 || true
+    die "the provers EasyCrypt knows differ from the pinned set" \
+        "(< pinned, > known); remove other provers from PATH" \
+        "(see $LOG/easycrypt-config.txt)"
+  fi
+  echo "provers: exactly the pinned set"
 }
 
 # The installed packages must be exactly those of opam-packages.txt (name,
