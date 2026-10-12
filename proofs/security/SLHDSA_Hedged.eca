@@ -1,0 +1,216 @@
+(*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * SLHDSA_Hedged.eca
+ * =================
+ *
+ * EUF-CMA of the FIPS 205 external interface with hedged signing, for the
+ * parameter set P.
+ *
+ * Scheme. SLH_Hedged is the internal scheme of FIPS 205 section 9 with
+ * addrnd present: every signature draws a fresh, uniform n-byte opt_rand
+ * (the RBG of Algorithm 22, line 6) and returns slh_sign_internal(M, SK,
+ * opt_rand). Key generation and verification are those of SLH_Internal.
+ *
+ * Route. The SPHINCS+ instance signs (PK.seed || PK.root || opt_rand, M')
+ * (SPHINCS_Instance.eca), so hedged signing is SPHINCS+ signing of a
+ * message whose opt_rand part the reduction W draws. W answers A's
+ * queries this way and records (opt_rand, M', R) for each; for the forgery
+ * it picks the opt_rand of a recorded query with the same M' and R, if
+ * there is one. The imported SPHINCS+ bound then applies to W, with two of
+ * its terms stated for the instance message type:
+ *
+ *  - the PRF advantage against mkg, which ignores PK.seed and PK.root and
+ *    so is not a PRF on that type, and
+ *  - the ITSR advantage against mco, which ignores opt_rand and so is not
+ *    ITSR on that type (two messages that differ only in opt_rand share
+ *    their FORS indices).
+ *
+ * Both are tied back to the functions on their own inputs, through
+ * explicit adversaries:
+ *
+ *     prf_proj    the mkg term equals the PRF advantage against PRF_msg
+ *                 on (opt_rand, M') under the key SK.prf, because all of
+ *                 W's messages share one public key
+ *     itsr_proj   the mco term is at most the ITSR advantage against
+ *                 H_msg with the FIPS 205 index function on
+ *                 (PK.seed, PK.root, M'), because W's choice of opt_rand
+ *                 for the forgery makes every winning pair new on those
+ *                 inputs
+ *
+ * No hypothesis on opt_rand collisions is needed: the PRF hop of the
+ * imported proof replaces mkg by a random function of the whole message,
+ * and repeated opt_rand values only repeat its inputs.
+ *)
+
+require import AllCore List Distr DList FMap.
+from Jasmin require import JWord.
+require import Bytes FIPS205_Params FIPS205_Internal FIPS205_External FIPS205_XMSS FIPS205_Address_Props.
+require import ExternalFraming.
+require SLHDSA_EUFCMA.
+
+clone include SLHDSA_EUFCMA.
+
+(* ------------------------------------------------------------------ *)
+(* Hedged signing                                                     *)
+
+module SLH_Hedged : DSI.Stateless.Scheme = {
+  proc keygen() : bytes * bytes = {
+    var ss, sprf, ps, k;
+    ss <$ dnbytes;
+    sprf <$ dnbytes;
+    ps <$ dnbytes;
+    k <- slh_keygen_internal P (NBytes.val ss) (NBytes.val sprf) (NBytes.val ps);
+    return (k.`2, k.`1);
+  }
+
+  proc sign(sk : bytes, m : bytes) : bytes = {
+    var r;
+    r <$ dnbytes;
+    return slh_sign_internal P m sk (Some (NBytes.val r));
+  }
+
+  proc verify(pk : bytes, m : bytes, s : bytes) : bool = {
+    return slh_verify_internal P m s pk;
+  }
+}.
+
+lemma SLH_Hedged_verify_ll : islossless SLH_Hedged.verify.
+proof. by proc. qed.
+
+(* The opt_rand of the first recorded query on message m whose randomizer
+   is k, or d when there is none. *)
+op pick (rec : (bytes * bytes * nbytes) list) (m : bytes) (k : nbytes) (d : bytes) : bytes =
+  let i = find (fun (e : bytes * bytes * nbytes) => e.`2 = m /\ e.`3 = k) rec in
+  if i < size rec then (nth witness rec i).`1 else d.
+
+lemma pickP (rec : (bytes * bytes * nbytes) list) (m : bytes) (k : nbytes) (d : bytes) :
+  (exists e, e \in rec /\ e.`2 = m /\ e.`3 = k) =>
+  (pick rec m k d, m, k) \in rec.
+proof.
+move=> [e [he [h2 h3]]].
+pose p := fun (e : bytes * bytes * nbytes) => e.`2 = m /\ e.`3 = k.
+have hh : has p rec by apply/List.hasP; exists e => /#.
+have hi : find p rec < size rec by rewrite -has_find.
+rewrite /pick /= -/p hi /=.
+have [h2' h3'] := nth_find witness p rec hh.
+have -> : ((nth witness rec (find p rec)).`1, m, k) = nth witness rec (find p rec).
++ by rewrite -h2' -h3'; case: (nth witness rec (find p rec)).
+by apply mem_nth; smt(find_ge0).
+qed.
+
+(* The reduction: run A on the byte encoding of the SPHINCS+ public key,
+   answer each query M' by drawing opt_rand and signing
+   (PK || opt_rand, M'), and sign the forgery with the opt_rand of a
+   recorded query of the same message and randomizer. *)
+module W (A : DSI.Stateless.Adv_EUFCMA) (O : SP.DSS.Stateless.SOracle_CMA) = {
+  var pkb : bytes
+  var rec : (bytes * bytes * nbytes) list
+
+  module O' = {
+    proc sign(m : bytes) : bytes = {
+      var r, s;
+      r <$ dnbytes;
+      s <@ O.sign((pkb ++ NBytes.val r, m));
+      rec <- rcons rec (NBytes.val r, m, s.`1);
+      return enc_sig s;
+    }
+  }
+
+  proc forge(pk : SP.pkSPHINCSPLUSTW) : (bytes * bytes) * SP.sigSPHINCSPLUSTW = {
+    var m, s, sg;
+    pkb <- NBytes.val pk.`2 ++ enc pk.`1;
+    rec <- [];
+    (m, s) <@ A(O').forge(pkb);
+    sg <- dec_sig s;
+    return ((pkb ++ pick rec m sg.`1 (NBytes.val pk.`2), m), sg);
+  }
+}.
+
+section HedgedReduction.
+
+declare module A <: DSI.Stateless.Adv_EUFCMA
+  {-W, -DSI.Stateless.O_CMA_Default, -SP.DSS.Stateless.O_CMA_Default}.
+
+lemma oracle_eq_h :
+  equiv [DSI.Stateless.O_CMA_Default(SLH_Hedged).sign
+         ~ W(A, SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS)).O'.sign :
+         ={m} /\ keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} W.pkb{2}
+         /\ DSI.Stateless.O_CMA_Default.qs{1} = map (fun (e : bytes * bytes * nbytes) => e.`2) W.rec{2}
+         /\ SP.DSS.Stateless.O_CMA_Default.qs{2}
+            = map (fun (e : bytes * bytes * nbytes) => (W.pkb{2} ++ e.`1, e.`2)) W.rec{2}
+         ==> ={res} /\ keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} W.pkb{2}
+         /\ DSI.Stateless.O_CMA_Default.qs{1} = map (fun (e : bytes * bytes * nbytes) => e.`2) W.rec{2}
+         /\ SP.DSS.Stateless.O_CMA_Default.qs{2}
+            = map (fun (e : bytes * bytes * nbytes) => (W.pkb{2} ++ e.`1, e.`2)) W.rec{2}].
+proof.
+proc; inline SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS).sign SLH_Hedged.sign.
+conseq (_: m{1} = m{2}
+           /\ (exists r, W.pkb{2} = NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`3 ++ enc r
+                /\ DSI.Stateless.O_CMA_Default.sk{1}
+                    = NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`2
+                      ++ NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`1
+                      ++ NBytes.val SP.DSS.Stateless.O_CMA_Default.sk{2}.`3 ++ enc r)
+           /\ DSI.Stateless.O_CMA_Default.qs{1} = map (fun (e : bytes * bytes * nbytes) => e.`2) W.rec{2}
+           /\ SP.DSS.Stateless.O_CMA_Default.qs{2}
+              = map (fun (e : bytes * bytes * nbytes) => (W.pkb{2} ++ e.`1, e.`2)) W.rec{2}
+           ==> _) => //.
+elim* => rt.
+exlim (SP.DSS.Stateless.O_CMA_Default.sk{2}).`1, (SP.DSS.Stateless.O_CMA_Default.sk{2}).`2,
+      (SP.DSS.Stateless.O_CMA_Default.sk{2}).`3, m{2} => ms ss ps M.
+swap{1} 3 -2; seq 1 1 : (#pre /\ r{1} = r{2}); first by auto.
+exlim r{2} => rr.
+wp; call{2} (sign_refine ms ss ps rt (NBytes.val rr) M (nval_size rr)).
+auto => /> &2; split; first by case: (SP.DSS.Stateless.O_CMA_Default.sk{2}).
+move=> _ sg hsg; split; first by rewrite hsg.
+split; first by exists rt.
+by rewrite !map_rcons.
+qed.
+
+lemma internal_le_sp_h &m :
+  Pr[DSI.Stateless.EUF_CMA(SLH_Hedged, A, DSI.Stateless.O_CMA_Default).main() @ &m : res]
+  <= Pr[SP.DSS.Stateless.EUF_CMA(SP.SPHINCS_PLUS, W(A), SP.DSS.Stateless.O_CMA_Default).main() @ &m : res].
+proof.
+byequiv => //; proc.
+inline SLH_Hedged.keygen SP.SPHINCS_PLUS.keygen.
+inline DSI.Stateless.O_CMA_Default(SLH_Hedged).init SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS).init.
+inline W(A, SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS)).forge.
+inline DSI.Stateless.O_CMA_Default(SLH_Hedged).fresh SP.DSS.Stateless.O_CMA_Default(SP.SPHINCS_PLUS).fresh.
+inline SLH_Hedged.verify.
+swap{1} 1 1.
+seq 3 4 : (={glob A} /\ sprf{1} = ms{2} /\ ss{1} = ss{2} /\ ps{1} = ps{2} /\ ad{2} = SP.adz).
++ by wp; rnd; rnd; rnd; wp; skip.
+exlim ss{2}, ps{2} => s0 p0.
+seq 0 1 : (={glob A} /\ sprf{1} = ms{2} /\ ss{1} = s0 /\ ss{2} = s0 /\ ps{1} = p0 /\ ps{2} = p0
+           /\ enc root{2} = xmss_node P (NBytes.val s0) 0 P.`hp (NBytes.val p0) (mk_adrs (P.`d - 1) 0 0 0 0 0)).
++ by call{2} (gen_root_ph s0 p0); skip => /> /#.
+seq 6 12 : (keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} W.pkb{2}
+           /\ DSI.Stateless.O_CMA_Default.qs{1} = map (fun (e : bytes * bytes * nbytes) => e.`2) W.rec{2}
+           /\ SP.DSS.Stateless.O_CMA_Default.qs{2}
+              = map (fun (e : bytes * bytes * nbytes) => (W.pkb{2} ++ e.`1, e.`2)) W.rec{2}
+           /\ m{1} = m0{2} /\ sig{1} = s{2} /\ pk{1} = W.pkb{2}
+           /\ pk{2} = (root{2}, ps{2}) /\ W.pkb{2} = NBytes.val ps{2} ++ enc root{2}
+           /\ m{2} = (W.pkb{2} ++ pick W.rec{2} m0{2} (dec_sig s{2}).`1 (NBytes.val ps{2}), m0{2})
+           /\ sig{2} = dec_sig s{2}).
++ wp; call (_: keys_rel DSI.Stateless.O_CMA_Default.sk{1} SP.DSS.Stateless.O_CMA_Default.sk{2} W.pkb{2}
+           /\ DSI.Stateless.O_CMA_Default.qs{1} = map (fun (e : bytes * bytes * nbytes) => e.`2) W.rec{2}
+           /\ SP.DSS.Stateless.O_CMA_Default.qs{2}
+              = map (fun (e : bytes * bytes * nbytes) => (W.pkb{2} ++ e.`1, e.`2)) W.rec{2}).
+  + by conseq oracle_eq_h.
+  wp; skip => /> &2 hr.
+  rewrite (keygen_bytes s0 ms{2} p0 root{2} hr) /=.
+  by exists root{2}.
+exlim sig{1}, root{2}, ps{2}, m{1}, W.rec{2} => b r p M rc.
+case (size b = sig_length P).
++ wp; call{2} (verify_pre r p (pick rc M (dec_sig b).`1 (NBytes.val p)) M b).
+  wp; skip => &1 &2 [#] 5!-> hk hq1 hq2 hm hsig hpk1 hpk2 hpkb hm2 hsig2 hsz.
+  rewrite hpk2 hm2 hsig2 hpkb -hm -hsig /=; split; first by [].
+  move=> _ v -> [hval hfresh]; split; first by rewrite -hpkb -hpk1.
+  move: hfresh; rewrite hq1 hq2; apply contra => /mapP [e [he /= [_ ->]]].
+  by apply/mapP; exists e.
+wp; call{2} SP_verify_ll.
+by auto => />.
+qed.
+
+end section HedgedReduction.
