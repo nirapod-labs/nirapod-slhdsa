@@ -1,0 +1,172 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * keccakf1600_x4.jinc (x86-64, avx2)
+ * ==================================
+ *
+ * Four independent Keccak-f[1600] permutations in AVX2, with the entry
+ * point and contract of the scalar 4-way kernel (keccak/keccakf1600_x4.jinc):
+ *
+ *     _keccakf1600_x4(st, ms)
+ *
+ * State layout: u64[100] with lane j of instance k at index 4j + k, read as
+ * u256[25]. Each 256-bit word is one lane of all four instances, so every
+ * step of FIPS 202 is the scalar step applied to four 64-bit lanes at once,
+ * and this kernel follows the round structure of keccak/keccakf1600.jinc
+ * line for line:
+ *
+ *     θ   C[x] in registers, D[x] = C[x - 1] ^ ROT(C[x + 1], 1)
+ *     ρπ  B[x] = ROT(A[x', y'] ^ D[x'], r[x', y']),
+ *              (x', y') = ((x + 3y) mod 5, x)
+ *     χ   E[x, y] = B[x] ^ (~B[x + 1] & B[x + 2])    (VPANDN)
+ *     ι   E[0, 0] ^= broadcast RC[ir]
+ *
+ * AVX2 has no 64-bit rotate. ROT by 8 and by 56 move whole bytes and are a
+ * single VPSHUFB; every other amount is a left shift, a right shift and an
+ * OR.
+ *
+ * Required CPU feature: AVX2.
+ *
+ * Security: all lanes may be secret. The round loop counts on a public
+ * counter with the misspeculation flag updated at the head and the exit,
+ * as in the scalar kernel; every address is fixed by that counter or at
+ * compile time. Residue: the local round buffer holds the four states after
+ * round 23; clearing is the export's obligation.
+ */
+
+from Hash require "keccak/keccak_constants.jinc"
+
+/*
+ * VPSHUFB masks rotating each 64-bit lane left by 8 and by 56 bits: byte i
+ * of a lane takes byte (i - 1) mod 8, respectively (i + 1) mod 8, of the
+ * same lane. Written as little-endian u64 words, two per 128-bit half.
+ */
+u64[4] KECCAK_X4_ROL8  = {
+  0x0605040302010007, 0x0e0d0c0b0a09080f,
+  0x0605040302010007, 0x0e0d0c0b0a09080f
+};
+u64[4] KECCAK_X4_ROL56 = {
+  0x0007060504030201, 0x080f0e0d0c0b0a09,
+  0x0007060504030201, 0x080f0e0d0c0b0a09
+};
+
+inline fn __rotl_4u64(reg u256 x, inline int r, reg u256 rol8 rol56) -> reg u256
+{
+  reg u256 t;
+
+  #[inline]
+  if (r == 8) {
+    x = #VPSHUFB_256(x, rol8);
+  } else {
+    #[inline]
+    if (r == 56) {
+      x = #VPSHUFB_256(x, rol56);
+    } else {
+      #[inline]
+      if (r != 0) {
+        t = x <<4u64 r;
+        x = x >>4u64 (64 - r);
+        x |= t;
+      }
+    }
+  }
+  return x;
+}
+
+/* One round from a into e, without ι, four instances per lane. */
+inline fn __keccak_round_x4(
+  reg mut ptr u256[25] e,
+  reg const ptr u256[25] a,
+  reg u256 rol8 rol56
+) -> reg ptr u256[25]
+{
+  reg u256[5] c d b;
+  reg u256 t;
+  inline int x y xs r;
+
+  /* θ */
+
+  for x = 0 to 5 {
+    c[x] = a[x];
+    for y = 1 to 5 {
+      c[x] ^= a[x + 5 * y];
+    }
+  }
+
+  for x = 0 to 5 {
+    d[x] = __rotl_4u64(c[(x + 1) % 5], 1, rol8, rol56);
+    d[x] ^= c[(x + 4) % 5];
+  }
+
+  /* ρ, π and χ, plane by plane */
+
+  for y = 0 to 5 {
+    for x = 0 to 5 {
+      xs = (x + 3 * y) % 5;
+      b[x] = a[xs + 5 * x];
+      b[x] ^= d[xs];
+      r = __keccak_rho(xs, x);
+      b[x] = __rotl_4u64(b[x], r, rol8, rol56);
+    }
+
+    for x = 0 to 5 {
+      t = #VPANDN_256(b[(x + 1) % 5], b[(x + 2) % 5]);
+      t ^= b[x];
+      e[x + 5 * y] = t;
+    }
+  }
+
+  return e;
+}
+
+#[sct = "{ ptr: public, val: secret } × msf → { ptr: public, val: secret } × msf"]
+fn _keccakf1600_x4(reg mut ptr u64[100] st, reg u64 ms) -> reg ptr u64[100], reg u64
+{
+  stack u256[25] round_buf;
+  reg ptr u256[25] a e;
+  reg ptr u64[24] rc_table;
+  reg ptr u64[4] mask;
+  reg u256 rol8 rol56 rc t;
+  reg u64 ir;
+  reg bool more;
+
+  mask = KECCAK_X4_ROL8;
+  rol8 = mask[:u256 0];
+  mask = KECCAK_X4_ROL56;
+  rol56 = mask[:u256 0];
+
+  a = st[:u256 0 : 25];
+  e = round_buf;
+  ir = 0;
+
+  /*
+   * Invariant: at the top of each iteration, a holds the four states after
+   * ir rounds; two rounds per iteration return the result to a.
+   */
+
+  while { more = ir < KECCAK_ROUNDS; } (more) {
+    ms = #update_msf(more, ms);
+
+    e = __keccak_round_x4(e, a, rol8, rol56);
+    rc_table = KECCAK_RC;
+    rc = #VPBROADCAST_4u64(rc_table[ir]);
+    ir += 1;
+    t = e[0];
+    t ^= rc;
+    e[0] = t;
+
+    a = __keccak_round_x4(a, e, rol8, rol56);
+    rc_table = KECCAK_RC;
+    rc = #VPBROADCAST_4u64(rc_table[ir]);
+    ir += 1;
+    t = a[0];
+    t ^= rc;
+    a[0] = t;
+  }
+  ms = #update_msf(!more, ms);
+
+  st[:u256 0 : 25] = a;
+
+  return st, ms;
+}
