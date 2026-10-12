@@ -34,3 +34,4 @@ patches/0020-safetylib-report-unbounded-memory-ranges.patch e41d0de593ed548ccc5d
 patches/0021-safetylib-for-loop-counters-point-to-no-memory-regio.patch 3edbb0baab571b379d088cd0b382bd65c8da1a70bd27347aa35bcff223752c44
 patches/0022-safetylib-faster-start-up-with-large-global-tables.patch 38a2770730871bff8fce2d37392ef8fee963e00eb8388c7181899245524e2870
 patches/0023-changes-changelog-entry-for-the-safety-checker-fixes.patch eb9173fed3d99cb7c7d001d74953a9ef1f117a9f8a92f7010139115b1e34f240
+patches/0024-safetylib-implement-the-safety-checker-for-ARMv8-A.patch f74fcc3a734c6adefac99953aad45e5e5a00499b60eed2396ad536ba673e0602

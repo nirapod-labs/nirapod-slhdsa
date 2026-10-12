@@ -21,9 +21,10 @@ modify Jasmin and are distributed under the same terms.
 
 Pin: `2bf326d583659c1fbd0e5b90f7c09fe0c0456e35` (jasmin-lang/jasmin, main,
 2026-10-12). The six pull requests are applied in pull-request order, as of
-2026-10-13. #1621 and #1616 have been merged since the pin; #1594, #1617,
-#1624 and #1625 are open. #1616 and #1624 are carried at an earlier revision
-of the pull request, written for the pin (see "Revisions" below).
+2026-10-13, then the project patches. #1621 and #1616 have been merged since
+the pin; #1594, #1617, #1624 and #1625 are open. #1616 and #1624 are carried
+at an earlier revision of the pull request, written for the pin (see
+"Revisions" below).
 
 | Patches | Origin | Content | Proof status |
 |---|---|---|---|
@@ -33,6 +34,7 @@ of the pull request, written for the pin (see "Revisions" below).
 | 0009 | PR #1621, merged as `8461b95f2b2f` | `jasmin-checksafety --slice` slices the program | safety checker (trusted) |
 | 0010-0015 | PR #1624, head `72c64afbc6cb`; carried revision 34b528f, 10410e0, 72649cd, 61fdb91, 0b1d351, then 72c64af | LDP and STP; architecture-specific conditions on memory arguments | assembly generation and global-load lowering proved; instruction semantics trusted |
 | 0016-0023 | PR #1625, head `02a2330a04c9` | safety checker: unsound verdicts, false alarms, CallTopHeuristic | safety checker (trusted) |
+| 0024 | this project | safety checker for ARMv8-A | safety checker (trusted) |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -105,6 +107,30 @@ known defects are fixed before any verdict is used:
   counter;
 - the CallTopHeuristic call policy aborted on its first use;
 - start-up time quadratic in the size of the global tables.
+
+### 0024, safety checker for ARMv8-A (this project)
+
+At the pin, `jasmin-checksafety -arch armv8a` fails with "the safety checker
+is not implemented for ARMv8-A" (`compiler/safetylib/safetyMain.ml`), and the
+safety test runner skips ARMv8-A. The patch instantiates the analysis with the
+abstraction ARMv7-M and RISC-V already use: the outputs of architecture-
+specific operators are unknown, and no comparison or conditional-instruction
+heuristic is applied. Unknown outputs can only cause alarms, never hide one;
+memory and array accesses, initialization and alignment are checked by the
+generic analysis, as on the other architectures.
+
+Tests: the common safety tests now also run on ARMv8-A, and
+`compiler/tests/safety/{success,fail}/armv8a/` cover 64-bit memory and array
+accesses, alignment, the initialization of the memory LDP reads, and an
+operator result used as an index with and without a mask. Upstream status:
+not yet proposed.
+
+A known limit of the generic analysis, seen on both architectures and not
+addressed by this series: an array that two loops fill at run-time indices,
+the second starting where the first stopped, is not recognised as
+initialized, and reading it raises an `is_init` alarm although every byte is
+written first. The alarm is a loss of precision, not of soundness.
+Initializing the array in one pass avoids it.
 
 ## Revisions
 
