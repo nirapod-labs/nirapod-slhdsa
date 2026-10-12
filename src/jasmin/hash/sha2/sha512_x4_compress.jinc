@@ -1,0 +1,56 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha512_x4_compress.jinc
+ * =======================
+ *
+ * Four independent SHA-512 compressions, portable scalar kernel behind the
+ * Sha2KernelX include root:
+ *
+ *     _sha512_x4_compress(h4, blocks, ms)
+ *
+ *     h4      u64[32], H_j of instance k at index 4j + k
+ *     blocks  u8[512], instance k's 128-byte block at bytes 128k .. 128k + 127
+ *
+ * The scalar form of sha256_x8_compress.jinc: gather, _sha512_compress,
+ * scatter, per instance.
+ *
+ * Security and residue: those of _sha512_compress, for each instance; the
+ * local chaining value holds instance 3's result on return.
+ */
+
+from Sha2Kernel require "sha512_compress.jinc"
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha512_x4_compress(
+  reg mut ptr u64[32] h4,
+  reg const ptr u8[512] blocks,
+  reg u64 ms
+) -> reg ptr u64[32], reg u64
+{
+  stack u64[8] h;
+  reg u64 x;
+  inline int j k;
+
+  for k = 0 to 4 {
+    for j = 0 to 8 {
+      x = h4[4 * j + k];
+      h[j] = x;
+    }
+
+    () = #spill(h4, blocks);
+    h, ms = _sha512_compress(h, blocks[128 * k : 128], ms);
+    () = #unspill(h4, blocks);
+    h4 = #protect_ptr(h4, ms);
+    blocks = #protect_ptr(blocks, ms);
+
+    for j = 0 to 8 {
+      x = h[j];
+      h4[4 * j + k] = x;
+    }
+  }
+
+  return h4, ms;
+}

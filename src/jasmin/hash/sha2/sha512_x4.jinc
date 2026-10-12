@@ -1,0 +1,203 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha512_x4.jinc
+ * ==============
+ *
+ * 4 SHA-512 hashes advanced together, for independent inputs of the same
+ * shape. The instances share total and follow the single-way logic of
+ * sha512.jinc in lockstep; each computes exactly what sha512.jinc computes
+ * on its own input.
+ *
+ * Representation:
+ *
+ *     h      u64[32], H_j of instance k at index 4j + k
+ *     buf    u8[512], instance k's pending block at bytes 128k .. 128k + 127
+ *     total  bytes absorbed per instance so far
+ *
+ * The compression is _sha512_x4_compress from the Sha2KernelX root. Array
+ * input is in sha512_x4_array.jinc (instance file).
+ *
+ * Security: as sha512.jinc. total and every index are public and shared by
+ * the instances.
+ */
+
+from HashWord require "word.jinc"
+from Sha2KernelX require "sha512_x4_compress.jinc"
+require "sha512.jinc"
+
+inline fn __sha512_x4_init(reg mut ptr u64[32] h) -> reg ptr u64[32]
+{
+  reg ptr u64[8] iv;
+  reg u64 t;
+  inline int j k;
+
+  iv = SHA512_IV;
+  for j = 0 to 8 {
+    t = iv[j];
+    for k = 0 to 4 {
+      h[4 * j + k] = t;
+    }
+  }
+  return h;
+}
+
+inline fn __sha384_x4_init(reg mut ptr u64[32] h) -> reg ptr u64[32]
+{
+  reg ptr u64[8] iv;
+  reg u64 t;
+  inline int j k;
+
+  iv = SHA384_IV;
+  for j = 0 to 8 {
+    t = iv[j];
+    for k = 0 to 4 {
+      h[4 * j + k] = t;
+    }
+  }
+  return h;
+}
+
+inline fn __sha512_224_x4_init(reg mut ptr u64[32] h) -> reg ptr u64[32]
+{
+  reg ptr u64[8] iv;
+  reg u64 t;
+  inline int j k;
+
+  iv = SHA512_224_IV;
+  for j = 0 to 8 {
+    t = iv[j];
+    for k = 0 to 4 {
+      h[4 * j + k] = t;
+    }
+  }
+  return h;
+}
+
+inline fn __sha512_256_x4_init(reg mut ptr u64[32] h) -> reg ptr u64[32]
+{
+  reg ptr u64[8] iv;
+  reg u64 t;
+  inline int j k;
+
+  iv = SHA512_256_IV;
+  for j = 0 to 8 {
+    t = iv[j];
+    for k = 0 to 4 {
+      h[4 * j + k] = t;
+    }
+  }
+  return h;
+}
+
+/* Zero bytes [lo, hi) of every instance's pending block. */
+inline fn __sha512_x4_zero(
+  reg mut ptr u8[512] buf,
+  reg u64 lo hi,
+  reg u64 ms
+) -> reg ptr u8[512], reg u64
+{
+  reg u64 at z;
+  reg bool more;
+  inline int k;
+
+  z = 0;
+  while { more = lo < hi; } (more) {
+    ms = #update_msf(more, ms);
+    at = lo;
+    for k = 0 to 4 {
+      buf[at] = (8u)z;
+      at += 128;
+    }
+    lo += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return buf, ms;
+}
+
+/*
+ * Padding and output, per instance as _sha512_finalize (FIPS 180-4
+ * sections 5.1.2 and 6.4.2): pending bytes, 0x80, zeros, and the 128-bit
+ * big-endian bit length 8 * total (high half total >> 61); an extra block
+ * when the pending bytes and 0x80 leave no room for the length. The
+ * positions depend only on total, so they are the same in every instance.
+ *
+ * out receives instance k's H_0 .. H_7 big-endian at bytes 64k .. 64k + 63.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × public × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × msf"]
+fn _sha512_x4_finalize(
+  reg mut ptr u8[256] out,
+  reg mut ptr u64[32] h,
+  reg mut ptr u8[512] buf,
+  reg u64 total,
+  reg u64 ms
+) -> reg ptr u8[256], reg ptr u64[32], reg ptr u8[512], reg u64
+{
+  reg u64 fill at t end;
+  reg u64 x u;
+  reg bool two_blocks;
+  inline int j k;
+
+  fill = total;
+  fill &= 127;
+
+  at = fill;
+  t = 0x80;
+  for k = 0 to 4 {
+    buf[at] = (8u)t;
+    at += 128;
+  }
+  fill += 1;
+
+  two_blocks = fill > 112;
+  if (two_blocks) {
+    ms = #update_msf(two_blocks, ms);
+    end = 128;
+    buf, ms = __sha512_x4_zero(buf, fill, end, ms);
+
+    () = #spill(out, buf, total);
+    h, ms = _sha512_x4_compress(h, buf, ms);
+    () = #unspill(out, buf, total);
+    out = #protect_ptr(out, ms);
+    buf = #protect_ptr(buf, ms);
+    total = #protect(total, ms);
+    fill = 0;
+  } else {
+    ms = #update_msf(!two_blocks, ms);
+  }
+
+  end = 112;
+  buf, ms = __sha512_x4_zero(buf, fill, end, ms);
+
+  t = total;
+  t >>= 61;
+  t = __bswap64(t);
+  u = total;
+  u <<= 3;
+  u = __bswap64(u);
+  for k = 0 to 4 {
+    buf.[:u64 128 * k + 112] = t;
+    buf.[:u64 128 * k + 120] = u;
+  }
+
+  () = #spill(out, buf);
+  h, ms = _sha512_x4_compress(h, buf, ms);
+  () = #unspill(out, buf);
+  out = #protect_ptr(out, ms);
+  buf = #protect_ptr(buf, ms);
+
+  for k = 0 to 4 {
+    for j = 0 to 8 {
+      x = h[4 * j + k];
+      x = __bswap64(x);
+      out[:u64 8 * k + j] = x;
+    }
+  }
+
+  return out, h, buf, ms;
+}

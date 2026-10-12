@@ -1,0 +1,131 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha256_x8_array.jinc
+ * ====================
+ *
+ * _sha256_x8_absorb_array: append one array of HASH_ARRAY_LEN bytes to each
+ * of the 8 instances of sha256_x8.jinc. The arrays are packed in one input,
+ * instance k's at bytes k HASH_ARRAY_LEN .. (k + 1) HASH_ARRAY_LEN - 1, so the
+ * function needs one input pointer however many instances there are.
+ * sha256_x8.jinc must be required at top level first.
+ *
+ * The contract is that of _sha256_absorb_array applied to each instance.
+ */
+
+/* Copy n bytes of in from offset src into buf from offset dst. */
+inline fn __sha256_x8_copy(
+  reg mut ptr u8[512] buf,
+  reg u64 dst,
+  reg const ptr u8[8 * HASH_ARRAY_LEN] in,
+  reg u64 src n_,
+  reg u64 ms
+) -> reg ptr u8[512], reg u64
+{
+  reg u64 n head end t;
+  reg bool more;
+
+  n = n_;
+  head = dst;
+  head = -head;
+  head &= 7;
+  head = n < head ? n : head;
+  n -= head;
+
+  end = dst;
+  end += head;
+  while { more = dst < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)in[src];
+    buf[dst] = (8u)t;
+    dst += 1;
+    src += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  while { more = n >= 8; } (more) {
+    ms = #update_msf(more, ms);
+    t = in.[:u64 src];
+    buf.[:u64 dst] = t;
+    dst += 8;
+    src += 8;
+    n -= 8;
+  }
+  ms = #update_msf(!more, ms);
+
+  end = dst;
+  end += n;
+  while { more = dst < end; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u)in[src];
+    buf[dst] = (8u)t;
+    dst += 1;
+    src += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return buf, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × public ×
+         { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × public × msf"]
+fn _sha256_x8_absorb_array(
+  reg mut ptr u32[64] h,
+  reg mut ptr u8[512] buf,
+  reg u64 total,
+  reg const ptr u8[8 * HASH_ARRAY_LEN] in,
+  reg u64 ms
+) -> reg ptr u32[64], reg ptr u8[512], reg u64, reg u64
+{
+  reg u64 fill off inlen n dst src;
+  reg bool more full;
+  inline int k;
+
+  fill = total;
+  fill &= 63;
+  total += HASH_ARRAY_LEN;
+  off = 0;
+  inlen = HASH_ARRAY_LEN;
+
+  /* Invariant: every instance holds fill < 64 pending bytes at the top. */
+
+  while { more = inlen != 0; } (more) {
+    ms = #update_msf(more, ms);
+
+    n = 64;
+    n -= fill;
+    n = inlen < n ? inlen : n;
+    inlen -= n;
+
+    for k = 0 to 8 {
+      dst = fill;
+      dst += 64 * k;
+      src = off;
+      src += HASH_ARRAY_LEN * k;
+      buf, ms = __sha256_x8_copy(buf, dst, in, src, n, ms);
+    }
+    fill += n;
+    off += n;
+
+    full = fill == 64;
+    if (full) {
+      ms = #update_msf(full, ms);
+      () = #spill(total, in, off, inlen, buf);
+      h, ms = _sha256_x8_compress(h, buf, ms);
+      () = #unspill(total, in, off, inlen, buf);
+      total = #protect(total, ms);
+      in = #protect_ptr(in, ms);
+      off = #protect(off, ms);
+      inlen = #protect(inlen, ms);
+      buf = #protect_ptr(buf, ms);
+      fill = 0;
+    } else {
+      ms = #update_msf(!full, ms);
+    }
+  }
+  ms = #update_msf(!more, ms);
+
+  return h, buf, total, ms;
+}

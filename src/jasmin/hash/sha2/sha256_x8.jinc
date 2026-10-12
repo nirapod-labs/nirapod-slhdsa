@@ -1,0 +1,167 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha256_x8.jinc
+ * ==============
+ *
+ * 8 SHA-256 hashes advanced together, for independent inputs of the same
+ * shape. The instances share total and follow the single-way logic of
+ * sha256.jinc in lockstep; each computes exactly what sha256.jinc computes
+ * on its own input.
+ *
+ * Representation:
+ *
+ *     h      u32[64], H_j of instance k at index 8j + k
+ *     buf    u8[512], instance k's pending block at bytes 64k .. 64k + 63
+ *     total  bytes absorbed per instance so far
+ *
+ * The compression is _sha256_x8_compress from the Sha2KernelX root. Array
+ * input is in sha256_x8_array.jinc (instance file).
+ *
+ * Security: as sha256.jinc. total and every index are public and shared by
+ * the instances.
+ */
+
+from HashWord require "word.jinc"
+from Sha2KernelX require "sha256_x8_compress.jinc"
+require "sha256.jinc"
+
+inline fn __sha256_x8_init(reg mut ptr u32[64] h) -> reg ptr u32[64]
+{
+  reg ptr u32[8] iv;
+  reg u32 t;
+  inline int j k;
+
+  iv = SHA256_IV;
+  for j = 0 to 8 {
+    t = iv[j];
+    for k = 0 to 8 {
+      h[8 * j + k] = t;
+    }
+  }
+  return h;
+}
+
+inline fn __sha224_x8_init(reg mut ptr u32[64] h) -> reg ptr u32[64]
+{
+  reg ptr u32[8] iv;
+  reg u32 t;
+  inline int j k;
+
+  iv = SHA224_IV;
+  for j = 0 to 8 {
+    t = iv[j];
+    for k = 0 to 8 {
+      h[8 * j + k] = t;
+    }
+  }
+  return h;
+}
+
+/* Zero bytes [lo, hi) of every instance's pending block. */
+inline fn __sha256_x8_zero(
+  reg mut ptr u8[512] buf,
+  reg u64 lo hi,
+  reg u64 ms
+) -> reg ptr u8[512], reg u64
+{
+  reg u64 at z;
+  reg bool more;
+  inline int k;
+
+  z = 0;
+  while { more = lo < hi; } (more) {
+    ms = #update_msf(more, ms);
+    at = lo;
+    for k = 0 to 8 {
+      buf[at] = (8u)z;
+      at += 64;
+    }
+    lo += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return buf, ms;
+}
+
+/*
+ * Padding and output, per instance as _sha256_finalize (FIPS 180-4
+ * sections 5.1.1 and 6.2.2): pending bytes, 0x80, zeros, and the 64-bit
+ * big-endian bit length 8 * total; an extra block when the pending bytes
+ * and 0x80 leave no room for the length. The positions depend only on
+ * total, so they are the same in every instance.
+ *
+ * out receives instance k's H_0 .. H_7 big-endian at bytes 32k .. 32k + 31.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × public × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × msf"]
+fn _sha256_x8_finalize(
+  reg mut ptr u8[256] out,
+  reg mut ptr u32[64] h,
+  reg mut ptr u8[512] buf,
+  reg u64 total,
+  reg u64 ms
+) -> reg ptr u8[256], reg ptr u32[64], reg ptr u8[512], reg u64
+{
+  reg u64 fill at t end;
+  reg u32 x;
+  reg bool two_blocks;
+  inline int j k;
+
+  fill = total;
+  fill &= 63;
+
+  at = fill;
+  t = 0x80;
+  for k = 0 to 8 {
+    buf[at] = (8u)t;
+    at += 64;
+  }
+  fill += 1;
+
+  two_blocks = fill > 56;
+  if (two_blocks) {
+    ms = #update_msf(two_blocks, ms);
+    end = 64;
+    buf, ms = __sha256_x8_zero(buf, fill, end, ms);
+
+    () = #spill(out, buf, total);
+    h, ms = _sha256_x8_compress(h, buf, ms);
+    () = #unspill(out, buf, total);
+    out = #protect_ptr(out, ms);
+    buf = #protect_ptr(buf, ms);
+    total = #protect(total, ms);
+    fill = 0;
+  } else {
+    ms = #update_msf(!two_blocks, ms);
+  }
+
+  end = 56;
+  buf, ms = __sha256_x8_zero(buf, fill, end, ms);
+
+  t = total;
+  t <<= 3;
+  t = __bswap64(t);
+  for k = 0 to 8 {
+    buf.[:u64 64 * k + 56] = t;
+  }
+
+  () = #spill(out, buf);
+  h, ms = _sha256_x8_compress(h, buf, ms);
+  () = #unspill(out, buf);
+  out = #protect_ptr(out, ms);
+  buf = #protect_ptr(buf, ms);
+
+  for k = 0 to 8 {
+    for j = 0 to 8 {
+      x = h[8 * j + k];
+      x = __bswap32(x);
+      out[:u32 8 * k + j] = x;
+    }
+  }
+
+  return out, h, buf, ms;
+}

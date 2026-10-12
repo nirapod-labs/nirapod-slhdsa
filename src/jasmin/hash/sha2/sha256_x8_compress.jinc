@@ -1,0 +1,58 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha256_x8_compress.jinc
+ * =======================
+ *
+ * Eight independent SHA-256 compressions, portable scalar kernel behind the
+ * Sha2KernelX include root:
+ *
+ *     _sha256_x8_compress(h8, blocks, ms)
+ *
+ *     h8      u32[64], H_j of instance k at index 8j + k
+ *     blocks  u8[512], instance k's 64-byte block at bytes 64k .. 64k + 63
+ *
+ * Each instance is gathered into a u32[8] chaining value, compressed by
+ * _sha256_compress, and scattered back, so the result is exactly eight
+ * single-way compressions. The path exists so that callers written against
+ * the 8-way interface run on targets without a vector kernel.
+ *
+ * Security and residue: those of _sha256_compress, for each instance; the
+ * local chaining value holds instance 7's result on return.
+ */
+
+from Sha2Kernel require "sha256_compress.jinc"
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha256_x8_compress(
+  reg mut ptr u32[64] h8,
+  reg const ptr u8[512] blocks,
+  reg u64 ms
+) -> reg ptr u32[64], reg u64
+{
+  stack u32[8] h;
+  reg u32 x;
+  inline int j k;
+
+  for k = 0 to 8 {
+    for j = 0 to 8 {
+      x = h8[8 * j + k];
+      h[j] = x;
+    }
+
+    () = #spill(h8, blocks);
+    h, ms = _sha256_compress(h, blocks[64 * k : 64], ms);
+    () = #unspill(h8, blocks);
+    h8 = #protect_ptr(h8, ms);
+    blocks = #protect_ptr(blocks, ms);
+
+    for j = 0 to 8 {
+      x = h[j];
+      h8[8 * j + k] = x;
+    }
+  }
+
+  return h8, ms;
+}
