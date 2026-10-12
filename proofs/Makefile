@@ -85,11 +85,20 @@ list-axioms:
 	@grep -nE '^[[:space:]]*(declare[[:space:]]+)?axiom' $(OWN_FILES) $(IMPORTED_FILES) || true
 
 .PHONY: compile-files
+# Each file is checked from a scratch copy that ends with a trivial lemma.
+# EasyCrypt accepts a file that ends while obligations of a `clone ...
+# proof *` are still unrealized, and then treats them as proven; any
+# command after them is rejected ("cannot process [axiom] inside a proof
+# script"). The sentinel lemma makes such a file fail.
 compile-files:
 	@test -n "$(LABEL)" || { echo "compile-files: LABEL not set"; exit 1; }
 	@test -n "$(FILES)" || { echo "$(LABEL): no files"; exit 1; }
 	@n=0; for f in $(FILES); do \
 	  printf 'check %s\n' "$$f"; \
-	  $(EASYCRYPT) compile $(FLAGS) "$$f" || { echo "FAIL $$f"; exit 1; }; \
-	  n=$$((n+1)); \
+	  tmp=$$(mktemp -d) || exit 1; \
+	  cp "$$f" "$$tmp/" && \
+	  printf '\n(* gate: end of file *)\nlemma end_of_file_gate : true by trivial.\n' >> "$$tmp/$$(basename "$$f")"; \
+	  $(EASYCRYPT) compile $(FLAGS) -I "$$(dirname "$$f")" "$$tmp/$$(basename "$$f")" \
+	    || { echo "FAIL $$f"; rm -rf "$$tmp"; exit 1; }; \
+	  rm -rf "$$tmp"; n=$$((n+1)); \
 	done; echo "$(LABEL): PASS $$n files"
