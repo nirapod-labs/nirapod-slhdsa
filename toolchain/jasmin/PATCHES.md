@@ -221,8 +221,9 @@ each pull request written for the pin's descriptors:
   fields, in four constants written `1%R` and `0%R` instead of `1%w` and
   `0%w`, and in context lines that main changed. A revision of 2026-10-12
   added CNEG in a fourth commit; the merged pull request does not have it.
-- #1624: 34b528f, 10410e0, 72649cd, 61fdb91, 0b1d351 (2026-10-07, on the
-  pin), then 72c64af from the current head. The current head re-commits
+- #1624: 34b528f, 10410e0, 72649cd, 61fdb91, 0b1d351 (2026-10-07, based
+  on 3194c25d, eight commits before the pin), then 72c64af from the current
+  head. The current head re-commits
   the first five onto dd35a2bb; the first two differ from the carried ones
   in the descriptor fields and in context only, and the other three are
   equal.
