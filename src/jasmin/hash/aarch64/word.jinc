@@ -1,0 +1,35 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * word.jinc (AArch64)
+ * ===================
+ *
+ * Word operations for the hash kernels.
+ *
+ * Shared hash source requires this file through the HashWord include root,
+ * so each target supplies the same functions with its own instructions.
+ *
+ *     __bswap32(x)   reverse the four bytes of a 32-bit word
+ *     __bswap64(x)   reverse the eight bytes of a 64-bit word
+ *
+ * SHA-2 words are big-endian in the byte string (FIPS 180-4 section 3.1)
+ * while Jasmin loads are little-endian, so every message word and digest
+ * word crosses one of these. Both are pure data movement: secret inputs are
+ * allowed and the result depends on no branch or address.
+ *
+ * REV on a W register reverses the low four bytes and zeroes the upper half;
+ * on an X register it reverses all eight.
+ */
+
+inline fn __bswap32(reg u32 x) -> reg u32
+{
+  x = #REV_32(x);
+  return x;
+}
+
+inline fn __bswap64(reg u64 x) -> reg u64
+{
+  x = #REV_64(x);
+  return x;
+}
