@@ -135,10 +135,10 @@ make -C tests/hash check-prebuilt negative-control-prebuilt             # the x8
 `DIFF_SEED` and `DIFF_ITERS` set the differential seed and iteration count.
 `KECCAK_VARIANT`, `KECCAKX_VARIANT`, `SHA2_VARIANT` and `SHA2X_VARIANT` select
 kernel variant directories (the same values in both steps of a cross-host run).
-On AArch64, the register-resident Keccak kernel:
+On AArch64, the register-resident Keccak and the A64 SHA-2 kernels:
 
 ```sh
-make -C tests/hash check KECCAK_VARIANT=aarch64/scalar
+make -C tests/hash check KECCAK_VARIANT=aarch64/scalar SHA2_VARIANT=aarch64/scalar
 ```
 
 On x86-64, the AVX2 and SHA-NI kernels:

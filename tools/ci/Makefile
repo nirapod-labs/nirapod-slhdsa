@@ -244,7 +244,7 @@ CI_HASH_CPU_scalar   :=
 CI_HASH_VARS_x86_64  := KECCAKX_VARIANT=x86_64/avx2 SHA2_VARIANT=x86_64/shani \
                         SHA2X_VARIANT=x86_64/avx2
 CI_HASH_CPU_x86_64   := avx avx2 sha_ni
-CI_HASH_VARS_aarch64 := KECCAK_VARIANT=aarch64/scalar
+CI_HASH_VARS_aarch64 := KECCAK_VARIANT=aarch64/scalar SHA2_VARIANT=aarch64/scalar
 CI_HASH_CPU_aarch64  :=
 
 CI_HASH_SETS := scalar $(if $(CI_HASH_VARS_$(CI_ARCH)),$(CI_ARCH))

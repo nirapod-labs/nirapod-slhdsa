@@ -33,6 +33,7 @@ keccak/sponge_x4.jinc      4-way sponge: init and finalize
 keccak/sponge_x4_array.jinc 4-way absorb and squeeze of fixed-length arrays (instance file)
 keccak/aarch64/scalar/     Keccak-f[1600] kernel for AArch64 with the state in registers
 keccak/x86_64/avx2/        4-way Keccak-f[1600] kernel in AVX2
+sha2/aarch64/scalar/       SHA-256 and SHA-512 kernels in A64 three-operand form
 sha2/sha256_k.jinc         SHA-256 round constants, shared by its kernels
 sha2/sha256_compress.jinc  SHA-256 compression kernel (scalar)
 sha2/sha256.jinc           SHA-224/256 initial values, buffering, padding
@@ -64,6 +65,7 @@ for every target and variant.
 |---|---|---|---|
 | `scalar` | x86-64, AArch64 | the `*_compress.jinc` and `keccakf1600*.jinc` kernels in this directory | implemented |
 | `aarch64/scalar` | AArch64 | single-way Keccak with the 25 lanes in registers | implemented, `keccak/aarch64/scalar/` |
+| `aarch64/scalar` | AArch64 | single-way SHA-256 and SHA-512 in A64 three-operand form | implemented, `sha2/aarch64/scalar/` |
 | `x86_64/avx2` | x86-64 | 4-way Keccak (AVX2 required); single-way Keccak stays scalar | implemented, `keccak/x86_64/avx2/` |
 | `x86_64/avx2` | x86-64 | 8-way SHA-256, 4-way SHA-512 (AVX2 required) | implemented, `sha2/x86_64/avx2/` |
 | `x86_64/shani` | x86-64 | single-stream SHA-256 (SHA and AVX required); SHA-512 stays scalar | implemented, `sha2/x86_64/shani/` |
@@ -98,7 +100,7 @@ combine, for example, SHA-NI for single hashes with AVX2 for batches.
 jasminc -arch armv8a -I Hash=src/jasmin/hash -I HashWord=src/jasmin/hash/aarch64 \
         -I KeccakKernel=src/jasmin/hash/keccak/aarch64/scalar \
         -I KeccakKernelX=src/jasmin/hash/keccak \
-        -I Sha2Kernel=src/jasmin/hash/sha2 -I Sha2KernelX=src/jasmin/hash/sha2 ...
+        -I Sha2Kernel=src/jasmin/hash/sha2/aarch64/scalar -I Sha2KernelX=src/jasmin/hash/sha2 ...
 
 jasminc -arch x86-64 -I Hash=src/jasmin/hash -I HashWord=src/jasmin/hash/x86_64 \
         -I KeccakKernel=src/jasmin/hash/keccak \
@@ -152,6 +154,7 @@ also keeps secret-derived data on return:
 | `_keccakf1600` (`aarch64/scalar`) | lanes (1, 4) to (3, 4) of round 24's θ input; lane (0, 0) of its χ output |
 | `_sha256_compress*` (scalar kernel) | message schedule W_47 .. W_62 (the store of W_63 is dead and is removed) |
 | `_sha512_compress*` (scalar kernel) | message schedule W_63 .. W_78 (the store of W_79 is dead and is removed) |
+| `_sha256_compress*`, `_sha512_compress*` (`aarch64/scalar`) | message schedule W_48 .. W_63 (SHA-512: W_64 .. W_79) |
 | `_sha3_*_mem`, `_shake*_mem` | the final sponge state |
 | `_sha256_mem`, `_sha224_mem`, `_sha512*_mem`, `_sha384_mem` | the last padded block and the final chaining value |
 | `_hmac_sha*_keyblock_mem` | H(K) for a key longer than one block |
@@ -534,12 +537,18 @@ Mach-O output; the pattern accepts both.
   after an AVX2 kernel therefore pays the processor's SSE/AVX transition
   cost on the SHA instructions. The results are unaffected; the speed is
   not.
+- **SHA-2, AArch64.** The `aarch64/scalar` kernels use A64's
+  three-operand forms: Σ and σ are a ROR and two EORs with a rotated or
+  shifted operand, Ch is AND plus BIC, Maj carries `a ^ b` into the next
+  round, and the round constants are read through a pointer argument. The
+  emitted rounds have no register copies.
 - **Protected reloads.** A protected reload is ORR plus CSDB on AArch64.
   Absorb therefore hands all its whole blocks to one `_sha*_compress_blocks`
   call, made only when there is at least one, and saves and protects its
   own state once per call rather than once per block. Inside the call, the
   scalar kernel still spills and protects `p` and `n` per block; the
-  `x86_64/shani` SHA-256 kernel keeps them in registers.
+  `aarch64/scalar` kernels and the `x86_64/shani` SHA-256 kernel keep them
+  in registers.
 - **Values across kernel calls.** Kernels are local functions. The
   compiler's register allocation covers caller and callee together: a value
   live across a call keeps a register the callee does not write, or the

@@ -1,0 +1,210 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha512_compress.jinc (AArch64, scalar)
+ * ======================================
+ *
+ * The SHA-512 compression function (FIPS 180-4 section 6.4.2) written for
+ * the A64 instruction forms, with the entry points and contracts of the
+ * shared scalar kernel (sha2/sha512_compress.jinc):
+ *
+ *     _sha512_compress(h, block, ms)
+ *     _sha512_compress_blocks(h, p, n, ms)
+ *
+ * The round structure, slot rotation and schedule window are those of the
+ * shared kernel; see __sha512_rounds there. What differs is the form of
+ * each operation:
+ *
+ *     Σ and σ     ROR, then EOR with a rotated or shifted second operand:
+ *                 three instructions, no copies
+ *     Ch(e, f, g) (e & f) + (g & ~e) with AND and BIC; the two terms are
+ *                 bit-disjoint, so their sum is their XOR
+ *     Maj(a, b, c) b ^ ((a ^ b) & (b ^ c)); b ^ c is the previous round's
+ *                 a ^ b: the two alternate between abc[0] and abc[1], so
+ *                 neither is copied
+ *     T1          accumulated in the register of h, which becomes a';
+ *                 the terms that depend on e are added together before
+ *                 they join T1, to keep the e-to-e' dependency short
+ *
+ * Every value is combined three-operand, so the round has no register
+ * copies. The round constants are read through a pointer argument of the
+ * round function, one load per round with an immediate offset.
+ *
+ * Security: h and the block are secret. The rounds are straight-line code;
+ * the only branch is the loop of _sha512_compress_blocks on its public
+ * block count, which updates ms; every address is fixed at compile time or
+ * is the public block pointer. Residue: the local schedule window holds
+ * W_64 .. W_79 on return (the round function writes the window through a
+ * pointer, so every schedule store is kept); clearing is the export's
+ * obligation.
+ */
+
+from HashWord require "word.jinc"
+from Hash require "sha2/sha512_k.jinc"
+
+/*
+ * Rounds 0 .. 79 and the feed-forward on W_0 .. W_15 in w. Variable k
+ * (a = 0 .. h = 7) of round t is v[(k - t) mod 8].
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf"]
+fn _sha512_rounds_a64(
+  reg mut ptr u64[8] h,
+  reg mut ptr u64[16] w,
+  reg const ptr u64[80] k,
+  reg u64 ms
+) -> reg ptr u64[8], reg ptr u64[16], reg u64
+{
+  reg u64[8] v;
+  reg u64[2] abc;
+  reg u64 s m x y kt;
+  inline int t i ia ib id ie iff ig ih;
+
+  for i = 0 to 8 {
+    v[i] = h[i];
+  }
+  abc[1] = v[1] ^ v[2];
+
+  for t = 0 to 80 {
+    ia = (0 + 80 - t) % 8;
+    ib = (1 + 80 - t) % 8;
+    id = (3 + 80 - t) % 8;
+    ie = (4 + 80 - t) % 8;
+    iff = (5 + 80 - t) % 8;
+    ig = (6 + 80 - t) % 8;
+    ih = (7 + 80 - t) % 8;
+
+    /* W_t = σ1(W_{t-2}) + W_{t-7} + σ0(W_{t-15}) + W_{t-16} */
+
+    #[inline]
+    if (t >= 16) {
+      x = w[(t - 15) % 16];
+      s = x >>r 1;
+      s ^= (x >>r 8);
+      s ^= (x >> 7);
+      y = w[(t - 2) % 16];
+      m = y >>r 19;
+      m ^= (y >>r 61);
+      m ^= (y >> 6);
+      x = w[t % 16];
+      x += s;
+      x += m;
+      y = w[(t - 7) % 16];
+      x += y;
+      w[t % 16] = x;
+    } else {
+      x = w[t];
+    }
+
+    /*
+     * T1 = (h + K_t + W_t) + (Σ1(e) + Ch(e, f, g)), built in v[ih]. The
+     * first sum does not depend on e and is formed early; the e-dependent
+     * terms are summed among themselves first, so the path from e to
+     * e' = d + T1 is Σ1, two additions and the addition to d.
+     */
+
+    kt = k[t];
+    v[ih] += kt;
+    v[ih] += x;
+    s = v[ie] >>r 14;
+    s ^= (v[ie] >>r 18);
+    s ^= (v[ie] >>r 41);
+    x = v[ie] & v[iff];
+    y = #BIC(v[ig], v[ie]);
+    x += y;
+    s += x;
+    v[ih] += s;
+
+    /* e' = d + T1 */
+
+    v[id] += v[ih];
+
+    /* a' = T1 + (Σ0(a) + Maj(a, b, c)) */
+
+    s = v[ia] >>r 28;
+    s ^= (v[ia] >>r 34);
+    s ^= (v[ia] >>r 39);
+    abc[t % 2] = v[ia] ^ v[ib];
+    m = abc[t % 2] & abc[(t + 1) % 2];
+    m ^= v[ib];
+    s += m;
+    v[ih] += s;
+  }
+
+  for i = 0 to 8 {
+    x = h[i];
+    x += v[i];
+    h[i] = x;
+  }
+
+  return h, w, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha512_compress(
+  reg mut ptr u64[8] h,
+  reg const ptr u8[128] block,
+  reg u64 ms
+) -> reg ptr u64[8], reg u64
+{
+  stack u64[16] w_s;
+  reg ptr u64[16] w;
+  reg ptr u64[80] k;
+  reg u64 x;
+  inline int i;
+
+  for i = 0 to 16 {
+    x = block[:u64 i];
+    x = __bswap64(x);
+    w_s[i] = x;
+  }
+  w = w_s;
+  k = SHA512_K;
+  h, w, ms = _sha512_rounds_a64(h, w, k, ms);
+
+  return h, ms;
+}
+
+/*
+ * n consecutive blocks from caller memory at p, with the contract of the
+ * shared kernel's _sha512_compress_blocks. p and n stay in registers across
+ * the round function's calls; the register allocation keeps them out of
+ * the registers the callee writes, so neither is spilled or reloaded and
+ * nothing needs protection. Each block's message words still go through
+ * the stack window w_s.
+ */
+#[sct = "{ ptr: public, val: secret } × public × public × msf → { ptr: public, val: secret } × msf"]
+fn _sha512_compress_blocks(
+  reg mut ptr u64[8] h,
+  reg u64 p n,
+  reg u64 ms
+) -> reg ptr u64[8], reg u64
+{
+  stack u64[16] w_s;
+  reg ptr u64[16] w;
+  reg ptr u64[80] k;
+  reg u64 x;
+  reg bool more;
+  inline int i;
+
+  w = w_s;
+  k = SHA512_K;
+  while { more = n != 0; } (more) {
+    ms = #update_msf(more, ms);
+
+    for i = 0 to 16 {
+      x = [:u64 p + 8 * i];
+      x = __bswap64(x);
+      w[i] = x;
+    }
+    h, w, ms = _sha512_rounds_a64(h, w, k, ms);
+
+    p += 128;
+    n -= 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return h, ms;
+}
