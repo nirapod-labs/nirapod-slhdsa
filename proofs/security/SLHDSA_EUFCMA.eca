@@ -24,32 +24,47 @@
  *                              the reduction R, a forger against the SPHINCS+
  *                              instance of SPHINCS_Instance with at least
  *                              the same success probability
+ *     prf_proj                 for R, the PRF advantage against mkg equals
+ *                              the PRF advantage against PRF_msg on
+ *                              (opt_rand, M'), here (PK.seed, M'), under the
+ *                              key SK.prf
+ *     itsr_proj                for R, the ITSR advantage against mco is at
+ *                              most the ITSR advantage against H_msg, with
+ *                              the FIPS 205 index function, on
+ *                              (PK.seed, PK.root, M')
  *     slhdsa_euf_cma           the external interface: the success
  *                              probability of any forger A is at most the
  *                              SPHINCS+ bound of the imported proof for the
- *                              adversary R(B(A)), plus the probability that
- *                              A's forgery and one of its signed requests are
- *                              distinct pre-hash requests whose pre-hash
- *                              digests collide
+ *                              adversary R(B(A)), with its mkg and mco terms
+ *                              replaced by the PRF_msg and H_msg terms
+ *                              above, plus the probability that A's forgery
+ *                              and one of its signed requests are distinct
+ *                              pre-hash requests whose pre-hash digests
+ *                              collide
  *
- * The SPHINCS+ bound is a sum of advantages against the PRF property of
- * PRF and PRF_msg, the interleaved target subset resilience of H_msg with
- * the index function, and the multi-target properties (TCR, DSPR, PRE, UD)
- * of F, H and T_l under the address types; it is reproduced in the
- * statement exactly as the imported proof states it.
+ * The bound is a sum of advantages of explicit adversaries built from A:
+ *
+ *  - PRF of PRF (secret seeds of WOTS+ and FORS keys) and of PRF_msg (the
+ *    randomizer R), each keyed by an n-byte key drawn uniformly;
+ *  - interleaved target subset resilience of H_msg, keyed by R, with the
+ *    index function that maps a digest to its FORS indices and instance;
+ *  - the multi-target properties (TCR, DSPR, PRE, UD) of F, H and T_l under
+ *    the address types, exactly as the imported proof states them.
+ *
+ * The imported proof states its message-key terms for the SPHINCS+
+ * instance message (PK || opt_rand, M'). There mkg ignores PK.seed and
+ * PK.root and mco ignores opt_rand, so neither is a PRF or ITSR on that
+ * type and those terms are not meaningful assumptions. prf_proj and
+ * itsr_proj remove them. R signs every message with the same prefix
+ * PK || PK.seed (deterministic signing is Algorithm 19 with opt_rand =
+ * PK.seed), so the mkg queries are the PRF_msg queries (PK.seed, M') one to
+ * one, and R's forgery, new on the instance type, stays new on the inputs
+ * of H_msg.
  *
  * Hypotheses: A terminates whenever its signing oracle does, and A does not
  * read or write the state of the games and reductions involved (the module
  * restrictions of the statement). Nothing is assumed about the hash
- * functions.
- *
- * The reduction R signs (PK || PK.seed, M'): deterministic signing is
- * Algorithm 19 with opt_rand = PK.seed. The PRF term for mkg and the ITSR
- * term for mco are stated, as the imported proof states them, for the
- * instance message type, on which mkg ignores the public key and mco
- * ignores opt_rand. SLHDSA_Hedged.eca restates both for PRF_msg and H_msg
- * on their own inputs for its reduction; that restatement is not made
- * here for R.
+ * functions: each property appears as an advantage in the bound.
  *
  * Departures from FIPS 205.
  *
@@ -57,11 +72,12 @@
  *  - The randomness of key generation is modelled as uniform n-byte strings.
  *)
 
-require import AllCore List Distr DList.
+require import AllCore List Distr DList FMap.
 from Jasmin require import JWord.
-require import Bytes FIPS205_Params FIPS205_Internal FIPS205_External FIPS205_XMSS FIPS205_Address_Props.
+require import Bytes FIPS205_Params FIPS205_Hash FIPS205_Internal FIPS205_External FIPS205_XMSS FIPS205_Address_Props.
 require import ExternalFraming.
 require SPHINCS_Refinement.
+require (*--*) KeyedHashFunctions.
 
 clone include SPHINCS_Refinement.
 
@@ -253,6 +269,327 @@ qed.
 end section Reduction.
 
 (* ------------------------------------------------------------------ *)
+(* PRF_msg and H_msg on their own inputs                              *)
+
+(* The imported bound states its message-key PRF term for mkg and its
+   ITSR term for mco, both keyed functions of the instance message
+   (PK || opt_rand, M'). Neither is a meaningful assumption on that type:
+   mkg ignores PK.seed and PK.root, and mco ignores opt_rand. The clones
+   below give PRF_msg and H_msg their own input types, and the
+   adversaries PP and PI carry a distinguisher or ITSR adversary from the
+   instance type over to them. *)
+
+(* PRF_msg(SK.prf, opt_rand, M') as a keyed function of (opt_rand, M'). *)
+op prf_msg (k : nbytes) (x : bytes * bytes) : nbytes = NBytes.insubd (PRF_msg P (NBytes.val k) x.`1 x.`2).
+
+clone KeyedHashFunctions as PRFMsg with
+  type key_t <- nbytes,
+  type in_t <- bytes * bytes,
+  type out_t <- nbytes,
+  op f <- prf_msg
+proof *.
+
+clone PRFMsg.PRF as PRFMsg_PRF with
+  op dkey <- dnbytes,
+  op doutm x <- dnbytes
+proof *.
+realize dkey_ll by exact dnbytes_ll.
+realize doutm_ll by move=> _; exact dnbytes_ll.
+
+(* A distinguisher against mkg made into one against PRF_msg: each query
+   (PK || opt_rand, M') is asked as (opt_rand, M'). *)
+module PP (C : SP.MKG_PRF.Adv_PRF) (O : PRFMsg_PRF.Oracle_PRF) = {
+  module O' : SP.MKG_PRF.Oracle_PRF = {
+    proc init(b : bool) : unit = { }
+
+    proc query(x : bytes * bytes) : nbytes = {
+      var y;
+      y <@ O.query((slice x.`1 (2 * P.`n) (3 * P.`n), x.`2));
+      return y;
+    }
+  }
+
+  proc distinguish() : bool = {
+    var b;
+    b <@ C(O').distinguish();
+    return b;
+  }
+}.
+
+(* H_msg(R, PK.seed, PK.root, M') followed by the digest split of
+   Algorithm 19, lines 6 to 10, in the model's representation: the FORS
+   message bits and the index of the FORS instance. *)
+op hmsg (k : nbytes) (x : bytes * bytes * bytes) : SP.FTWES.msgFORSTW * SP.index =
+  let digest = H_msg P (NBytes.val k) x.`1 x.`2 x.`3 in
+  let (md, it, il) = split_digest P digest in
+  (SP.FTWES.BLKAL.insubd (take (P.`k * P.`a) (msb_bits md)), SP.Index.insubd (it * 2 ^ P.`hp + il)).
+
+(* The inputs of H_msg in a message of the instance. *)
+op pmsg (m : bytes * bytes) : bytes * bytes * bytes =
+  (slice m.`1 0 P.`n, slice m.`1 P.`n (2 * P.`n), m.`2).
+
+lemma mco_hmsg k m : SP.FTWES.mco k m = hmsg k (pmsg m).
+proof. by []. qed.
+
+clone KeyedHashFunctions as HMsg with
+  type key_t <- nbytes,
+  type in_t <- bytes * bytes * bytes,
+  type out_t <- SP.FTWES.msgFORSTW * SP.index,
+  op f <- hmsg
+proof *.
+
+clone HMsg.ITSR as HMsg_ITSR with
+  op g <- SP.FTWES.g,
+  op dkey <- dnbytes
+proof *.
+realize dkey_ll by exact dnbytes_ll.
+
+(* An ITSR adversary against mco made into one against H_msg: each query
+   and the final pair are mapped to the inputs of H_msg. *)
+module PI (C : SP.FTWES.MCO_ITSR.Adv_ITSR) (O : HMsg_ITSR.Oracle_ITSR) = {
+  module O' : SP.FTWES.MCO_ITSR.Oracle_ITSR = {
+    proc init() : unit = { }
+
+    proc query(x : bytes * bytes) : nbytes = {
+      var k;
+      k <@ O.query(pmsg x);
+      return k;
+    }
+
+    proc get_targets() : (nbytes * (bytes * bytes)) list = {
+      return [];
+    }
+  }
+
+  proc find() : nbytes * (bytes * bytes * bytes) = {
+    var k, x;
+    (k, x) <@ C(O').find();
+    return (k, pmsg x);
+  }
+}.
+
+op pi (kx : nbytes * (bytes * bytes)) : nbytes * (bytes * bytes * bytes) = (kx.`1, pmsg kx.`2).
+
+(* The index tuples of mco on an instance message are those of H_msg on
+   its inputs, so coverage by a target list carries over to its image. *)
+lemma itsr_cover (ts : (nbytes * (bytes * bytes)) list) (k : nbytes) (x : bytes * bytes) :
+  (forall t, t \in SP.FTWES.MCO_ITSR.h k x =>
+     t \in flatten (map (fun (kx : nbytes * (bytes * bytes)) => SP.FTWES.MCO_ITSR.h kx.`1 kx.`2) ts))
+  => forall t, t \in HMsg_ITSR.h k (pmsg x) =>
+     t \in flatten (map (fun (kx : nbytes * (bytes * bytes * bytes)) => HMsg_ITSR.h kx.`1 kx.`2) (map pi ts)).
+proof.
+have hh : forall k' x', SP.FTWES.MCO_ITSR.h k' x' = HMsg_ITSR.h k' (pmsg x').
++ by move=> k' x'; rewrite /SP.FTWES.MCO_ITSR.h /HMsg_ITSR.h.
+move=> hcov t; rewrite -hh => /hcov; rewrite -map_comp.
+have -> : (fun (kx : nbytes * (bytes * bytes * bytes)) => HMsg_ITSR.h kx.`1 kx.`2) \o pi
+          = (fun (kx : nbytes * (bytes * bytes)) => SP.FTWES.MCO_ITSR.h kx.`1 kx.`2).
++ by apply fun_ext => kx; rewrite /(\o) /pi /= hh.
+by [].
+qed.
+
+(* ------------------------------------------------------------------ *)
+(* The two terms for the reduction R                                   *)
+
+(* R puts the same prefix pkm = PK || PK.seed on every query, so the
+   mkg queries are the PRF_msg queries (PK.seed, M') one to one. *)
+pred prf_rel (pkm : bytes) (mS : (bytes * bytes, nbytes) fmap) (mF : (bytes * bytes, nbytes) fmap) =
+  forall r M, mF.[(r, M)] = if r = slice pkm (2 * P.`n) (3 * P.`n) then mS.[(pkm, M)] else None.
+
+lemma prf_rel_get pkm mS mF (M : bytes) :
+  prf_rel pkm mS mF => mF.[(slice pkm (2 * P.`n) (3 * P.`n), M)] = mS.[(pkm, M)].
+proof. by move=> h; rewrite h. qed.
+
+lemma prf_rel_set pkm mS mF (M : bytes) (y : nbytes) :
+  prf_rel pkm mS mF =>
+  prf_rel pkm mS.[(pkm, M) <- y] mF.[(slice pkm (2 * P.`n) (3 * P.`n), M) <- y].
+proof.
+move=> h r M'; rewrite !get_setE h.
+by case: (r = slice pkm (2 * P.`n) (3 * P.`n)) => [-> /= | /#].
+qed.
+
+section PRFProjection.
+
+declare module A <: DSI.Stateless.Adv_EUFCMA
+  {-R, -SP.R_MKGPRF_EUFCMA, -SP.MKG_PRF.O_PRF_Default, -PRFMsg_PRF.O_PRF_Default}.
+
+local lemma prf_oracle :
+  equiv [R(A, SP.R_MKGPRF_EUFCMA(R(A), SP.MKG_PRF.O_PRF_Default).O_CMA).O'.sign
+         ~ R(A, SP.R_MKGPRF_EUFCMA(R(A), PP(SP.R_MKGPRF_EUFCMA(R(A)), PRFMsg_PRF.O_PRF_Default).O').O_CMA).O'.sign :
+         ={m, R.pkb, R.pkm, glob SP.R_MKGPRF_EUFCMA}
+         /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+         /\ prf_rel R.pkm{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}
+         ==> ={res, R.pkb, R.pkm, glob SP.R_MKGPRF_EUFCMA}
+         /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+         /\ prf_rel R.pkm{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}].
+proof.
+proc.
+inline SP.R_MKGPRF_EUFCMA(R(A), SP.MKG_PRF.O_PRF_Default).O_CMA.sign
+       SP.R_MKGPRF_EUFCMA(R(A), PP(SP.R_MKGPRF_EUFCMA(R(A)), PRFMsg_PRF.O_PRF_Default).O').O_CMA.sign.
+inline SP.MKG_PRF.O_PRF_Default.query PP(SP.R_MKGPRF_EUFCMA(R(A)), PRFMsg_PRF.O_PRF_Default).O'.query
+       PRFMsg_PRF.O_PRF_Default.query.
+seq 2 2 : (={m0, ad, m, R.pkb, R.pkm, glob SP.R_MKGPRF_EUFCMA}
+           /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+           /\ prf_rel R.pkm{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}
+           /\ m0{1} = (R.pkm{1}, m{1})).
++ by auto.
+seq 3 5 : (={m0, ad, m, mk, R.pkb, R.pkm, glob SP.R_MKGPRF_EUFCMA}
+           /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+           /\ prf_rel R.pkm{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}).
++ sp.
+  conseq (_: ={m0, ad, m, R.pkb, R.pkm, glob SP.R_MKGPRF_EUFCMA}
+             /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+             /\ prf_rel R.pkm{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}
+             /\ x{1} = (R.pkm{1}, m{1})
+             /\ x0{2} = (slice R.pkm{1} (2 * P.`n) (3 * P.`n), m{1}) ==> _).
+  + by move=> &1 &2 [#] -> -> -> 9!-> hb hk hrel hm0; rewrite hm0.
+  if => //.
+  + if.
+    + by move=> /> &1 &2 *; rewrite !domE; smt(prf_rel_get).
+    + auto => /> &1 &2 hrel _ _ y _; rewrite !get_set_sameE /=.
+      by apply prf_rel_set.
+    by auto => /> &1 &2 *; smt(prf_rel_get).
+  by auto => /> &1 &2 *; rewrite /prf_msg.
+sim / (={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+       /\ prf_rel R.pkm{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2})
+    : (={s, R.pkb, R.pkm, glob SP.R_MKGPRF_EUFCMA}).
+qed.
+
+local lemma prf_dist :
+  equiv [SP.R_MKGPRF_EUFCMA(R(A), SP.MKG_PRF.O_PRF_Default).distinguish
+         ~ SP.R_MKGPRF_EUFCMA(R(A), PP(SP.R_MKGPRF_EUFCMA(R(A)), PRFMsg_PRF.O_PRF_Default).O').distinguish :
+         ={glob A}
+         /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+         /\ SP.MKG_PRF.O_PRF_Default.m{1} = empty /\ PRFMsg_PRF.O_PRF_Default.m{2} = empty
+         ==> ={res}].
+proof.
+proc.
+inline R(A, SP.R_MKGPRF_EUFCMA(R(A), SP.MKG_PRF.O_PRF_Default).O_CMA).forge
+       R(A, SP.R_MKGPRF_EUFCMA(R(A), PP(SP.R_MKGPRF_EUFCMA(R(A)), PRFMsg_PRF.O_PRF_Default).O').O_CMA).forge.
+seq 12 12 : (={glob A, glob SP.R_MKGPRF_EUFCMA, pk}
+             /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+             /\ SP.MKG_PRF.O_PRF_Default.m{1} = empty /\ PRFMsg_PRF.O_PRF_Default.m{2} = empty).
++ sim / (={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+         /\ SP.MKG_PRF.O_PRF_Default.m{1} = empty /\ PRFMsg_PRF.O_PRF_Default.m{2} = empty)
+      : (={glob A, glob SP.R_MKGPRF_EUFCMA, pk}).
+seq 3 3 : (={glob A, glob SP.R_MKGPRF_EUFCMA, pk, pk0, R.pkb, R.pkm}
+           /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+           /\ prf_rel R.pkm{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}).
++ by auto => /> *; rewrite !emptyE if_same.
+seq 1 1 : (={glob A, glob SP.R_MKGPRF_EUFCMA, pk, pk0, R.pkb, R.pkm, m, s}).
++ call (: ={R.pkb, R.pkm, glob SP.R_MKGPRF_EUFCMA}
+          /\ ={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
+          /\ prf_rel R.pkm{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}).
+  + by conseq prf_oracle.
+  by auto.
+sim.
+qed.
+
+lemma prf_proj b &m :
+  Pr[SP.MKG_PRF.PRF(SP.R_MKGPRF_EUFCMA(R(A)), SP.MKG_PRF.O_PRF_Default).main(b) @ &m : res]
+  = Pr[PRFMsg_PRF.PRF(PP(SP.R_MKGPRF_EUFCMA(R(A))), PRFMsg_PRF.O_PRF_Default).main(b) @ &m : res].
+proof.
+byequiv => //; proc.
+inline SP.MKG_PRF.O_PRF_Default.init PRFMsg_PRF.O_PRF_Default.init
+       PP(SP.R_MKGPRF_EUFCMA(R(A)), PRFMsg_PRF.O_PRF_Default).distinguish.
+wp; call prf_dist; auto.
+qed.
+
+end section PRFProjection.
+
+(* R's forgery (pkm, M') is new on the instance type; every target carries
+   the same pkm, so it stays new on the inputs of H_msg. *)
+lemma itsr_final (pkm : bytes) (ts : (nbytes * (bytes * bytes)) list) (k : nbytes) (M : bytes) :
+  (forall k' x', (k', x') \in ts => x'.`1 = pkm) =>
+     (forall t, t \in SP.FTWES.MCO_ITSR.h k (pkm, M) =>
+         t \in flatten (map (fun (kx : nbytes * (bytes * bytes)) => SP.FTWES.MCO_ITSR.h kx.`1 kx.`2) ts))
+  /\ ! (k, (pkm, M)) \in ts
+  => (forall t, t \in HMsg_ITSR.h k (pmsg (pkm, M)) =>
+         t \in flatten (map (fun (kx : nbytes * (bytes * bytes * bytes)) => HMsg_ITSR.h kx.`1 kx.`2) (map pi ts)))
+  /\ ! (k, pmsg (pkm, M)) \in map pi ts.
+proof.
+move=> hts [hcov hnew]; split; first by apply itsr_cover.
+move: hnew; apply contra => /mapP [[k' x'] [hin /= [hk hx]]].
+have h1 := hts _ _ hin.
+have h2 : x'.`2 = M by move: hx; rewrite /pmsg /=; smt().
+by rewrite hk (_ : (pkm, M) = x') 1:/#.
+qed.
+
+section ITSRProjection.
+
+declare module A <: DSI.Stateless.Adv_EUFCMA
+  {-R, -SP.FTWES.R_ITSR_EUFCMA, -SP.R_MFORSTWESNPRFEUFCMA_EUFCMA,
+   -SP.FTWES.MCO_ITSR.O_ITSR_Default, -HMsg_ITSR.O_ITSR_Default}.
+
+local lemma itsr_oracle :
+  equiv [R(A, SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).O_CMA).O_CMA).O'.sign
+         ~ R(A, SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A))), HMsg_ITSR.O_ITSR_Default).O').O_CMA).O_CMA).O'.sign :
+         ={m, R.pkb, R.pkm, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA}
+         /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+         /\ (forall k x, (k, x) \in SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} => x.`1 = R.pkm{1})
+         ==> ={res, R.pkb, R.pkm, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA}
+         /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+         /\ (forall k x, (k, x) \in SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} => x.`1 = R.pkm{1})].
+proof.
+proc.
+inline SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).O_CMA).O_CMA.sign
+       SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A))), HMsg_ITSR.O_ITSR_Default).O').O_CMA).O_CMA.sign.
+inline SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).O_CMA.sign
+       SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A))), HMsg_ITSR.O_ITSR_Default).O').O_CMA.sign.
+inline SP.FTWES.MCO_ITSR.O_ITSR_Default.query
+       PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A))), HMsg_ITSR.O_ITSR_Default).O'.query
+       HMsg_ITSR.O_ITSR_Default.query.
+seq 2 2 : (={m0, m1, m, R.pkb, R.pkm, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA}
+           /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+           /\ (forall k x, (k, x) \in SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} => x.`1 = R.pkm{1})
+           /\ m1{1} = (R.pkm{1}, m{1})).
++ by auto.
+seq 2 2 : (={m0, m1, m, mk0, R.pkb, R.pkm, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA}
+           /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+           /\ (forall k x, (k, x) \in SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} => x.`1 = R.pkm{1})).
++ if => //.
+  + auto => /> &1 &2 hts _ k _; rewrite map_rcons /=.
+    split; first by rewrite /pi.
+    by move=> k1 x1; rewrite mem_rcons /= => -[[_ ->] // | /hts].
+  by auto.
+wp; call (: true); first by sim.
+wp; call (: true); first by sim.
+by auto.
+qed.
+
+lemma itsr_proj &m :
+  Pr[SP.FTWES.MCO_ITSR.ITSR(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A))), SP.FTWES.MCO_ITSR.O_ITSR_Default).main() @ &m : res]
+  <= Pr[HMsg_ITSR.ITSR(PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)))), HMsg_ITSR.O_ITSR_Default).main() @ &m : res].
+proof.
+byequiv => //; proc.
+inline SP.FTWES.MCO_ITSR.O_ITSR_Default.init HMsg_ITSR.O_ITSR_Default.init SP.FTWES.MCO_ITSR.O_ITSR_Default.get_targets HMsg_ITSR.O_ITSR_Default.get_targets PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A))), HMsg_ITSR.O_ITSR_Default).find.
+inline SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).find
+       SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A))), HMsg_ITSR.O_ITSR_Default).O').find.
+inline SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).O_CMA).forge
+       SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A))), HMsg_ITSR.O_ITSR_Default).O').O_CMA).forge.
+inline R(A, SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), SP.FTWES.MCO_ITSR.O_ITSR_Default).O_CMA).O_CMA).forge
+       R(A, SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A), SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A)), PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(A))), HMsg_ITSR.O_ITSR_Default).O').O_CMA).O_CMA).forge.
+seq 1 1 : (={glob A} /\ SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = []); first by auto.
+seq 4 4 : (={glob A, SP.FTWES.R_ITSR_EUFCMA.ad, SP.FTWES.R_ITSR_EUFCMA.ps, SP.FTWES.R_ITSR_EUFCMA.skFORSs, pk, sk} /\ SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = []).
++ sim / (SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = []) : (={glob A, SP.FTWES.R_ITSR_EUFCMA.ad, SP.FTWES.R_ITSR_EUFCMA.ps, SP.FTWES.R_ITSR_EUFCMA.skFORSs, pk, sk}).
+seq 1 1 : (={glob A, SP.FTWES.R_ITSR_EUFCMA.ad, SP.FTWES.R_ITSR_EUFCMA.ps, SP.FTWES.R_ITSR_EUFCMA.skFORSs, SP.FTWES.R_ITSR_EUFCMA.mmap, pk, sk} /\ SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = []).
++ by auto.
+seq 7 7 : (={glob A, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA, root, pk0} /\ SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = []).
++ sim / (SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} = [] /\ HMsg_ITSR.O_ITSR_Default.ts{2} = [])
+      : (={glob A, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA, root, pk0}).
+seq 3 3 : (={glob A, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA, pk1, R.pkb, R.pkm} /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+           /\ (forall k x, (k, x) \in SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} => x.`1 = R.pkm{1})).
++ by auto.
+wp; call (: ={R.pkb, R.pkm, glob SP.FTWES.R_ITSR_EUFCMA, glob SP.R_MFORSTWESNPRFEUFCMA_EUFCMA}
+            /\ HMsg_ITSR.O_ITSR_Default.ts{2} = map pi SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1}
+            /\ (forall k x, (k, x) \in SP.FTWES.MCO_ITSR.O_ITSR_Default.ts{1} => x.`1 = R.pkm{1})).
++ by conseq itsr_oracle.
+skip => /> &1 &2 _ r tsl hts hcov hnew.
+by apply (itsr_final _ _ _ _ hts); split.
+qed.
+
+end section ITSRProjection.
+
+(* ------------------------------------------------------------------ *)
 (* The external interface                                             *)
 
 section Composition.
@@ -279,7 +616,7 @@ declare module A <: DSE.Stateless.Adv_EUFCMA {
    -SP.R_MKGPRF_EUFCMA, -SP.R_MFORSTWESNPRFEUFCMA_EUFCMA,
    -SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA, -R,
    -DSI.Stateless.O_CMA_Default, -DSE.Stateless.O_CMA_Default,
-   -Rec
+   -Rec, -PRFMsg_PRF.O_PRF_Default, -HMsg_ITSR.O_ITSR_Default
 }.
 
 declare axiom A_forge_ll (O <: DSE.Stateless.SOracle_CMA{-A}) :
@@ -300,12 +637,12 @@ lemma slhdsa_euf_cma &m :
       SP.SKG_PRF.O_PRF_Default).main (false) @ &m : res] -
       Pr[SP.SKG_PRF.PRF(SP.R_SKGPRF_EUFCMA(R(B(A))),
       SP.SKG_PRF.O_PRF_Default).main (true) @ &m : res]|
-   + `|Pr[SP.MKG_PRF.PRF(SP.R_MKGPRF_EUFCMA(R(B(A))),
-       SP.MKG_PRF.O_PRF_Default).main (false) @ &m : res] -
-       Pr[SP.MKG_PRF.PRF(SP.R_MKGPRF_EUFCMA(R(B(A))),
-       SP.MKG_PRF.O_PRF_Default).main (true) @ &m : res]|
-   + Pr[SP.FTWES.MCO_ITSR.ITSR(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A)))),
-       SP.FTWES.MCO_ITSR.O_ITSR_Default).main() @ &m : res]
+   + `|Pr[PRFMsg_PRF.PRF(PP(SP.R_MKGPRF_EUFCMA(R(B(A)))),
+       PRFMsg_PRF.O_PRF_Default).main (false) @ &m : res] -
+       Pr[PRFMsg_PRF.PRF(PP(SP.R_MKGPRF_EUFCMA(R(B(A)))),
+       PRFMsg_PRF.O_PRF_Default).main (true) @ &m : res]|
+   + Pr[HMsg_ITSR.ITSR(PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A))))),
+       HMsg_ITSR.O_ITSR_Default).main() @ &m : res]
    + StdOrder.RealOrder.maxr 0%r (Pr[SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.SM_DT_DSPR(SP.FTWES.FP_OPRETCRDSPR.R_DSPR_OpenPRE(SP.FTWES.R_FPOpenPRE_FOpenPRE(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A))))),
        SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.O_SMDTDSPR_Default).main () @ &m : res] -
        Pr[SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.SM_DT_SPprob(SP.FTWES.FP_OPRETCRDSPR.R_DSPR_OpenPRE(SP.FTWES.R_FPOpenPRE_FOpenPRE(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A))))),
@@ -342,6 +679,9 @@ have h1 := euf_cma_external SLH_Internal A SLH_verify_ll &m.
 have h2 := internal_le_sp (B(A)) &m.
 have h3 := SP.EUFCMA_SPHINCS_PLUS (R(B(A))) _ &m.
 + by move=> O hO; apply (RB_ll O hO).
+have h4 := prf_proj (B(A)) false &m.
+have h5 := prf_proj (B(A)) true &m.
+have h6 := itsr_proj (B(A)) &m.
 smt().
 qed.
 
