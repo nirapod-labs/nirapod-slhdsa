@@ -1,0 +1,172 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * mgf1.jinc
+ * =========
+ *
+ * MGF1 (RFC 8017, appendix B.2.1) over SHA-256 and SHA-512, instantiated
+ * for a fixed seed length and output length:
+ *
+ *     namespace M {
+ *       param int MGF1_SEED_LEN = 64;
+ *       param int MGF1_OUT_LEN = 30;
+ *       from Hash require "sha2/mgf1.jinc"
+ *     }
+ *
+ *     T   = Hash(seed || I2OSP(0, 4)) || Hash(seed || I2OSP(1, 4)) || ...
+ *     out = T[0 : MGF1_OUT_LEN]
+ *
+ * FIPS 205 section 11.2 computes H_msg as MGF1 of
+ * R || PK.seed || Hash(R || PK.seed || PK.root || M), with SHA-256 for
+ * security category 1 and SHA-512 for categories 3 and 5. sha256.jinc and
+ * sha512.jinc must be required at top level first.
+ *
+ * Every length here is a compile-time constant, so the whole padded
+ * message seed || counter || padding is laid out once in a stack buffer
+ * and only the four counter bytes are rewritten for each block of T. The
+ * code has no data-dependent branch or address; seed and output are
+ * secret.
+ */
+
+/*
+ * Padded message: seed, 4 counter bytes, 0x80, then a 64-bit (SHA-256) or
+ * 128-bit (SHA-512) length field, rounded up to whole blocks. The buffer
+ * fits either: 128 B512 >= S + 21, so 128 B512 + 64 >= S + 76 >= 64 B256
+ * for seed length S. (Array sizes must be plain arithmetic, so no max.)
+ */
+param int MGF1_SHA256_BLOCKS = (MGF1_SEED_LEN + 4 + 1 + 8 + 63) / 64;
+param int MGF1_SHA512_BLOCKS = (MGF1_SEED_LEN + 4 + 1 + 16 + 127) / 128;
+param int MGF1_BUF_LEN = 128 * MGF1_SHA512_BLOCKS + 64;
+
+/*
+ * Lay out seed || 0^4 || 0x80 || 0^k || L in the first `padded` bytes of
+ * m, with L the big-endian bit length of seed || counter. L < 2^64, so the
+ * upper half of SHA-512's 128-bit field is part of the zero run.
+ */
+inline fn __mgf1_layout(
+  reg mut ptr u8[MGF1_BUF_LEN] m,
+  reg const ptr u8[MGF1_SEED_LEN] seed,
+  inline int padded
+) -> reg ptr u8[MGF1_BUF_LEN]
+{
+  reg u64 t z;
+  inline int i;
+
+  z = 0;
+  for i = 0 to padded {
+    m[i] = (8u)z;
+  }
+  for i = 0 to MGF1_SEED_LEN {
+    t = (64u)seed[i];
+    m[i] = (8u)t;
+  }
+  t = 0x80;
+  m[MGF1_SEED_LEN + 4] = (8u)t;
+
+  t = (MGF1_SEED_LEN + 4) * 8;
+  for i = 0 to 8 {
+    m[padded - 1 - i] = (8u)t;
+    t >>= 8;
+  }
+
+  return m;
+}
+
+/*
+ * I2OSP(c, 4): the counter big-endian in the four bytes after the seed.
+ * c is a compile-time block index; the byte store keeps the low 8 bits.
+ */
+inline fn __mgf1_set_counter(
+  reg mut ptr u8[MGF1_BUF_LEN] m,
+  inline int c
+) -> reg ptr u8[MGF1_BUF_LEN]
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to 4 {
+    t = c;
+    t >>= 8 * (3 - i);
+    m[MGF1_SEED_LEN + i] = (8u)t;
+  }
+  return m;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _mgf1_sha256(
+  reg mut ptr u8[MGF1_OUT_LEN] out,
+  reg const ptr u8[MGF1_SEED_LEN] seed,
+  reg u64 ms
+) -> reg ptr u8[MGF1_OUT_LEN], reg u64
+{
+  stack u8[MGF1_BUF_LEN] m;
+  stack u32[8] h;
+  reg u32 x;
+  reg u64 t;
+  inline int c b i n;
+
+  m = __mgf1_layout(m, seed, 64 * MGF1_SHA256_BLOCKS);
+
+  for c = 0 to (MGF1_OUT_LEN + 31) / 32 {
+    m = __mgf1_set_counter(m, c);
+
+    h = __sha256_init(h);
+    for b = 0 to MGF1_SHA256_BLOCKS {
+      () = #spill(out);
+      h, ms = _sha256_compress(h, m[64 * b : 64], ms);
+      () = #unspill(out);
+      out = #protect_ptr(out, ms);
+    }
+
+    /* Hash output word i is T[32c + 4i .. 32c + 4i + 3], big-endian. */
+
+    n = MGF1_OUT_LEN - 32 * c < 32 ? MGF1_OUT_LEN - 32 * c : 32;
+    for i = 0 to n {
+      x = h[i / 4];
+      x >>= 8 * (3 - i % 4);
+      t = (64u)x;
+      out[32 * c + i] = (8u)t;
+    }
+  }
+
+  return out, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _mgf1_sha512(
+  reg mut ptr u8[MGF1_OUT_LEN] out,
+  reg const ptr u8[MGF1_SEED_LEN] seed,
+  reg u64 ms
+) -> reg ptr u8[MGF1_OUT_LEN], reg u64
+{
+  stack u8[MGF1_BUF_LEN] m;
+  stack u64[8] h;
+  reg u64 t;
+  inline int c b i n;
+
+  m = __mgf1_layout(m, seed, 128 * MGF1_SHA512_BLOCKS);
+
+  for c = 0 to (MGF1_OUT_LEN + 63) / 64 {
+    m = __mgf1_set_counter(m, c);
+
+    h = __sha512_init(h);
+    for b = 0 to MGF1_SHA512_BLOCKS {
+      () = #spill(out);
+      h, ms = _sha512_compress(h, m[128 * b : 128], ms);
+      () = #unspill(out);
+      out = #protect_ptr(out, ms);
+    }
+
+    n = MGF1_OUT_LEN - 64 * c < 64 ? MGF1_OUT_LEN - 64 * c : 64;
+    for i = 0 to n {
+      t = h[i / 8];
+      t >>= 8 * (7 - i % 8);
+      out[64 * c + i] = (8u)t;
+    }
+  }
+
+  return out, ms;
+}
