@@ -205,6 +205,10 @@ rewrite slice_prefix //= slice_prefix //= slice_prefix //= slice_prefix //= slic
 by rewrite slice_nil cats0 -!catA.
 qed.
 
+(* Every address field FIPS 205 reads back is below 2^32. *)
+lemma mod32 (x : int) : 0 <= x < 2 ^ 32 => x %% 2 ^ 32 = x.
+proof. by move=> hx; rewrite modz_small // ger0_norm // expr_ge0. qed.
+
 lemma getKeyPairAddressE l t y w2 w1 w0 :
   getKeyPairAddress (mk_adrs l t y w2 w1 w0) = w2 %% 2 ^ 32.
 proof.
