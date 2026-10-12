@@ -5,3 +5,14 @@ version = 1
 path = "jasmin-license.txt"
 SPDX-FileCopyrightText = "Jasmin contributors"
 SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "PATCHES.md"
+SPDX-FileCopyrightText = "nirapod-slhdsa contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Patches to Jasmin are distributed under Jasmin's licence.
+[[annotations]]
+path = "patches/**"
+SPDX-FileCopyrightText = ["Jasmin contributors", "nirapod-slhdsa contributors"]
+SPDX-License-Identifier = "MIT"

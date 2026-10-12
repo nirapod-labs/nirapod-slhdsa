@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Thu, 8 Oct 2026 19:09:38 +0600
+Subject: [PATCH] safetylib: for loop counters point to no memory region
+
+A pointer offset by a multiple of the counter, as in `p = pkp; p += 32 * i`,
+could otherwise point anywhere.
+
+(cherry picked from commit bdb905d4f295a0078e276702a799ff05ae7077e1)
+---
+ compiler/safetylib/safetyInterpreter.ml         |  2 ++
+ compiler/tests/safety/ptroffset.t/counter.jazz  |  8 ++++++++
+ .../safety/ptroffset.t/counter_address.jazz     |  9 +++++++++
+ compiler/tests/safety/ptroffset.t/run.t         | 17 +++++++++++++----
+ 4 files changed, 32 insertions(+), 4 deletions(-)
+ create mode 100644 compiler/tests/safety/ptroffset.t/counter.jazz
+ create mode 100644 compiler/tests/safety/ptroffset.t/counter_address.jazz
+
+diff --git a/compiler/safetylib/safetyInterpreter.ml b/compiler/safetylib/safetyInterpreter.ml
+index 6e0ddc5a7..7d0e64a97 100644
+--- a/compiler/safetylib/safetyInterpreter.ml
++++ b/compiler/safetylib/safetyInterpreter.ml
+@@ -1790,6 +1790,8 @@ end = struct
+                 let abs =
+                   AbsDom.assign_sexpr
+                     state.abs (Some ginstr.i_info) [mvari, expr_ci] in
++                (* As a constant, i points to no memory region. *)
++                let abs = AbsDom.assign_ptr_expr abs mvari (PtVars []) in
+ 
+                 let state =
+                   { state with
+diff --git a/compiler/tests/safety/ptroffset.t/counter.jazz b/compiler/tests/safety/ptroffset.t/counter.jazz
+new file mode 100644
+index 000000000..4cf8bd797
+--- /dev/null
++++ b/compiler/tests/safety/ptroffset.t/counter.jazz
+@@ -0,0 +1,8 @@
++// p = pkp + 32 * i: the stores are within [0; 112] of pkp.
++export fn g(reg u64 pkp) -> reg u64 {
++  inline int i;
++  reg u64 p v;
++  v = 1;
++  for i = 0 to 4 { p = pkp; p += 32 * i; [p + 8] = v; }
++  return v;
++}
+diff --git a/compiler/tests/safety/ptroffset.t/counter_address.jazz b/compiler/tests/safety/ptroffset.t/counter_address.jazz
+new file mode 100644
+index 000000000..314815638
+--- /dev/null
++++ b/compiler/tests/safety/ptroffset.t/counter_address.jazz
+@@ -0,0 +1,9 @@
++// The loop counter is not an address.
++export fn g(reg u64 p) -> reg u64 {
++  inline int i;
++  reg u64 q v;
++  v = 1;
++  for i = 0 to 2 { q = i; [q + 0] = v; }
++  [p + 0] = v;
++  return v;
++}
+diff --git a/compiler/tests/safety/ptroffset.t/run.t b/compiler/tests/safety/ptroffset.t/run.t
+index 727001c65..d923d8662 100644
+--- a/compiler/tests/safety/ptroffset.t/run.t
++++ b/compiler/tests/safety/ptroffset.t/run.t
+@@ -1,5 +1,14 @@
+ The memory accesses through an input pointer must lie in a bounded range.
+ 
++  $ ../../../jasmin-checksafety counter.jazz 2>&1 | grep -e Violation -e line -e return -e safe -e "mem_pkp:"
++  *** No Safety Violation
++    mem_pkp: [0; 112]
++
++  $ ../../../jasmin-checksafety counter_address.jazz 2>&1 | grep -e Violation -e line -e return -e safe
++  *** Possible Safety Violation(s):
++    "counter_address.jazz", line 6 (26-38): is_valid q +64u (64u) 0 u64
++  Program is not safe!
++
+   $ ../../../jasmin-checksafety const_left.jazz 2>&1 | grep -e Violation -e line -e return -e safe -e "mem_pkp:"
+   *** Possible Safety Violation(s):
+     g return: bounded memory range of pkp
+@@ -8,14 +17,14 @@ The memory accesses through an input pointer must lie in a bounded range.
+ 
+   $ ../../../jasmin-checksafety counter_left.jazz 2>&1 | grep -e Violation -e line -e return -e safe -e "mem_pkp:"
+   *** Possible Safety Violation(s):
+-    "counter_left.jazz", line 6 (41-53): is_valid p +64u (64u) 8 u64
+-    mem_pkp: [0; 0]
++    g return: bounded memory range of pkp
++    mem_pkp: [-1/0; inf]
+   Program is not safe!
+ 
+   $ ../../../jasmin-checksafety counter_sub.jazz 2>&1 | grep -e Violation -e line -e return -e safe -e "mem_pkp:"
+   *** Possible Safety Violation(s):
+-    "counter_sub.jazz", line 6 (41-53): is_valid p +64u (64u) 0 u64
+-    mem_pkp: [0; 0]
++    g return: bounded memory range of pkp
++    mem_pkp: [-1/0; inf]
+   Program is not safe!
+ 
+ Without widening thresholds, the range of the accesses in this loop is

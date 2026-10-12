@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Wed, 7 Oct 2026 13:08:56 +0600
+Subject: [PATCH] armv8a: check the LDP/STP offset range on the scaled offset
+
+Co-authored-by: orvenweb3 <orvenweb3@gmail.com>
+(cherry picked from commit 0b1d3515474484f5999e7c6564143350d5c2a0f1)
+---
+ proofs/compiler/armv8a_decl.v | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/proofs/compiler/armv8a_decl.v b/proofs/compiler/armv8a_decl.v
+index 079e7a550..8cc20775e 100644
+--- a/proofs/compiler/armv8a_decl.v
++++ b/proofs/compiler/armv8a_decl.v
+@@ -320,7 +320,8 @@ Instance eqTC_armv8a_camem_cond : eqTypeC armv8a_camem_cond :=
+ 
+ Definition is_pair_offset (ws : wsize) (d : Z) : bool :=
+   let n := wsize_size ws in
+-  ((d mod n =? 0) && (-64 * n <=? d) && (d <=? 63 * n))%Z.
++  let q := (d / n)%Z in
++  ((d mod n =? 0) && (-64 <=? q) && (q <=? 63))%Z.
+ 
+ Definition armv8a_check_CAmem
+   (checker : armv8a_camem_cond) (disp : word armv8a_reg_size)

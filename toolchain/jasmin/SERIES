@@ -9,4 +9,28 @@
 # refuses a file whose hash differs, and refuses any *.patch file in
 # patches/ or patches-simd/ that is not listed.
 #
-# The series is empty: the compiler is the pinned commit as published.
+# PATCHES.md explains each patch.
+
+patches/0001-armv8a-print-Mach-O-relocation-operators-on-macOS.patch 4092276f4528caa5b5a47f1a667d44d52c1932d2a0d9e91e023c483ee60ac3ef
+patches/0002-armv8a-changelog-entry-for-the-Mach-O-relocation-fix.patch 340a6023592a9507752afa80ddbf7f4a909feec17acf7728314603ac6001a28f
+patches/0003-armv8a-add-CSINC-CSINV-CSNEG-CSET-and-CSETM.patch 475ef024cb0205da200b21629b68d73cb738cd9543eb638027f530687093ebac
+patches/0004-armv8a-lower-conditional-expressions-to-CSINC-CSINV-.patch 04ce2f3d98fb588eaab49a6bca2bff669cf056db87dee398bd590ea8e7dd0c72
+patches/0005-armv8a-changelog-entry-for-the-conditional-select-in.patch 990f80ec2794c34eef7cfd067f877e250a153c071f215a92a928958fadf06d83
+patches/0006-armv8a-add-EXTR.patch 8fce0a6dba872ecb313cac38d53cff745a19f4e8e20eb44a7d57e7e746e9a810
+patches/0007-armv8a-add-BFC-BFI-BFXIL-SBFX-and-UBFX.patch 26847aaafd0130e544382bfd7f7b03c83360b3f35d54cbb5aded08b02c335b15
+patches/0008-armv8a-changelog-entry-for-EXTR-and-the-bit-field-in.patch 0516d10bad695878030bfee1a4c538c56fdf294a87a65e58805ffe02b46d6aaf
+patches/0009-jasmin-checksafety-slice-the-program-with-slice-1621.patch 553a1ee8bf8512775718cd9bd59c4d90834dff82f07bdaa3f4888d4775fc8505
+patches/0010-arch-architecture-specific-conditions-on-memory-argu.patch eaa25d393b9f93874913d81df1079dec3ec85174c55b7fe9c02ebfe7be54dcae
+patches/0011-armv8a-add-the-LDP-and-STP-instructions.patch 8b6e419e6a132713a681d0c9d68c9f64cb89243b6f2d2a0beeeeb6285650ff64
+patches/0012-armv8a-changelog-entry-for-LDP-and-STP.patch 370368c3275b3fa1a3d774076b70a0d54c098b11211300c2d23d9f59860e6663
+patches/0013-lower_glob_load-use-the-first-destination-of-a-load-.patch 4269afc920aad7832daa685e115a5bc8b121cc7f60b4ab0ba9ece6770af2ac2b
+patches/0014-armv8a-check-the-LDP-STP-offset-range-on-the-scaled-.patch 9aaee8b121cd3a403f301b5317d3fac2e655d94cdf7ad075d8cf3d96efcafc87
+patches/0015-armv8a-remove-the-printer-check-for-LDP-with-equal-d.patch 80b4628b1b7b0978fddd45f856d80e6c367e86b94244d6ddfe7597b8721c149b
+patches/0016-safetylib-make-the-CallTopHeuristic-call-policy-usab.patch e5ecd9b0ebf198d007ab3bf554e54f74b068159b10be09d6f4b69baf98fe54e5
+patches/0017-safetylib-analyze-CallTop-callees-with-pointer-argum.patch 0c86eb4e287b82964342023d4cfaa2c7c6e9a7b1e27a9ec90847775b9d21c97f
+patches/0018-safetylib-loop-stability-also-compares-initializatio.patch 0fe9fb7510a4f8b4e9cfcc544e08296f9d8aea00ee8c046c5cb2bb661ba52628
+patches/0019-safetylib-initialization-of-slice-copies-at-unknown-.patch 58fa1486fb973758f62b2990e2319db1d05358db80b87551b4c20f93d4177d8f
+patches/0020-safetylib-report-unbounded-memory-ranges.patch e41d0de593ed548ccc5d385d7b8adff304e96844f614484e1430b68268db1a63
+patches/0021-safetylib-for-loop-counters-point-to-no-memory-regio.patch 3edbb0baab571b379d088cd0b382bd65c8da1a70bd27347aa35bcff223752c44
+patches/0022-safetylib-faster-start-up-with-large-global-tables.patch 38a2770730871bff8fce2d37392ef8fee963e00eb8388c7181899245524e2870
+patches/0023-changes-changelog-entry-for-the-safety-checker-fixes.patch eb9173fed3d99cb7c7d001d74953a9ef1f117a9f8a92f7010139115b1e34f240

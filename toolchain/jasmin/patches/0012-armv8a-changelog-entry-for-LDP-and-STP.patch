@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Wed, 7 Oct 2026 08:28:47 +0600
+Subject: [PATCH] armv8a: changelog entry for LDP and STP
+
+(cherry picked from commit 72649cd9a5d83975991b8bacfc2519ae3e2b33d7)
+---
+ changes/01-feature/1624-armv8a-ldp-stp.md | 2 ++
+ 1 file changed, 2 insertions(+)
+ create mode 100644 changes/01-feature/1624-armv8a-ldp-stp.md
+
+diff --git a/changes/01-feature/1624-armv8a-ldp-stp.md b/changes/01-feature/1624-armv8a-ldp-stp.md
+new file mode 100644
+index 000000000..85b260694
+--- /dev/null
++++ b/changes/01-feature/1624-armv8a-ldp-stp.md
+@@ -0,0 +1,2 @@
++- armv8a: add the LDP and STP instructions
++  ([PR #1624](https://github.com/jasmin-lang/jasmin/pull/1624)).

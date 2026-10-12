@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Athex Web3 <athexweb3@nirapod.org>
+Date: Tue, 13 Oct 2026 00:49:57 +0600
+Subject: [PATCH] jasmin-checksafety: slice the program with --slice (#1621)
+
+(cherry picked from commit 8461b95f2b2fea3d96a0e8d52f4c52be5288d9ef)
+---
+ changes/02-bugfix/1621-checksafety-slice.md | 3 +++
+ compiler/entry/commonCLI.ml                 | 4 +++-
+ compiler/entry/commonCLI.mli                | 2 ++
+ compiler/entry/jasmin_checksafety.ml        | 7 +------
+ 4 files changed, 9 insertions(+), 7 deletions(-)
+ create mode 100644 changes/02-bugfix/1621-checksafety-slice.md
+
+diff --git a/changes/02-bugfix/1621-checksafety-slice.md b/changes/02-bugfix/1621-checksafety-slice.md
+new file mode 100644
+index 000000000..cad6adf39
+--- /dev/null
++++ b/changes/02-bugfix/1621-checksafety-slice.md
+@@ -0,0 +1,3 @@
++- `jasmin-checksafety --slice` now analyses only the given functions and what
++  they use, as `jasminc -slice` does, instead of the whole program
++  ([PR #1621](https://github.com/jasmin-lang/jasmin/pull/1621)).
+diff --git a/compiler/entry/commonCLI.ml b/compiler/entry/commonCLI.ml
+index 2d7fcae40..a40c80613 100644
+--- a/compiler/entry/commonCLI.ml
++++ b/compiler/entry/commonCLI.ml
+@@ -53,7 +53,7 @@ let after_pass =
+ let parse_and_compile (type asm_op extra_op)
+     (module Arch : Arch_full.Arch
+       with type asm_op = asm_op
+-       and type extra_op = extra_op) ~wi2i pass file idirs =
++       and type extra_op = extra_op) ?(slice = []) ~wi2i pass file idirs =
+   let _env, pprog, _ast =
+     try Compile.parse_file Arch.arch_info ~idirs file with
+     | Annot.AnnotationError (loc, code) ->
+@@ -70,6 +70,8 @@ let parse_and_compile (type asm_op extra_op)
+       hierror ~loc:(Lmore loc) ~kind:"typing error" "%s" code
+   in
+ 
++  let prog = if slice = [] then prog else Slicing.slice slice prog in
++
+   let prog =
+     if not wi2i then prog else Compile.do_wint_int (module Arch) prog
+   in
+diff --git a/compiler/entry/commonCLI.mli b/compiler/entry/commonCLI.mli
+index 3f1428e76..dde221fdb 100644
+--- a/compiler/entry/commonCLI.mli
++++ b/compiler/entry/commonCLI.mli
+@@ -11,6 +11,8 @@ val parse_and_compile :
+   (module Arch_full.Arch
+      with type asm_op = 'asm_op
+       and type extra_op = 'extra_op) ->
++  ?slice:string list ->
++  (* keep only these functions and what they use, as [jasminc -slice] *)
+   wi2i:bool ->
+   (* true => start by replacing wint operation by int operation *)
+   Compiler.compiler_step ->
+diff --git a/compiler/entry/jasmin_checksafety.ml b/compiler/entry/jasmin_checksafety.ml
+index 8892c365c..abe938add 100644
+--- a/compiler/entry/jasmin_checksafety.ml
++++ b/compiler/entry/jasmin_checksafety.ml
+@@ -14,7 +14,7 @@ let checksafety arch call_conv idirs slice safety_param no_check_alignment
+   let module Arch = P.A in
+   let after_pass = SafetyConfig.sc_comp_pass () in
+   let prog =
+-    try parse_and_compile (module Arch) ~wi2i:false after_pass file idirs
++    try parse_and_compile (module Arch) ~slice ~wi2i:false after_pass file idirs
+     with HiError err ->
+       Format.eprintf "%a@." pp_hierror err;
+       exit 1
+@@ -28,11 +28,6 @@ let checksafety arch call_conv idirs slice safety_param no_check_alignment
+   in
+   let () = SafetyConfig.pp_current_config_diff () in
+   let fds = prog |> snd |> List.filter (fun fd -> FInfo.is_export fd.f_cc) in
+-  let fds =
+-    if slice <> [] then
+-      fds |> List.filter (fun fd -> List.mem fd.f_name.fn_name slice)
+-    else fds
+-  in
+   let is_safe =
+     List.fold_left
+       (fun res f_decl ->
