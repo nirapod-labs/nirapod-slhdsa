@@ -36,6 +36,7 @@ at an earlier revision of the pull request, written for the pin (see
 | 0016-0023 | PR #1625, head `02a2330a04c9` | safety checker: unsound verdicts, false alarms, CallTopHeuristic | safety checker (trusted) |
 | 0024 | this project | safety checker for ARMv8-A | safety checker (trusted) |
 | 0025 | this project | located error for an instruction argument that is not an operand | `check_rexpr` redefined to return the new error; same accepted arguments; theorem statements and proofs unchanged |
+| 0026 | this project | ARMv8-A: `a & !b` lowered to BIC | lowering proved |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -152,6 +153,22 @@ Tests: `compiler/tests/fail/linearization/{x86-64,armv8a}/zext_load_operand.jazz
 the expected output of the existing
 `fail/stack_allocation/x86-64/reg_var_expected.jazz` changes from the internal
 error to the new message. Upstream status: not yet proposed.
+
+### 0026, BIC from an AND with a complemented operand (this project)
+
+At the pin, `u = !b & c` on ARMv8-A failed at assembly generation ("invalid
+rexpr for oprd"): the lowering of `&` did not recognise a complemented
+operand, although BIC computes exactly `Xn AND NOT Xm`. Both operand orders
+are now lowered to BIC with the complemented operand second, and a shift or
+rotation of that operand is folded into BIC's shifted-register form, as for
+AND. The lowering proof (`armv8a_lowering_proof.v`, `lower_Papp2P`) covers
+both orders. Before the patch the same code needed the `#BIC` intrinsic.
+Tests: `compiler/tests/success/armv8a/bic_lowering.jazz` (both orders,
+shifted operands, a complemented constant `a & !C`), and
+`compiler/tests/fail/asmgen/armv8a/bic_two_complements.jazz`: with both
+operands complemented (`!a & !b`) one complement remains an expression, and
+the program is rejected at assembly generation rather than compiled to a
+different operation. Upstream status: not yet proposed.
 
 ## Revisions
 
