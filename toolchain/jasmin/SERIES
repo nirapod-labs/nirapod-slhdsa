@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# toolchain/jasmin/SERIES
+# =======================
+#
+# The patch series applied to the pin, in order: path relative to this
+# directory, SHA-256 of the file. build.sh applies exactly these files,
+# refuses a file whose hash differs, and refuses any *.patch file in
+# patches/ or patches-simd/ that is not listed.
+#
+# The series is empty: the compiler is the pinned commit as published.
