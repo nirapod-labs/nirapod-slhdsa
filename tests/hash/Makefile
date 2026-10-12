@@ -12,11 +12,14 @@
 #   make -C tests/hash constants         recompute constant tables
 #   make -C tests/hash generated         regenerate generated test sources, fail if stale
 #   make -C tests/hash negative-control  show the tests detect a wrong constant
+#   make -C tests/hash fill-check        run the tests with 0xa5-filled one-shot buffers
 #
 # Cross-host x86-64 flow (jasminc is only needed where the assembly is made):
 #
-#   make -C tests/hash asm negative-control-asm ARCH=x86_64 SYSTEM=linux   any host
-#   make -C tests/hash check-prebuilt negative-control-prebuilt             x86-64 host
+#   make -C tests/hash asm negative-control-asm fill-check-asm ARCH=x86_64 SYSTEM=linux
+#                                                                    any host with jasminc
+#   make -C tests/hash check-prebuilt negative-control-prebuilt fill-check-prebuilt
+#                                                                    x86-64 host
 #
 # The variant variables below must be the same in both steps.
 # Variables:
@@ -100,6 +103,7 @@ DIFF_ITERS ?= 2000
 
 .PHONY: all asm check check-prebuilt run vectors ct sct constants generated
 .PHONY: negative-control negative-control-asm negative-control-prebuilt clean
+.PHONY: fill-check fill-check-asm fill-check-prebuilt
 
 all: check
 
@@ -163,6 +167,23 @@ negative-control-prebuilt:
 	$(TESTS)/tools/negative_control.sh run $(NEG_WORK) $(CSRC) $(VECTORS)
 
 negative-control: negative-control-asm negative-control-prebuilt
+
+# Fill check (tools/fill_check.sh): the one-shot buffers are zeroed only for
+# the safety checker; a build that fills them with 0xa5 must pass every test.
+FILL_WORK := $(OUT)/fill-check
+
+fill-check-asm:
+	JASMINC=$(JASMINC) JARCH=$(JARCH) SYSTEM=$(SYSTEM) ARCH=$(ARCH) \
+	KECCAK_DIR=$(KECCAK_DIR) KECCAKX_DIR=$(KECCAKX_DIR) SHA2_DIR=$(SHA2_DIR) SHA2X_DIR=$(SHA2X_DIR) \
+	$(TESTS)/tools/fill_check.sh build $(HASH) $(TESTS)/jasmin $(FILL_WORK)
+
+fill-check-prebuilt:
+	@test -d $(VECTORS) || { echo "missing $(VECTORS): run 'make vectors'"; exit 1; }
+	CC=$(CC) CFLAGS="$(CFLAGS)" CRYPTO_LIBS="$(CRYPTO_LIBS)" \
+	DIFF_SEED=$(DIFF_SEED) DIFF_ITERS=$(DIFF_ITERS) \
+	$(TESTS)/tools/fill_check.sh run $(FILL_WORK) $(CSRC) $(VECTORS)
+
+fill-check: fill-check-asm fill-check-prebuilt
 
 clean:
 	rm -rf $(OUT)

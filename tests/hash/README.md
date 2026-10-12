@@ -24,6 +24,7 @@ recorded results carry the revision and host they were obtained on.
 | `tools/check_constants.py` | recompute every constant table from its definition |
 | `tools/gen_test_arrays.py` | generator of `jasmin/test_arrays.jinc` |
 | `tools/negative_control.sh` | show that the tests detect a wrong round constant |
+| `tools/fill_check.sh` | run the tests with the one-shot SHA-2 buffers filled with 0xa5 |
 
 The test exports are named `nirapod_slhdsa_hashtest_*`. They are linked
 into the test binary only, never into the library.
@@ -90,6 +91,13 @@ lists: the three single-way families,
 and the three multi-way kernels. Every kernel variant reads the shared
 constant tables, so the control covers the variants selected for the run.
 
+**Fill check** (`make fill-check`). The one-shot SHA-2 functions and the
+HMAC test exports zero their buffer before first use only so that the
+safety checker can follow it. The check builds a copy in which that zeroing
+writes 0xa5 bytes and runs CAVP and the differential test on it; it passes
+only if every test passes, which supports the claim that no function reads
+a buffer byte the current hash has not written.
+
 **CT and SCT** (`make ct`, `make sct`). `jasmin-ct` and `jasmin-ct --sct`
 over the whole test unit, which covers every export and, through them,
 every library function in `src/jasmin/hash`. Both checkers assume program
@@ -122,14 +130,17 @@ make -C tests/hash check          # build for this machine and run both modes
 make -C tests/hash ct sct
 make -C tests/hash constants generated
 make -C tests/hash negative-control
+make -C tests/hash fill-check
 ```
 
 For a target whose host has no Jasmin compiler, generate the assembly
 elsewhere and build there:
 
 ```sh
-make -C tests/hash asm negative-control-asm ARCH=x86_64 SYSTEM=linux   # any host with jasminc
-make -C tests/hash check-prebuilt negative-control-prebuilt             # the x86-64 host
+make -C tests/hash asm negative-control-asm fill-check-asm ARCH=x86_64 SYSTEM=linux
+                                              # any host with jasminc
+make -C tests/hash check-prebuilt negative-control-prebuilt fill-check-prebuilt
+                                              # the x86-64 host
 ```
 
 `DIFF_SEED` and `DIFF_ITERS` set the differential seed and iteration count.
