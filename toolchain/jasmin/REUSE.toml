@@ -1,0 +1,7 @@
+version = 1
+
+# Jasmin's licence, reproduced from the pinned commit.
+[[annotations]]
+path = "jasmin-license.txt"
+SPDX-FileCopyrightText = "Jasmin contributors"
+SPDX-License-Identifier = "MIT"
