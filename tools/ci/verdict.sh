@@ -27,7 +27,13 @@
 #     input changes the key.
 #
 # The check's own scripts and the workflows are inputs, so a change to how
-# a check runs runs it.
+# a check runs runs it. The runner is only partly an input: the compiler
+# key covers the C compiler, system and build packages of the toolchain
+# job, but not the packages the check jobs install for themselves
+# (libcrypto and GMP, `toolchain.sh deps run`) or the runner's python3. A
+# runner image update that changes those leaves a recorded pass valid for
+# pull requests; pushes to main and the weekly run run every check, so such
+# drift shows there.
 #
 # A verdict lives in build/verdict/<check>/: the record (PASS, the key, the
 # run, the commit, the input tree, which `git ls-tree -r <tree>` lists, and
