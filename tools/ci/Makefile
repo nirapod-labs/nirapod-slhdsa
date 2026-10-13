@@ -193,12 +193,16 @@ endif
 #
 # CI_VERDICT_SKIP holds what no check reads: documentation, change entries,
 # licensing and repository metadata, and the scripts of the cheap jobs.
+# Files are named one by one, never by extension: Jasmin `require`, C
+# `#include` and make `include` read a file of any name, so a *.md file
+# outside the places listed is an input like any other.
 CI_VERDICT_CHECKS := test analysis safety generated differential proofs
 # The checks of each platform (platform.yml); proofs runs once, with the
 # linux-x86_64 toolchain.
 CI_VERDICT_PLATFORM_CHECKS := test analysis safety generated differential
 
-CI_VERDICT_SKIP := docs changes LICENSES ':(glob)**/*.md' \
+CI_VERDICT_SKIP := docs changes LICENSES \
+                   README.md CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md \
                    AUTHORS NOTICE LICENSE CITATION.cff REUSE.toml \
                    .github/CODEOWNERS .github/ISSUE_TEMPLATE .github/pull_request_template.md \
                    tools/ci/lint.sh tools/ci/changelog.sh tools/ci/require-success.py \
