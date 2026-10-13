@@ -15,6 +15,9 @@ welcome.
 - A change to Jasmin source is reviewed with its effect on generated
   assembly, constant-time analysis, proofs and performance. Say which of these
   you checked and how.
+- A change users can notice (to the library, its interface, the proofs or
+  the toolchain) adds an entry under "## Unreleased" in `CHANGELOG.md`, in
+  the same pull request. CI asks for one when such a change has none.
 - Regenerate checked-in generated files with the documented command rather
   than editing them by hand.
 - New files start with the SPDX header used throughout the repository.
