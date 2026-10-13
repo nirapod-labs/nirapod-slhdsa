@@ -63,6 +63,10 @@
 # path this table does not know cannot pass as absent. When the layout
 # changes, this table changes with it.
 #
+# slhdsa is the FIPS 205 code in Jasmin, whose units are compiled and
+# analysed (ct, asm-policy); core is the C library built around it, with
+# its tests (make check and the transcript).
+#
 # third_party/crypto-specs and third_party/formosa-slhdsa are checked by
 # the proofs (imported theories are re-checked on this copy).
 # tests/vectors holds the ACVP pins and their fetch script; the CAVP pins
@@ -110,11 +114,11 @@ CI_LOGS    := $(CI_OUT)/logs
 CI_PYTHON  ?= python3
 CI_COUNTS  := $(CI_PYTHON) -I tools/ci/counts.py
 
-CI_COMPONENTS := hash core acvp diff safety asm proofs gen bench
+CI_COMPONENTS := hash slhdsa core acvp diff safety asm proofs gen bench
 
 CI_DIRS_hash   := src/hash tests/hash
-CI_DIRS_core   := include src/slhdsa capi tests/core tests/negative \
-                  tests/abi analysis/ct
+CI_DIRS_slhdsa := src/slhdsa analysis/ct
+CI_DIRS_core   := include capi tests/core tests/negative tests/abi
 CI_DIRS_acvp   := tests/acvp tests/vectors
 CI_DIRS_diff   := tests/diff
 CI_DIRS_safety := analysis/safety
@@ -144,6 +148,7 @@ $(error required components are absent: $(foreach c,$(CI_REQUIRED_MISSING),$(c) 
 endif
 
 CI_HASH   := $(call present,hash)
+CI_SLHDSA := $(call present,slhdsa)
 CI_CORE   := $(call present,core)
 CI_ACVP   := $(call present,acvp)
 CI_DIFF   := $(call present,diff)
@@ -279,7 +284,7 @@ CI_CORE_TRANSCRIPT := $(CI_BUILD)/$(CI_TARGET)/transcript-core.txt
 
 .PHONY: ci-source ci-components ci-hash-sets ci-vectors ci-vectors-key
 .PHONY: ci-test ci-test-hash ci-test-core ci-test-acvp ci-transcript ci-agree
-.PHONY: ci-analysis ci-analysis-core ci-analysis-hash ci-asm ci-safety ci-diff
+.PHONY: ci-analysis ci-analysis-slhdsa ci-analysis-hash ci-asm ci-safety ci-diff
 .PHONY: ci-proofs ci-generated ci-verdict-key ci-platform-verdict-keys
 
 # ---------------------------------------------------------------------------
@@ -438,26 +443,34 @@ endif
 # ---------------------------------------------------------------------------
 # Analysis
 #
-# The core's `ct` target runs jasmin-ct and jasmin-ct --sct on every unit
-# and records each run in build/<target>/ct/<unit>.{ct,sct}.log; ci-analysis
-# then requires one of each per unit, so that both checks are seen to have
-# run. The hash tests are checked with `ct sct` per kernel set.
+# The `ct` target (analysis/ct) runs jasmin-ct and jasmin-ct --sct on every
+# unit and records each run in build/<target>/ct/<unit>.{ct,sct}.log. The
+# records of an earlier run are removed first; ci-analysis then requires one
+# of each per unit, so that both checks are seen to have run, and as many
+# units as the architecture has: twelve parameter sets, each with a scalar
+# unit, and on x86-64 an accelerated one as well (Makefile, UNITS). The count
+# is stated here, apart from the Makefile, so that a unit dropped from the
+# build fails this check rather than leaving the analysis. The hash tests are
+# checked with `ct sct` per kernel set.
 
 CI_CT_DIR := $(CI_BUILD)/$(CI_TARGET)/ct
+CI_CT_UNITS_aarch64 := 12
+CI_CT_UNITS_x86_64  := 24
 
-ci-analysis: ci-analysis-core ci-analysis-hash ci-asm
+ci-analysis: ci-analysis-slhdsa ci-analysis-hash ci-asm
 
-ci-analysis-core:
-ifneq ($(CI_CORE),)
+ci-analysis-slhdsa:
+ifneq ($(CI_SLHDSA),)
+	rm -rf $(CI_CT_DIR)
 	$(MAKE) ct
 	@units=$$(ls $(CI_CT_DIR)/*.ok 2>/dev/null | wc -l | tr -d ' '); \
 	ct=$$(ls $(CI_CT_DIR)/*.ct.log 2>/dev/null | wc -l | tr -d ' '); \
 	sct=$$(ls $(CI_CT_DIR)/*.sct.log 2>/dev/null | wc -l | tr -d ' '); \
-	[ "$$units" -gt 0 ] && [ "$$ct" = "$$units" ] && [ "$$sct" = "$$units" ] \
-	  || { echo "ci-analysis-core: $$units units, $$ct ct and $$sct sct records"; exit 1; }; \
-	echo "ci-analysis-core: ct and sct PASS for $$units units"
+	[ "$$units" = "$(CI_CT_UNITS_$(CI_ARCH))" ] && [ "$$ct" = "$$units" ] && [ "$$sct" = "$$units" ] \
+	  || { echo "ci-analysis-slhdsa: $$units units, $$ct ct and $$sct sct records; $(CI_CT_UNITS_$(CI_ARCH)) units expected"; exit 1; }; \
+	echo "ci-analysis-slhdsa: ct and sct PASS for $$units units"
 else
-	$(call not_applicable,ci-analysis-core,core)
+	$(call not_applicable,ci-analysis-slhdsa,slhdsa)
 endif
 
 ifneq ($(CI_HASH),)
@@ -498,7 +511,7 @@ ci-safety:
 ifneq ($(CI_SAFETY_DIRS),)
 	$(call CI_NEED_JASMINC,ci-safety)
 	$(MAKE) safety $(CI_CORE_VARS)
-else ifneq ($(CI_HASH)$(CI_CORE),)
+else ifneq ($(CI_HASH)$(CI_SLHDSA),)
 	@echo "ci-safety: NOT RUN: $(CI_SAFETY_NOT_RUN)"
 	@echo "::warning title=safety NOT RUN::$(CI_SAFETY_NOT_RUN)"
 	@if [ -n "$$GITHUB_STEP_SUMMARY" ]; then \
