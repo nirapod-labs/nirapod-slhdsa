@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Fill check for the SHA-2 buffer invariant: the functions never read a
-# byte of buf that the current hash has not written (src/jasmin/hash/
+# byte of buf that the current hash has not written (src/hash/
 # README.md, SHA-2 state). The one-shot functions and the HMAC test exports
 # zero their buffer before first use, only so that the safety checker can
 # follow the buffer; this check builds a copy in which that zeroing writes

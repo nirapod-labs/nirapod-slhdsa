@@ -9,7 +9,7 @@
  * 4), portable scalar kernel shared by SHA-384, SHA-512, SHA-512/224 and
  * SHA-512/256, reached through the Sha2Kernel include root. Its two entry
  * points are the kernel contract; kernel variants listed as planned in
- * src/jasmin/hash/README.md are to provide the same two:
+ * src/hash/README.md are to provide the same two:
  *
  *     _sha512_compress(h, block, ms)       one block from a byte array
  *     _sha512_compress_blocks(h, p, n, ms) n blocks from caller memory

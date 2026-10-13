@@ -6,12 +6,12 @@
 *                   @athexweb3 @orvenweb3
 
 /toolchain/         @athexweb3 @orvenweb3
-/src/jasmin/hash/   @athexweb3 @orvenweb3
+/src/hash/          @athexweb3 @orvenweb3
 /.github/           @athexweb3 @orvenweb3
 /tools/ci/          @athexweb3 @orvenweb3
 
-/src/jasmin/slhdsa/ @orvenweb3
-/src/c/             @orvenweb3
+/src/slhdsa/        @orvenweb3
+/capi/              @orvenweb3
 /include/           @orvenweb3
 /proofs/            @orvenweb3
 /tests/             @orvenweb3

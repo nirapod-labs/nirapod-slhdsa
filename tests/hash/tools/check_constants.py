@@ -16,7 +16,7 @@
 # Integer roots are exact (no floating point). The SHA-512/t generation uses
 # a small SHA-512 written here from FIPS 180-4, independent of the Jasmin code.
 #
-# Usage: check_constants.py <src/jasmin/hash>   exit status 0 when all match.
+# Usage: check_constants.py <src/hash>   exit status 0 when all match.
 
 import re
 import sys
