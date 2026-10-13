@@ -38,9 +38,9 @@
 #
 #   verdict.sh key CHECK PLATFORM TOOL_KEY PATHSPEC...
 #       print the key (and add key=... and key-CHECK=... to $GITHUB_OUTPUT);
-#       PATHSPEC... are the paths the check does not read. Every *.mk file stays an input:
-#       the top-level Makefile includes the fragments it finds, wherever
-#       they sit.
+#       PATHSPEC... are the paths the check does not read. Every *.mk file
+#       stays an input: the top-level Makefile includes the fragments it
+#       finds, wherever they sit.
 #   verdict.sh run CHECK COMMAND...
 #       run COMMAND, append its output to the check's log, and return its
 #       status
@@ -68,6 +68,11 @@ DIR=build/verdict
 
 die() { echo "verdict.sh: $*" >&2; exit 1; }
 
+# The scratch directory of the command, if it made one; removed on exit,
+# failures included.
+TMP=
+trap '[ -z "$TMP" ] || rm -rf "$TMP"' EXIT
+
 sha256_of() {
   if command -v sha256sum > /dev/null 2>&1; then sha256sum; else shasum -a 256; fi
 }
@@ -80,24 +85,24 @@ check_name() {
 
 cmd_key() {
   [ $# -ge 4 ] || die "usage: verdict.sh key CHECK PLATFORM TOOL_KEY PATHSPEC..."
-  local check=$1 platform=$2 tool=$3 tmp tree all kept key
+  local check=$1 platform=$2 tool=$3 tree all kept key
   shift 3
   check_name "$check"
   [ -n "$platform" ] || die "key $check: no platform"
   [ -n "$tool" ] || die "key $check: no compiler key"
   git rev-parse --verify -q HEAD > /dev/null || die "key $check: no commit"
-  tmp=$(mktemp -d)
+  TMP=$(mktemp -d)
   # A private index holding the commit's tree, so the work tree and the
   # real index play no part.
-  export GIT_INDEX_FILE="$tmp/index"
+  export GIT_INDEX_FILE="$TMP/index"
   git read-tree HEAD
-  git ls-files > "$tmp/all"
+  git ls-files > "$TMP/all"
   git rm -r -q --cached --ignore-unmatch -- "$@" ':(exclude,glob)**/*.mk' > /dev/null
-  git ls-files > "$tmp/kept"
+  git ls-files > "$TMP/kept"
   tree=$(git write-tree)
   unset GIT_INDEX_FILE
-  all=$(wc -l < "$tmp/all" | tr -d ' ')
-  kept=$(wc -l < "$tmp/kept" | tr -d ' ')
+  all=$(wc -l < "$TMP/all" | tr -d ' ')
+  kept=$(wc -l < "$TMP/kept" | tr -d ' ')
   [ "$kept" -gt 0 ] || die "key $check: the input set is empty"
   {
     echo "format $FORMAT"
@@ -105,11 +110,10 @@ cmd_key() {
     echo "platform $platform"
     echo "compiler $tool"
     echo "inputs $tree"
-  } > "$tmp/material"
-  key="verdict-$check-$platform-$(sha256_of < "$tmp/material" | cut -d' ' -f1)"
+  } > "$TMP/material"
+  key="verdict-$check-$platform-$(sha256_of < "$TMP/material" | cut -d' ' -f1)"
   mkdir -p "$DIR"
-  cp "$tmp/material" "$DIR/$check.material"
-  rm -rf "$tmp"
+  cp "$TMP/material" "$DIR/$check.material"
   sed 's/^/  /' "$DIR/$check.material"
   echo "input set: $kept of $all tracked files (git ls-tree -r $tree)"
   echo "key=$key"
