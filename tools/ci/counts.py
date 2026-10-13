@@ -67,8 +67,10 @@ RULES = {
     "proofs": [
         ("imported crypto-specs theories",
          r"^check-imported: PASS (\d+) files$", 13),
+        ("imported SPHINCS+ proof",
+         r"^check-formosa: PASS (\d+) files$", 11),
         ("this project's theories",
-         r"^check-own: PASS (\d+) files$", 6),
+         r"^check-own: PASS (\d+) files$", 32),
         ("x86-64 portable model and its proofs",
          r"^check-pair x86_64/portable: PASS (\d+) files$", 13),
         ("AArch64 portable model and its proofs",
