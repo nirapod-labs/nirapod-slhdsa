@@ -12,8 +12,9 @@ with machine-checked proofs in [EasyCrypt](https://github.com/EasyCrypt/easycryp
 
 > [!WARNING]
 > **Under development. Not for production use.**
-> The implementation is not yet on this branch. Nothing below is claimed until its row
-> shows a result, and every result names the revision it was validated on.
+> Of the implementation, only the hash layer is on this branch so far. Nothing below is
+> claimed until its row shows a result, and every result names the revision it was
+> validated on.
 
 ## Status
 
@@ -61,11 +62,11 @@ flowchart TB
   end
   spec -. "equivalence, open" .- core
   classDef planned stroke-dasharray: 5 4
-  class api,core,hash,asm,sec,spec planned
+  class api,core,asm,sec,spec planned
 ```
 
-Dashed boxes are not on this branch yet; dotted links are proofs still open. Only the
-pinned compiler is here today.
+Dashed boxes are not on this branch yet; dotted links are proofs still open. The pinned
+compiler and the hash layer are here today.
 
 ## What is proven, and what is not
 
@@ -111,10 +112,12 @@ Every patch has its provenance, purpose, test and upstream status in
 <summary><b>Repository layout</b></summary>
 
 ```text
-toolchain/   pinned Jasmin and EasyCrypt, the patch series, build.sh
-tools/       CI checks and release tooling
-changes/     one entry per change, collected at release
-docs/        toolchain and status
+src/jasmin/hash/  SHA-2, SHA-3, SHAKE, HMAC and MGF1 in Jasmin
+tests/hash/       CAVP, differential and negative tests of the hash layer
+toolchain/        pinned Jasmin and EasyCrypt, the patch series, build.sh
+tools/            CI checks and release tooling
+changes/          one entry per change, collected at release
+docs/             toolchain and status
 ```
 
 </details>
