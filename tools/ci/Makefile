@@ -62,8 +62,9 @@
 # path this table does not know cannot pass as absent. When the layout
 # changes, this table changes with it.
 #
-# third_party/crypto-specs is checked by the proofs (imported theories are
-# re-checked on this copy). tests/vectors holds the ACVP pins and their fetch script; the CAVP pins
+# third_party/crypto-specs and third_party/formosa-slhdsa are checked by
+# the proofs (imported theories are re-checked on this copy).
+# tests/vectors holds the ACVP pins and their fetch script; the CAVP pins
 # of the hash tests live in tests/hash/vectors. If tests/vectors comes to
 # hold the pins of another suite, it moves out of the acvp row.
 #
@@ -114,7 +115,7 @@ CI_DIRS_acvp   := tests/acvp tests/vectors
 CI_DIRS_diff   := tests/diff
 CI_DIRS_safety := analysis/safety
 CI_DIRS_asm    := analysis/asm
-CI_DIRS_proofs := proofs third_party/crypto-specs
+CI_DIRS_proofs := proofs third_party/crypto-specs third_party/formosa-slhdsa
 CI_DIRS_gen    := gen
 CI_DIRS_bench  := bench
 
