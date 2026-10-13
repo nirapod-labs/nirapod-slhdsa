@@ -152,6 +152,9 @@ cmd_release() {
   ! grep -q "^## $1 " "$LOG" || die "$LOG already has a section for $1"
   tmp=$(mktemp)
   section "$@" > "$tmp.section"
+  # git rm removes every entry or none: an untracked, modified or staged
+  # entry stops the release here, with CHANGELOG.md untouched.
+  printf '%s\n' "$files" | xargs git rm -q --
   # Above the first release section, or at the end before any release.
   awk -v sec="$tmp.section" '
     !done && /^## / { while ((getline l < sec) > 0) print l; print ""; done = 1 }
@@ -160,7 +163,6 @@ cmd_release() {
   ' "$LOG" > "$tmp"
   mv "$tmp" "$LOG"
   rm -f "$tmp.section"
-  printf '%s\n' "$files" | xargs git rm -q --
   echo "changes: $1 written to $LOG, $(printf '%s\n' "$files" | wc -l | tr -d ' ') entry file(s) removed from $DIR/"
 }
 
