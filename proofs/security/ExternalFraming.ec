@@ -48,7 +48,11 @@
  * FIPS205_External.ec: Algorithms 22 to 25 on a request are the internal
  * functions on its framing when the context is valid, and the error
  * indication (None) or false otherwise. External signing returns the empty
- * string where the operators return None.
+ * string where the operators return None. is_pure, msg_of and ph_of read a
+ * request back into the arguments of those algorithms; with them,
+ * SLHDSA_EUFCMA.eca and SLHDSA_Hedged.eca prove External of the internal
+ * schemes equivalent, procedure by procedure, to the module SLH_DSA and the
+ * signing operators of FIPS205_External.ec.
  *
  * Hypotheses: internal verification terminates (I_verify_ll), and A and I
  * do not read or write the games' own state (the section's module
@@ -73,6 +77,18 @@ type request = [
 op ctx_of (x : request) : bytes =
   with x = PureMsg ctx m    => ctx
   with x = HashMsg ctx ph m => ctx.
+
+op is_pure (x : request) : bool =
+  with x = PureMsg ctx m    => true
+  with x = HashMsg ctx ph m => false.
+
+op msg_of (x : request) : bytes =
+  with x = PureMsg ctx m    => m
+  with x = HashMsg ctx ph m => m.
+
+op ph_of (x : request) : prehash =
+  with x = PureMsg ctx m    => witness
+  with x = HashMsg ctx ph m => ph.
 
 op valid (x : request) : bool = size (ctx_of x) <= 255.
 
