@@ -1,0 +1,157 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * encoding.jinc
+ * =============
+ *
+ * Byte strings of FIPS 205 section 4: moves of n-byte values, the slot
+ * offsets of arrays of such values, and the conversions that read indices
+ * out of the message digest (toInt and base_2b, Algorithms 2 and 4).
+ *
+ * n is a multiple of 8, so an n-byte move is n/8 word copies. The routines
+ * are straight-line; no address depends on the bytes moved, and slot
+ * offsets depend only on public indices.
+ */
+
+/*
+ * i * stride, for a public index and a compile-time stride. The stride goes
+ * through a register: the AArch64 MUL instruction has no immediate form.
+ */
+inline fn __offset(reg u32 i, inline int stride) -> reg u64
+{
+  reg u64 off c;
+
+  off = (64u) i;
+  c = stride;
+  off *= c;
+
+  return off;
+}
+
+/* The same for a 64-bit index. */
+inline fn __offset64(reg u64 i, inline int stride) -> reg u64
+{
+  reg u64 off c;
+
+  off = i;
+  c = stride;
+  off *= c;
+
+  return off;
+}
+
+inline fn __node_copy(reg mut ptr u8[SLH_N] dst, reg const ptr u8[SLH_N] src) -> reg ptr u8[SLH_N]
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to SLH_N / 8 {
+    t = src[:u64 i];
+    dst[:u64 i] = t;
+  }
+
+  return dst;
+}
+
+/* dst <- a || b */
+inline fn __node_concat(
+  reg mut ptr u8[2 * SLH_N] dst,
+  reg const ptr u8[SLH_N] a,
+  reg const ptr u8[SLH_N] b
+) -> reg ptr u8[2 * SLH_N]
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to SLH_N / 8 {
+    t = a[:u64 i];
+    dst[:u64 i] = t;
+  }
+  for i = 0 to SLH_N / 8 {
+    t = b[:u64 i];
+    dst[:u64 SLH_N / 8 + i] = t;
+  }
+
+  return dst;
+}
+
+/*
+ * FORS indices: idx <- base_2b(md, a, k) (Algorithm 4), md = digest[0 :
+ * ceil(k a / 8)].
+ *
+ * base_2b reads the digest as one big-endian bit string: index i is bits
+ * i a .. i a + a - 1, most significant first. With s = (i a) mod 8 and
+ * b0 = floor(i a / 8), those bits lie in the three bytes b0 .. b0 + 2,
+ * since s + a <= 7 + 14 < 24:
+ *
+ *     v      = digest[b0] 2^16 + digest[b0 + 1] 2^8 + digest[b0 + 2]
+ *     idx[i] = (v >> (24 - s - a)) mod 2^a
+ *
+ * b0 + 2 <= ceil(k a / 8) + 1 < m, so the three bytes are inside the
+ * digest even where they run past md; bits past md are shifted out.
+ */
+inline fn __fors_indices(reg mut ptr u32[SLH_K] idx, reg const ptr u8[SLH_M] digest)
+  -> reg ptr u32[SLH_K]
+{
+  reg u32 v t;
+  inline int i b0 s;
+
+  for i = 0 to SLH_K {
+    b0 = (i * SLH_A) / 8;
+    s = (i * SLH_A) % 8;
+
+    v = (32u) digest[b0];
+    v <<= 16;
+    t = (32u) digest[b0 + 1];
+    t <<= 8;
+    v |= t;
+    t = (32u) digest[b0 + 2];
+    v |= t;
+
+    v >>= 24 - s - SLH_A;
+    v &= (1 << SLH_A) - 1;
+    idx[i] = v;
+  }
+
+  return idx;
+}
+
+/*
+ * Tree and leaf indices (Algorithm 19, lines 9-12):
+ *
+ *     idx_tree = toInt(digest[md : md + ceil((h - h') / 8)]) mod 2^(h - h')
+ *     idx_leaf = toInt(digest[next : next + ceil(h' / 8)])   mod 2^h'
+ *
+ * toInt is big-endian (Algorithm 2). For h - h' = 64 the reduction is the
+ * identity on a 64-bit word and is skipped.
+ */
+inline fn __digest_tree_leaf(reg const ptr u8[SLH_M] digest) -> reg u64, reg u32
+{
+  reg u64 tree t mask;
+  reg u32 leaf u;
+  inline int j;
+
+  tree = 0;
+  for j = 0 to SLH_IDX_TREE_BYTES {
+    tree <<= 8;
+    t = (64u) digest[SLH_MD_BYTES + j];
+    tree |= t;
+  }
+
+  #[inline]
+  if (SLH_TREE_BITS < 64) {
+    mask = (1 << SLH_TREE_BITS) - 1;
+    tree &= mask;
+  }
+
+  leaf = 0;
+  for j = 0 to SLH_IDX_LEAF_BYTES {
+    leaf <<= 8;
+    u = (32u) digest[SLH_MD_BYTES + SLH_IDX_TREE_BYTES + j];
+    leaf |= u;
+  }
+  leaf &= (1 << SLH_HP) - 1;
+
+  return tree, leaf;
+}

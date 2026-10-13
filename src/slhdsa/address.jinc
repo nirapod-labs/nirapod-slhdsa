@@ -1,0 +1,181 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * address.jinc
+ * ============
+ *
+ * The hash address ADRS of FIPS 205 section 4.2.
+ *
+ * Representation
+ *
+ *     A 32-byte array held as u64[4], whose bytes are exactly the FIPS 205
+ *     byte string (Figure 2). Every field is big-endian:
+ *
+ *         bytes  0..3    layer address
+ *         bytes  4..15   tree address (12 bytes)
+ *         bytes 16..19   type
+ *         bytes 20..23   key pair address
+ *         bytes 24..27   chain address / tree height
+ *         bytes 28..31   hash address  / tree index
+ *
+ *     The u64 view lets ADRS be copied and absorbed as four Keccak lanes,
+ *     which FIPS 202 defines as little-endian words of the same bytes. One
+ *     setter also writes through it: setTypeAndClear stores bytes 16..31
+ *     as two words, relying on the little-endian byte order of both
+ *     targets (x86-64, and AArch64 in its little-endian mode).
+ *
+ * Field ranges (FIPS 205 Table 2)
+ *
+ *     Every field is written at its full width, so no setter depends on a
+ *     bound. The SHA2 instantiation compresses ADRS to 22 bytes (section
+ *     11.2) by dropping bytes 0..2, 4..7 and 16..18; that is lossless
+ *     because layer < d <= 22 and type <= 6 fit one byte and idx_tree <
+ *     2^(h - h') <= 2^64 fits the low 8 bytes of the tree address.
+ *
+ * All values written here are public: layer and tree positions, chain and
+ * step counters, and indices that are released with the signature.
+ */
+
+/* Address types (FIPS 205 section 4.2, Table 3). */
+
+param int ADRS_WOTS_HASH  = 0;
+param int ADRS_WOTS_PK    = 1;
+param int ADRS_TREE       = 2;
+param int ADRS_FORS_TREE  = 3;
+param int ADRS_FORS_ROOTS = 4;
+param int ADRS_WOTS_PRF   = 5;
+param int ADRS_FORS_PRF   = 6;
+
+inline fn __store_be32(reg ptr u64[4] adrs, inline int offset, reg u32 v) -> reg ptr u64[4]
+{
+  reg u32 t;
+
+  t = v;
+  t >>= 24;
+  adrs[:u8 offset] = (8u) t;
+  t = v;
+  t >>= 16;
+  adrs[:u8 offset + 1] = (8u) t;
+  t = v;
+  t >>= 8;
+  adrs[:u8 offset + 2] = (8u) t;
+  adrs[:u8 offset + 3] = (8u) v;
+
+  return adrs;
+}
+
+/* ADRS <- toByte(0, 32) */
+inline fn __adrs_zero(reg ptr u64[4] adrs) -> reg ptr u64[4]
+{
+  reg u64 z;
+  inline int i;
+
+  z = 0;
+  for i = 0 to 4 {
+    adrs[i] = z;
+  }
+
+  return adrs;
+}
+
+inline fn __adrs_set_layer(reg ptr u64[4] adrs, reg u32 layer) -> reg ptr u64[4]
+{
+  adrs = __store_be32(adrs, 0, layer);
+  return adrs;
+}
+
+/*
+ * ADRS[4:16] <- toByte(tree, 12). Bytes 4..7 are the zero high part of the
+ * 96-bit field; bytes 8..15 hold tree big-endian.
+ */
+inline fn __adrs_set_tree(reg ptr u64[4] adrs, reg u64 tree) -> reg ptr u64[4]
+{
+  reg u64 t;
+  reg u32 z;
+  inline int i;
+
+  z = 0;
+  adrs[:u32 1] = z;
+
+  for i = 0 to 8 {
+    t = tree;
+    t >>= 8 * (7 - i);
+    adrs[:u8 8 + i] = (8u) t;
+  }
+
+  return adrs;
+}
+
+/*
+ * ADRS[16:20] <- toByte(type, 4) and ADRS[20:32] <- toByte(0, 12).
+ *
+ * Word 2 is bytes 16..23 read little-endian: the big-endian type has its
+ * only non-zero byte at 19, bit position 24 of the word, and the key pair
+ * bytes 20..23 are the cleared upper half.
+ */
+inline fn __adrs_set_type_and_clear(reg ptr u64[4] adrs, inline int adrs_type) -> reg ptr u64[4]
+{
+  reg u64 t;
+
+  t = adrs_type << 24;
+  adrs[2] = t;
+  t = 0;
+  adrs[3] = t;
+
+  return adrs;
+}
+
+inline fn __adrs_set_keypair(reg ptr u64[4] adrs, reg u32 keypair) -> reg ptr u64[4]
+{
+  adrs = __store_be32(adrs, 20, keypair);
+  return adrs;
+}
+
+/* skADRS.setKeyPairAddress(ADRS.getKeyPairAddress()), as a byte copy. */
+inline fn __adrs_copy_keypair(reg ptr u64[4] dst, reg ptr u64[4] src) -> reg ptr u64[4]
+{
+  reg u32 t;
+
+  t = src[:u32 5];
+  dst[:u32 5] = t;
+
+  return dst;
+}
+
+inline fn __adrs_set_chain(reg ptr u64[4] adrs, reg u32 chain) -> reg ptr u64[4]
+{
+  adrs = __store_be32(adrs, 24, chain);
+  return adrs;
+}
+
+inline fn __adrs_set_tree_height(reg ptr u64[4] adrs, reg u32 height) -> reg ptr u64[4]
+{
+  adrs = __store_be32(adrs, 24, height);
+  return adrs;
+}
+
+inline fn __adrs_set_hash(reg ptr u64[4] adrs, reg u32 hash) -> reg ptr u64[4]
+{
+  adrs = __store_be32(adrs, 28, hash);
+  return adrs;
+}
+
+inline fn __adrs_set_tree_index(reg ptr u64[4] adrs, reg u32 index) -> reg ptr u64[4]
+{
+  adrs = __store_be32(adrs, 28, index);
+  return adrs;
+}
+
+inline fn __adrs_copy(reg ptr u64[4] dst, reg ptr u64[4] src) -> reg ptr u64[4]
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to 4 {
+    t = src[i];
+    dst[i] = t;
+  }
+
+  return dst;
+}
