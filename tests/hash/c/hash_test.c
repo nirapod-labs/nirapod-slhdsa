@@ -19,6 +19,8 @@
  *         independent oracle: one-shot, incremental with random split
  *         points, the fixed-length array instances, HMAC with all key
  *         length classes, and MGF1 (composed here from libcrypto SHA-2).
+ *         SHA-2 finalize with totals no message reaches is checked
+ *         against padding laid out here.
  *
  * What a PASS establishes: the exported production code paths produced
  * the expected bytes on the cases listed in the summary, on this host.
@@ -844,6 +846,83 @@ static void diff_sha2(unsigned long iter, uint8_t *msg, size_t len)
   check(what, got, want, sm->dlen);
 }
 
+/*
+ * A total no test message reaches: finalize alone, from a random chaining
+ * value and pending block, with total up to 2^61 - 1 bytes (the contract's
+ * limit), so the length field carries bits above 2^32. The expected value
+ * lays out the padding and length here (FIPS 180-4 section 5.1) and runs
+ * the compression export, which the CAVP and one-shot tests cover.
+ */
+static uint64_t rnd_total(void)
+{
+  static const uint64_t edges[] = { (1ull << 29) - 1, 1ull << 29, (1ull << 32) - 1, 1ull << 32,
+                                    (1ull << 32) + 5, (1ull << 61) - 64, (1ull << 61) - 1 };
+  if (rnd_below(2))
+    return edges[rnd_below(sizeof edges / sizeof edges[0])];
+  return rnd() & ((1ull << 61) - 1);
+}
+
+/* Pad pending bytes into one or two blocks of size bs whose last lf bytes hold the length. */
+static size_t pad_final(uint8_t *blocks, const uint8_t *pending, uint64_t total, size_t bs, size_t lf)
+{
+  size_t fill = (size_t)(total % bs), n = fill + 1 + lf <= bs ? bs : 2 * bs, i;
+  uint64_t bits_hi = total >> 61, bits_lo = total << 3;
+
+  memset(blocks, 0, n);
+  memcpy(blocks, pending, fill);
+  blocks[fill] = 0x80;
+  for (i = 0; i < 8; i++) {
+    blocks[n - 1 - i] = (uint8_t)(bits_lo >> (8 * i));
+    if (lf == 16)
+      blocks[n - 9 - i] = (uint8_t)(bits_hi >> (8 * i));
+  }
+  return n;
+}
+
+static void diff_length(unsigned long iter)
+{
+  uint8_t blocks[256], got[64], want[64];
+  char what[96];
+  size_t n, i;
+
+  {
+    uint64_t total = rnd_total();
+    uint32_t h[8], ref[8];
+    uint8_t buf[64];
+
+    for (i = 0; i < 8; i++)
+      h[i] = ref[i] = (uint32_t)rnd();
+    rnd_bytes(buf, sizeof buf);
+    n = pad_final(blocks, buf, total, 64, 8);
+    for (i = 0; i < n; i += 64)
+      HT(sha256_compress)(ref, blocks + i);
+    for (i = 0; i < 32; i++)
+      want[i] = (uint8_t)(ref[i / 4] >> (8 * (3 - i % 4)));
+    HT(sha256_finalize)(got, h, buf, total);
+    snprintf(what, sizeof what, "diff iter %lu sha256 finalize total=%llu", iter,
+             (unsigned long long)total);
+    check(what, got, want, 32);
+  }
+  {
+    uint64_t total = rnd_total();
+    uint64_t h[8], ref[8];
+    uint8_t buf[128];
+
+    for (i = 0; i < 8; i++)
+      h[i] = ref[i] = rnd();
+    rnd_bytes(buf, sizeof buf);
+    n = pad_final(blocks, buf, total, 128, 16);
+    for (i = 0; i < n; i += 128)
+      HT(sha512_compress)(ref, blocks + i);
+    for (i = 0; i < 64; i++)
+      want[i] = (uint8_t)(ref[i / 8] >> (8 * (7 - i % 8)));
+    HT(sha512_finalize)(got, h, buf, total);
+    snprintf(what, sizeof what, "diff iter %lu sha512 finalize total=%llu", iter,
+             (unsigned long long)total);
+    check(what, got, want, 64);
+  }
+}
+
 /* The array and pointer compression entry points agree on one block. */
 static void diff_compress(unsigned long iter)
 {
@@ -1029,6 +1108,7 @@ static int run_diff(uint64_t seed, unsigned long iters)
     diff_keccak(i, msg, len);
     diff_sha2(i, msg, len);
     diff_compress(i);
+    diff_length(i);
     diff_hmac(i, msg, len);
     diff_mgf1(i);
     diff_arrays(i, msg);

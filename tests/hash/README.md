@@ -47,6 +47,9 @@ this implementation:
 - SHA-3 and SHAKE through the incremental exports, with the message and
   the output each split at random points, and through the one-shot exports;
 - SHA-2 one-shot, and incremental with random split points;
+- SHA-256 and SHA-512 finalize alone, with totals up to `2^61 - 1` bytes,
+  against the padding and length laid out in C and compressed by the
+  compression export;
 - the array and pointer forms of each compression function against each
   other;
 - HMAC-SHA-256 and HMAC-SHA-512 with keys below, at and above one block;
