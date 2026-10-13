@@ -1,0 +1,53 @@
+# Security and machine checks
+
+This directory holds the checks that run on the compiled Jasmin units rather
+than on their outputs. Each section says what a PASS establishes and what it
+does not.
+
+## Constant-time and speculative constant-time (`ct/`)
+
+```sh
+make ct JASMINC=... JASMIN_CT=...
+```
+
+runs, for every parameter-set unit of the host's target,
+
+- `jasmin-ct`: the constant-time type system. PASS means that no branch
+  condition, loop bound or memory address depends on a value typed secret,
+  under the security types declared on the exports
+  (`src/slhdsa/api.jinc`) and the functions they call. Only those
+  observables are in the model; instruction timing is not (see below).
+- `jasmin-ct --sct`: the speculative constant-time type system. PASS means the
+  same under the model of mispredicted conditional branches (Spectre v1), with
+  the misspeculation flag threaded through every function and every value
+  reloaded from a spill slot or a stack array protected before it addresses
+  memory or decides a branch.
+
+Scope and limits:
+
+- Both type systems assume a safe program (no out-of-bounds access, no
+  division by zero). Safety is a separate check, not run yet (below); until
+  it has run, a CT or SCT PASS is conditional on it.
+- A declassification is a type escape. The checker accepts it without judging
+  it; each one carries its argument at the source site, and
+  `docs/DECLASSIFICATION.md` lists them.
+- The checks run on the source after typing. That the compiler preserves the
+  property down to assembly is a claim of the compiler's own proofs for the
+  pinned version, not of this check.
+- Instruction timing: the default policy treats arithmetic as constant-time.
+  On AArch64 the library runs secret computations with PSTATE.DIT set where
+  the CPU has FEAT_DIT; on x86-64 the corresponding DOITM mode is the
+  platform's responsibility (`capi/timing.c`). The stricter `--doit` policy
+  has not been run.
+
+## Memory safety
+
+Not checked by a tool yet. The Jasmin toolchain's safety checker,
+`jasmin-checksafety`, establishes the absence of out-of-bounds accesses, reads of
+uninitialised values and misaligned accesses by abstract interpretation. It
+has not yet reached a verdict on these exports: with its default settings,
+a run on key generation of one parameter set went for nearly two hours
+without a verdict before it was stopped. This tree therefore has no safety
+target, and CI reports the check as NOT RUN.
+Until it runs, program safety rests on review and on the tests, and the CT
+and SCT results above are conditional on it.
