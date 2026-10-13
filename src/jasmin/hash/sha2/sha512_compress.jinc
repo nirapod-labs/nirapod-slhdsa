@@ -28,8 +28,10 @@
  * branch, and taking ms as an argument keeps it in a register the kernel
  * does not clobber, since a flag cannot be spilled and reloaded.
  *
- * Residue: the local schedule window holds W_64 .. W_79 of the last block
- * on return, uncleared here; clearing is an obligation of the export.
+ * Residue: the local schedule window holds 16 schedule words of the last
+ * block on return, W_63 .. W_78 as compiled (the store of W_79 is dead, as
+ * in sha256_compress.jinc), uncleared here; clearing is an obligation of
+ * the export.
  */
 
 from HashWord require "word.jinc"

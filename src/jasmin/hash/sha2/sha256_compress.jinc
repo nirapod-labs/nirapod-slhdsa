@@ -23,9 +23,11 @@
  * branch, and taking ms as an argument keeps it in a register the kernel
  * does not clobber, since a flag cannot be spilled and reloaded.
  *
- * Residue: on return the local message-schedule window holds W_48 .. W_63
- * of the last block, which are derived from the secret message. The kernel
- * does not clear it; clearing is an obligation of the export that runs it.
+ * Residue: on return the local message-schedule window holds 16 schedule
+ * words of the last block, which are derived from the secret message:
+ * W_47 .. W_62 as compiled, since nothing reads the window after the store
+ * of W_63 and the compiler removes it. The kernel does not clear the
+ * window; clearing is an obligation of the export that runs it.
  */
 
 from HashWord require "word.jinc"

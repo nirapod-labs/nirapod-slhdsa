@@ -150,8 +150,8 @@ also keeps secret-derived data on return:
 |---|---|
 | `_keccakf1600` (scalar kernel) | state after round 23 (25 lanes); C and D of round 24 |
 | `_keccakf1600` (`aarch64/scalar`) | lanes (1, 4) to (3, 4) of round 24's θ input; lane (0, 0) of its χ output |
-| `_sha256_compress*` (scalar kernel) | message schedule W_48 .. W_63 |
-| `_sha512_compress*` (scalar kernel) | message schedule W_64 .. W_79 |
+| `_sha256_compress*` (scalar kernel) | message schedule W_47 .. W_62 (the store of W_63 is dead and is removed) |
+| `_sha512_compress*` (scalar kernel) | message schedule W_63 .. W_78 (the store of W_79 is dead and is removed) |
 | `_sha3_*_mem`, `_shake*_mem` | the final sponge state |
 | `_sha256_mem`, `_sha224_mem`, `_sha512*_mem`, `_sha384_mem` | the last padded block and the final chaining value |
 | `_hmac_sha*_keyblock_mem` | H(K) for a key longer than one block |
