@@ -97,7 +97,7 @@ Host requirements, pins and the patch series are in [`docs/TOOLCHAIN.md`](docs/T
 
 | Component | Pin |
 | :-------- | :-- |
-| Jasmin | `jasmin-lang/jasmin` `2bf326d5` plus the series in [`toolchain/jasmin/SERIES`](toolchain/jasmin/SERIES) |
+| Jasmin | `jasmin-lang/jasmin` `e8f59794c` plus the series in [`toolchain/jasmin/SERIES`](toolchain/jasmin/SERIES) |
 | Rocq | 9.0.1, mathcomp 2.4.0, OCaml 4.14.4 |
 | EasyCrypt | `e7eff05d`, Why3 1.8.2 |
 | SMT provers | Z3 4.8.17, 4.12.6, 4.13.4, 4.16.0; CVC5 1.0.9, 1.2.1; Alt-Ergo 2.5.4, 2.6.4 |
