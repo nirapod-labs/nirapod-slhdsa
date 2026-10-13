@@ -59,10 +59,21 @@
  * the same ADRS, and the padding is injective. Hence two distinct inputs
  * of thfc under one public seed and one address are distinct inputs of F,
  * H or T_l, and a collision or second preimage of thfc is an equal output
- * of F, H or T_l (SHAKE256 or SHA-2) on two distinct inputs. Plain
- * truncation to whole bytes would not have this property: x and x with a
- * 0 bit appended would collide, and the target collision resistance games
- * of the imported proof would be won with probability 1.
+ * of F, H or T_l (SHAKE256 or SHA-2) on two distinct inputs, possibly of
+ * two different ones of them. Plain truncation to whole bytes would not
+ * have this property: x and x with a 0 bit appended would collide, and
+ * the target collision resistance games of the imported proof would be
+ * won with probability 1.
+ *
+ * Two simplifications of the padded branch are kept. It sets the type
+ * word to 7 whatever the model type, so tweaks that differ only in type
+ * share one padded function, and it does not depend on the declared
+ * length. That neither makes a game easier is argued, not proved: by
+ * inspection of the imported games, each win condition compares outputs
+ * under one tweak, and the collection games keep the tweaks of oracle
+ * queries disjoint from those of the targets (disj_lists), so neither
+ * sharing reaches a target. Mapping type t to 7 + t instead of 7 would
+ * make the padded functions independent across types as well.
  *
  * The parameter set P is abstract here; SPHINCS_Sets.ec instantiates the
  * theory for each of the twelve sets of Table 2.

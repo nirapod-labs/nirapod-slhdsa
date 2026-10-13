@@ -77,10 +77,13 @@
  *
  * The bound has the same terms as that of slhdsa_euf_cma, with W in place
  * of R, and each term has the meaning stated in the header of
- * SLHDSA_EUFCMA.eca: a standard property of a FIPS 205 function on the
- * inputs FIPS 205 gives it, or collision resistance of the pre-hash
- * functions through the finder CF(SLH_Hedged, A). The bound is concrete,
- * with no numeric security level derived.
+ * SLHDSA_EUFCMA.eca: PRF of PRF and PRF_msg and ITSR of H_msg on the
+ * inputs FIPS 205 gives them; TCR, UD, PRE and DSPR of the tweakable hash
+ * that extends F, H and T_l to all bit strings, whose wins may pair
+ * inputs FIPS 205 never hashes and, for the SHA2 sets with n = 24 or 32,
+ * outputs of SHA-256 and SHA-512; and collision resistance of the
+ * pre-hash functions through the finder CF(SLH_Hedged, A). The bound is
+ * concrete, with no numeric security level derived.
  *
  * Hypotheses: A terminates whenever its signing oracle does, and A does not
  * read or write the state of the games and reductions involved (the module

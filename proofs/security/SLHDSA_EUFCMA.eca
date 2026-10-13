@@ -52,8 +52,10 @@
  *
  * The bound is concrete: a sum of success probabilities and advantages of
  * explicit adversaries built from A, with no numeric security level
- * derived. Its terms, each a standard property of a FIPS 205 function on
- * the inputs FIPS 205 gives it:
+ * derived. The PRF, ITSR and collision terms below are standard
+ * properties of FIPS 205 functions on the inputs FIPS 205 gives them; the
+ * tweakable-hash terms are properties of an extension of F, H and T_l to
+ * all bit strings, described after the list. The terms:
  *
  *  - PRF of PRF on the 32-byte ADRS and of PRF_msg on (opt_rand, M') with
  *    opt_rand an n-byte string, keyed by n-byte keys drawn uniformly;
@@ -61,12 +63,13 @@
  *    M') with n-byte PK.seed and PK.root, keyed by the randomizer, with
  *    the index function that maps a digest to its FORS indices and
  *    instance;
- *  - the multi-target properties of F, H and T_l under the address types,
- *    as the imported proof states them: SM-DT-TCR of the FORS leaf hash F
- *    and SM-DT-DSPR against its second-preimage probability, both on n-byte
- *    inputs; SM-DT-TCR, -UD and -PRE of the WOTS+ chain hash F; SM-DT-TCR
- *    of H in the FORS and XMSS trees and of T_l compressing WOTS+ public
- *    keys and FORS roots;
+ *  - the multi-target properties, under the address types and as the
+ *    imported proof states them, of the tweakable hash thfc of
+ *    SPHINCS_Instance.eca, which extends F, H and T_l to all bit strings:
+ *    SM-DT-TCR of the FORS leaf hash and SM-DT-DSPR against its
+ *    second-preimage probability, both on n-byte inputs; SM-DT-TCR, -UD
+ *    and -PRE of the WOTS+ chain hash; SM-DT-TCR of the FORS and XMSS tree
+ *    hash and of the compression of WOTS+ public keys and FORS roots;
  *  - collision resistance of the pre-hash functions, through the finder
  *    CF(SLH_Internal, A) of ExternalFraming.ec.
  *
@@ -77,13 +80,22 @@
  * PK.root and M', without changing the hash input, and both properties
  * would be false for every function.
  *
- * The TCR, UD and PRE terms take bit strings of any length. The tweakable
- * hash of SPHINCS_Instance.eca hashes strings of whole bytes as FIPS 205
- * does and domain-separates every other string (see its header), so
- * distinct inputs never reach the same input of SHAKE256 or SHA-2, and
- * none of these games is won by a structural collision of the model. The
- * DSPR term is stated on n-byte inputs, where its second-preimage
- * predicate ranges over n-byte strings only.
+ * The imported TCR, UD and PRE games accept bit strings of any length,
+ * and thfc answers every one. On a string of whole bytes it applies F, H
+ * or T_l as the declared length selects, also to byte lengths FIPS 205
+ * never gives that function (F on a 2n-byte string, say); on any other
+ * string it applies T_l to the padded string under address type 7 (see
+ * the header of SPHINCS_Instance.eca). For one length, public seed and
+ * address, distinct inputs never reach the same input of SHAKE256 or
+ * SHA-2, so none of these games is won by a structural collision of the
+ * model: every win is an equal output of SHAKE256 or SHA-2 on distinct
+ * inputs. For the SHA2 sets with n = 24 or 32, F is built on SHA-256 and
+ * H and T_l on SHA-512, so a winning pair may mix the two primitives, as
+ * in Trunc_n(SHA-256(a)) = Trunc_n(SHA-512(b)). These terms are
+ * therefore TCR, UD and PRE of the extended tweakable hash, which asks
+ * more than the same properties of F, H and T_l restricted to the inputs
+ * FIPS 205 gives them. The DSPR term is stated on n-byte inputs, where
+ * its second-preimage predicate ranges over n-byte strings only.
  *
  * The imported proof states its message-key terms for the SPHINCS+
  * instance message (PK || opt_rand, M'). There mkg ignores PK.seed and
