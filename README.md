@@ -12,8 +12,8 @@ with machine-checked proofs in [EasyCrypt](https://github.com/EasyCrypt/easycryp
 
 > [!WARNING]
 > **Under development. Not for production use.**
-> The hash layer and the SLH-DSA core are on this branch; the C API and the proofs are
-> not. Nothing below is claimed until its row shows a result, and every result names the
+> The hash layer, the SLH-DSA core and its C API are on this branch; the proofs are not.
+> Nothing below is claimed until its row shows a result, and every result names the
 > revision it was validated on.
 
 ## Status
@@ -62,12 +62,12 @@ flowchart TB
   end
   spec -. "equivalence, open" .- core
   classDef planned stroke-dasharray: 5 4
-  class api,asm,sec,spec planned
+  class asm,sec,spec planned
 ```
 
 Dashed boxes are not on this branch yet; dotted links are proofs still open. The pinned
-compiler, the hash layer and the core are here today; the assembly is built from them,
-not shipped.
+compiler, the hash layer, the core and the C API are here today; the assembly is built
+from them, not shipped.
 
 ## What is proven, and what is not
 
@@ -93,12 +93,15 @@ export PATH="$PWD/toolchain/work/bin:$PATH"
 ```
 
 Host requirements, pins and the patch series are in [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md).
-Then the assembly of the core and its checks:
+Then the library, its tests and its checks:
 
 ```sh
-make JASMINC=jasminc               # build/<target>/asm/, one file per unit
+make JASMINC=jasminc               # build/<target>/lib/libnirapod_slhdsa.a
+make check JASMINC=jasminc         # the tests of this host
 make ct asm-policy JASMINC=jasminc # constant-time checks, emitted-code policies
 ```
+
+How to call it is described in [`docs/API.md`](docs/API.md).
 
 <details>
 <summary><b>Toolchain pins</b></summary>
@@ -119,9 +122,16 @@ Every patch has its provenance, purpose, test and upstream status in
 <summary><b>Repository layout</b></summary>
 
 ```text
+include/          the C API: nirapod_slhdsa.h
 src/slhdsa/       FIPS 205 in Jasmin: addresses, WOTS+, XMSS, FORS, the hypertree,
                   the internal and external interfaces, one unit per parameter set
 src/hash/         SHA-2, SHA-3, SHAKE, HMAC and MGF1 in Jasmin
+capi/             the C wrapper: argument checks, variant dispatch, entropy, DIT,
+                  clearing; testing/ holds the FIPS 205 internal functions for tests
+tests/core/       functional tests and ACVP known answers of the library
+tests/negative/   malformed input, overlapping buffers, injected faults, a failing
+                  random source
+tests/abi/        exported symbols, and the stack and registers a call leaves behind
 tests/hash/       CAVP, differential and negative tests of the hash layer
 analysis/         constant-time analysis and emitted-code policies of the units
 proofs/           EasyCrypt specifications and proofs
@@ -129,7 +139,7 @@ third_party/      imported EasyCrypt theories, with their provenance
 toolchain/        pinned Jasmin and EasyCrypt, the patch series, build.sh
 tools/            CI checks and release tooling
 changes/          one entry per change, collected at release
-docs/             declassification, toolchain and status
+docs/             the C API, declassification, toolchain and status
 ```
 
 </details>
