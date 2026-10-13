@@ -361,7 +361,7 @@ endif
 
 ci-test-hash-%:
 	tools/ci/cpu-has.sh $(CI_HASH_CPU_$*)
-	$(call logged,hash-$*,$(MAKE) -C tests/hash check negative-control $(CI_HASH_VARS_$*))
+	$(call logged,hash-$*,$(MAKE) -C tests/hash check negative-control fill-check $(CI_HASH_VARS_$*))
 	$(CI_COUNTS) hash $(CI_LOGS)/hash-$*.log
 
 ci-test-core:
