@@ -20,7 +20,9 @@
 #         env: CC CFLAGS CRYPTO_LIBS DIFF_SEED DIFF_ITERS
 #
 # A substitution that does not match its expected number of sites fails
-# the build step.
+# the build step. The build records how many sites it filled in
+# <work dir>/sites and the run prints that count on its PASS line, where
+# tools/ci/counts.py holds it to a minimum.
 
 set -eu
 
@@ -43,11 +45,15 @@ build() {
     [ "$n" -eq "$count" ] || { echo "fill_check: $file has $n sites of '$from = 0;', expected $count" >&2; exit 1; }
     sed "s/$from = 0;/$from = $FILL;/" "$file" > "$file.new"
     mv "$file.new" "$file"
+    sites=$((sites + n))
   }
+
+  sites=0
 
   refill "$work/hash/sha2/sha256.jinc" 'buf_s\[:u64 i\]' 1
   refill "$work/hash/sha2/sha512.jinc" 'buf_s\[:u64 i\]' 1
   refill "$work/jasmin/test_sha2.jinc" 'buf\[:u64 i\]' 2
+  echo "$sites" > "$work/sites"
 
   h=$work/hash
   "$JASMINC" -arch "$JARCH" -system "$SYSTEM" \
@@ -60,12 +66,13 @@ build() {
 run() {
   work=$1 harness=$2 vectors=$3
 
-  test -f "$work/hash_test.s" || { echo "fill_check: no filled build in $work" >&2; exit 1; }
+  test -f "$work/hash_test.s" && test -f "$work/sites" || { echo "fill_check: no filled build in $work" >&2; exit 1; }
+  sites=$(cat "$work/sites")
   # shellcheck disable=SC2086
   $CC ${CFLAGS:--O2} -o "$work/hash_test" "$harness" "$work/hash_test.s" $CRYPTO_LIBS
   "$work/hash_test" cavp "$vectors"
   "$work/hash_test" diff "$DIFF_SEED" "$DIFF_ITERS"
-  echo "fill_check: PASS, every test passes with 0xa5-filled buffers"
+  echo "fill_check: PASS, every test passes with 0xa5-filled buffers ($sites sites filled)"
 }
 
 case $mode in
