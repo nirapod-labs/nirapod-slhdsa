@@ -185,6 +185,20 @@ inline fn __x4_state_store(reg u64 p, reg const ptr u64[100] st)
   }
 }
 
+/* The state is loaded first, so a lane the init leaves keeps a known value. */
+#[ct = "public -> ()"]
+export fn nirapod_slhdsa_hashtest_keccak_x4_init(reg u64 p)
+{
+  stack u64[100] st;
+  reg u64 ms;
+
+  ms = #init_msf();
+  p = #protect(p, ms);
+  st = __x4_state_load(st, p);
+  st = __keccak_x4_init(st);
+  __x4_state_store(p, st);
+}
+
 #[ct = "public -> ()"]
 export fn nirapod_slhdsa_hashtest_keccakf1600_x4(reg u64 p)
 {

@@ -60,9 +60,10 @@ this implementation:
 - every array instance, after a random prefix absorbed through the memory
   form and, for squeezing, after a random number of bytes already output
   and followed by more output from the position it returns;
-- the 4-way Keccak permutation against four single-way permutations, and
-  the 4-way sponge per instance against libcrypto for all six SHA-3 and
-  SHAKE domains, over two absorbed and two squeezed arrays;
+- the 4-way Keccak permutation against four single-way permutations, the
+  4-way init on a random state, and the 4-way sponge per instance against
+  libcrypto for all six SHA-3 and SHAKE domains, over two absorbed and two
+  squeezed arrays;
 - the 8-way SHA-256 and 4-way SHA-512 compressions against the single-way
   compression of every instance, and their absorb and finalize layer per
   instance against libcrypto for every SHA-2 initial value;

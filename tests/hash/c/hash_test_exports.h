@@ -91,6 +91,7 @@ HT_ARRAY_PROTOS(129)
 HT_ARRAY_PROTOS(200)
 
 /* 4-way Keccak: st is uint64_t[100], lane j of instance k at 4j + k. */
+void HT(keccak_x4_init)(uint64_t st[100]);
 void HT(keccakf1600_x4)(uint64_t st[100]);
 void HT(keccak_x4_finalize)(uint64_t st[100], uint64_t pos, uint64_t rate, uint64_t ds);
 

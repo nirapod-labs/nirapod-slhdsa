@@ -1139,10 +1139,10 @@ static void diff_arrays(unsigned long iter, uint8_t *msg)
 
 /*
  * 4-way Keccak. The permutation is compared with four single-way
- * permutations; the 4-way sponge is compared with libcrypto per instance,
- * over two absorbed arrays and two squeezed arrays of random tested
- * lengths, so that pos crosses lane and block boundaries, for all six
- * SHA-3 and SHAKE domains.
+ * permutations, and the init must clear the permuted state. The 4-way
+ * sponge is compared with libcrypto per instance, over two absorbed arrays
+ * and two squeezed arrays of random tested lengths, so that pos crosses
+ * lane and block boundaries, for all six SHA-3 and SHAKE domains.
  */
 struct x4_case {
   size_t len;
@@ -1156,6 +1156,8 @@ static const struct x4_case X4[] = {
   X4_CASE(1),  X4_CASE(7),  X4_CASE(16),  X4_CASE(22),  X4_CASE(32),
   X4_CASE(64), X4_CASE(65), X4_CASE(129), X4_CASE(200),
 };
+
+static const uint64_t ZERO_X4[100];
 
 static void diff_keccak_x4(unsigned long iter)
 {
@@ -1186,7 +1188,10 @@ static void diff_keccak_x4(unsigned long iter)
   /* Sponge: absorb a then b, finalize, squeeze c then d */
   rnd_bytes(ina, sizeof ina);
   rnd_bytes(inb, sizeof inb);
-  memset(st4, 0, sizeof st4);
+  /* st4 still holds the permuted random state */
+  HT(keccak_x4_init)(st4);
+  snprintf(what, sizeof what, "diff iter %lu keccak_x4_init", iter);
+  check(what, (uint8_t *)st4, (const uint8_t *)ZERO_X4, sizeof st4);
   pos = a->abs(st4, 0, km->rate, ina);
   pos = b->abs(st4, pos, km->rate, inb);
   HT(keccak_x4_finalize)(st4, pos, km->rate, km->ds);
