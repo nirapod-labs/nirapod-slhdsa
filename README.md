@@ -75,7 +75,7 @@ not shipped.
 | :---- | :------- | :---- |
 | EUF-CMA security of the FIPS 205 specification | not yet in this repository | — |
 | The Jasmin implementation is equivalent to the specification | open | — |
-| Hash primitives match FIPS 180-4 and FIPS 202 | open | — |
+| Hash primitives match FIPS 180-4 and FIPS 202 | partly proved in EasyCrypt on the code `jasmin2ec` extracts | `_sha256_compress` and `_sha512_compress`, the one-block entry points of the portable SHA-2 kernels, with their round functions, on the x86-64 and AArch64 models, total correctness; not the entry points that read blocks from memory (`_sha*_compress_blocks`, used by the streaming hash), nor the SHA-NI and A64 kernels the x86-64 and AArch64 test configurations select; the rest is open ([`proofs/README.md`](proofs/README.md#extracted-models-and-correctness-proofs)) |
 | Constant time and speculative constant time on every secret-dependent path | checked by `jasmin-ct` and `jasmin-ct --sct` on every parameter-set unit (`make ct`, run by CI on both architectures); passes on every unit of both architectures, see the status table | the Jasmin source, under the security types of its exports; conditional on memory safety, which is not checked yet; declassifications argued in [`docs/DECLASSIFICATION.md`](docs/DECLASSIFICATION.md) |
 | Memory safety of every export | not run on this branch | — |
 | The compiler preserves the semantics of safe programs | proved in Rocq; `toolchain/build.sh` re-checks the proofs | from the Jasmin AST to the assembly semantics, per target; the front end, assembly printer, assembler and linker are outside it; assumptions in [`toolchain/jasmin/ASSUMPTIONS`](toolchain/jasmin/ASSUMPTIONS) |
@@ -124,6 +124,8 @@ src/slhdsa/       FIPS 205 in Jasmin: addresses, WOTS+, XMSS, FORS, the hypertre
 src/hash/         SHA-2, SHA-3, SHAKE, HMAC and MGF1 in Jasmin
 tests/hash/       CAVP, differential and negative tests of the hash layer
 analysis/         constant-time analysis and emitted-code policies of the units
+proofs/           EasyCrypt specifications and proofs
+third_party/      imported EasyCrypt theories, with their provenance
 toolchain/        pinned Jasmin and EasyCrypt, the patch series, build.sh
 tools/            CI checks and release tooling
 changes/          one entry per change, collected at release
