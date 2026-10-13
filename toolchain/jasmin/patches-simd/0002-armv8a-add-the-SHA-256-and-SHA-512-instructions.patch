@@ -1,0 +1,1403 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Mon, 12 Oct 2026 16:38:07 +0600
+Subject: [PATCH] armv8a: add the SHA-256 and SHA-512 instructions
+
+SHA256H, SHA256H2, SHA256SU0, SHA256SU1 (FEAT_SHA256) and SHA512H,
+SHA512H2, SHA512SU0, SHA512SU1 (FEAT_SHA512) are available as intrinsics.
+Their destination is also their first source. The semantics follow the
+Arm pseudocode, including the SHA256hash function shared by SHA256H and
+SHA256H2.
+
+A proof-only file, armv8a_simd_facts.v, states what they compute in the
+terms of FIPS 180-4: SHA256H and SHA256H2 perform four SHA-256 rounds,
+SHA512H, SHA512H2 and an element-wise addition perform two SHA-512 rounds,
+and the schedule-update pairs compute the next message-schedule words.
+The same statements are made about the instruction descriptions, which
+fixes the role of each operand.
+
+A known-answer test computes SHA-256 and SHA-512 digests of the FIPS
+180-4 example messages (empty, "abc" and a two-block message) with these
+instructions, and checks them against the published digests under the
+semantics of the compiler.
+---
+ changes/01-feature/armv8a-advanced-simd.md    |   2 +
+ compiler/tests/exec/dune                      |   2 +
+ compiler/tests/exec/exec_armv8a.expected      |   6 +
+ compiler/tests/exec/exec_armv8a.ml            |  50 +++
+ compiler/tests/success/armv8a/simd_sha2.jazz  |  49 +++
+ .../tests/success/armv8a/simd_sha2_kat.jazz   | 341 ++++++++++++++++
+ eclib/JModel_armv8a.ec                        |  89 +++++
+ proofs/_CoqProject                            |   1 +
+ proofs/compiler/armv8a_instr_decl.v           | 181 ++++++++-
+ proofs/compiler/armv8a_simd.v                 | 141 +++++++
+ proofs/compiler/armv8a_simd_facts.v           | 370 ++++++++++++++++++
+ 11 files changed, 1231 insertions(+), 1 deletion(-)
+ create mode 100644 compiler/tests/exec/exec_armv8a.expected
+ create mode 100644 compiler/tests/exec/exec_armv8a.ml
+ create mode 100644 compiler/tests/success/armv8a/simd_sha2.jazz
+ create mode 100644 compiler/tests/success/armv8a/simd_sha2_kat.jazz
+ create mode 100644 proofs/compiler/armv8a_simd_facts.v
+
+diff --git a/changes/01-feature/armv8a-advanced-simd.md b/changes/01-feature/armv8a-advanced-simd.md
+index 43bdbd221..97ee7249f 100644
+--- a/changes/01-feature/armv8a-advanced-simd.md
++++ b/changes/01-feature/armv8a-advanced-simd.md
+@@ -3,3 +3,5 @@
+   operations, element-wise additions and subtractions, and shifts by an
+   immediate (SHL, USHR, SRI, SLI); u128 assignments and operators are lowered
+   to them, and V8 to V15 are saved as callee-saved registers.
++- armv8a: add the SHA-256 and SHA-512 instructions SHA256H, SHA256H2,
++  SHA256SU0, SHA256SU1, SHA512H, SHA512H2, SHA512SU0 and SHA512SU1.
+diff --git a/compiler/tests/exec/dune b/compiler/tests/exec/dune
+index 13c68f029..85a412bf6 100644
+--- a/compiler/tests/exec/dune
++++ b/compiler/tests/exec/dune
+@@ -17,7 +17,9 @@
+     ../success/x86-64/test_global_string_literal.jazz
+     ../success/common/literal-arrays.jazz
+     wide_rotation.jazz
++    ../success/armv8a/simd_sha2_kat.jazz
+   )
+   (names
+     exec
++    exec_armv8a
+     sem_unit))
+diff --git a/compiler/tests/exec/exec_armv8a.expected b/compiler/tests/exec/exec_armv8a.expected
+new file mode 100644
+index 000000000..f5035cd2c
+--- /dev/null
++++ b/compiler/tests/exec/exec_armv8a.expected
+@@ -0,0 +1,6 @@
++sha256_empty() = 0X996FB9249AFBF4C898FC1C14E3B0C442; 0X7852B855A495991B649B934C27AE41E4
++sha256_abc() = 0X5DAE2223414140DE8F01CFEABA7816BF; 0XF20015ADB410FF6196177A9CB00361A3
++sha256_two_block256() = 0XC3E6039E5C02693D20638B8248D6A61; 0X19DB06C1F6ECEDD464FF2167A33CE459
++sha512_empty() = 0XF1542850D66D8007CF83E1357EEFB8BD; 0X83F4A921D36CE9CED620E4050B5715DC; 0XFF8318D2877EEC2F47D0D13C5D85F2B0; 0XA538327AF927DA3E63B931BD47417A81
++sha512_abc() = 0XCC417349AE204131DDAF35A193617ABA; 0XA9EEEE64B55D39A12E6FA4E89A97EA2; 0X36BA3C23A3FEEBBD2192992A274FC1A8; 0X2A9AC94FA54CA49F454D4423643CE80E
++sha512_two_block512() = 0X8CF4F72814FC143F8E959B75DAE313DA; 0X7299AEADB68890188F7779C6EB9F7FA1; 0X331B99DEC4B5433A501D289E4900F7E4; 0X5E96E55B874BE909C7D329EEB6DD2654
+diff --git a/compiler/tests/exec/exec_armv8a.ml b/compiler/tests/exec/exec_armv8a.ml
+new file mode 100644
+index 000000000..1453e42ce
+--- /dev/null
++++ b/compiler/tests/exec/exec_armv8a.ml
+@@ -0,0 +1,50 @@
++(* Evaluation of armv8a programs with the semantics of the compiler, as in
++   exec.ml for x86-64. *)
++open Jasmin
++
++module Arch : Arch_full.Arch =
++  (val CoreArchFactory.get_arch_module Utils.ARMv8A Glob_options.Linux)
++
++let load_file name =
++  let prog =
++    let open Pretyping in
++    try
++      name
++      |> tt_file Arch.arch_info Env.empty None None
++      |> fst |> Env.decls
++      |> Compile.preprocess Arch.pointer_data Arch.msf_size Arch.asmOp
++    with TyError (loc, e) ->
++      Format.eprintf "%a: %a@." Location.pp_loc loc pp_tyerror e;
++      assert false
++  in
++  let fs = Hashtbl.create 17 in
++  List.iter
++    (fun { Prog.f_name; _ } -> Hashtbl.add fs f_name.fn_name f_name)
++    (snd prog);
++  (fs, Conv.cuprog_of_prog prog)
++
++let exec (fs, prog) f =
++  let f = Hashtbl.find fs f in
++  let m =
++    match Evaluator.initial_memory Arch.reg_size (Z.of_int 1024) [] with
++    | Utils0.Error _ -> assert false
++    | Utils0.Ok m -> m
++  in
++  let pp_vals = Utils.pp_list "; " Evaluator.pp_val in
++  match
++    Evaluator.run (module Arch) (Expr.to_uprog Arch.asmOp prog)
++      IInfo.dummy f [] m
++  with
++  | _, res -> Format.printf "%s() = %a@." f.fn_name pp_vals res
++  | exception Evaluator.Eval_error (_, err) ->
++      Format.printf "%s() failed with %a@." f.fn_name Evaluator.pp_error err
++
++(* SHA-256 and SHA-512 digests of FIPS 180-4 example messages, computed with
++   the SHA-2 instructions; the expected values are the published digests,
++   as (H0..H3), (H4..H7) for SHA-256 and (H0, H1)..(H6, H7) for SHA-512,
++   first word in the low bits. *)
++let () =
++  let prog = load_file "../success/armv8a/simd_sha2_kat.jazz" in
++  List.iter (exec prog)
++    [ "sha256_empty"; "sha256_abc"; "sha256_two_block256";
++      "sha512_empty"; "sha512_abc"; "sha512_two_block512" ]
+diff --git a/compiler/tests/success/armv8a/simd_sha2.jazz b/compiler/tests/success/armv8a/simd_sha2.jazz
+new file mode 100644
+index 000000000..429365e32
+--- /dev/null
++++ b/compiler/tests/success/armv8a/simd_sha2.jazz
+@@ -0,0 +1,49 @@
++/* SHA-256 and SHA-512 cryptographic-extension instructions. */
++export
++fn simd_sha256(reg u64 p) {
++    reg u128 abcd efgh wk w0 w1 w2 w3 t;
++    abcd = [:u128 p];
++    efgh = [:u128 p + 16];
++    w0 = [:u128 p + 32];
++    w1 = [:u128 p + 48];
++    w2 = [:u128 p + 64];
++    w3 = [:u128 p + 80];
++    wk = w0 +4u32 w1;
++    t = abcd;
++    abcd = #SHA256H(abcd, efgh, wk);
++    efgh = #SHA256H2(efgh, t, wk);
++    w0 = #SHA256SU0(w0, w1);
++    w0 = #SHA256SU1(w0, w2, w3);
++    [:u128 p] = abcd;
++    [:u128 p + 16] = efgh;
++    [:u128 p + 32] = w0;
++}
++
++/* Two SHA-512 rounds and two schedule words, in the operand layout of
++   SHA512H_H2_rounds: (a, b), (c, d), (e, f), (g, h) with the first element
++   in element 0; wk holds (K_t + W_t, K_t+1 + W_t+1). */
++export
++fn simd_sha512(reg u64 p) {
++    reg u128 ab cd ef gh wk fg de ef2 w0 w1 w9 w14;
++    ab = [:u128 p];
++    cd = [:u128 p + 16];
++    ef = [:u128 p + 32];
++    gh = [:u128 p + 48];
++    wk = [:u128 p + 64];
++    w0 = [:u128 p + 80];
++    w1 = [:u128 p + 96];
++    w9 = [:u128 p + 112];
++    w14 = [:u128 p + 128];
++    fg = #VEXT(ef, gh, 8);
++    wk = #VEXT(wk, wk, 8);
++    de = #VEXT(cd, ef, 8);
++    gh = gh +2u64 wk;
++    gh = #SHA512H(gh, fg, de);
++    ef2 = cd +2u64 gh;
++    gh = #SHA512H2(gh, cd, ab);
++    w0 = #SHA512SU0(w0, w1);
++    w0 = #SHA512SU1(w0, w14, w9);
++    [:u128 p] = gh;
++    [:u128 p + 16] = ef2;
++    [:u128 p + 32] = w0;
++}
+diff --git a/compiler/tests/success/armv8a/simd_sha2_kat.jazz b/compiler/tests/success/armv8a/simd_sha2_kat.jazz
+new file mode 100644
+index 000000000..919c172eb
+--- /dev/null
++++ b/compiler/tests/success/armv8a/simd_sha2_kat.jazz
+@@ -0,0 +1,341 @@
++/*
++ * Known-answer test of the SHA-256 and SHA-512 instructions: whole digests
++ * of FIPS 180-4 example messages, computed with SHA256H/H2/SU0/SU1 and
++ * SHA512H/H2/SU0/SU1. Messages are stored already padded (FIPS 180-4
++ * 5.1), as the bytes of each block in memory order.
++ */
++
++/* FIPS 180-4 4.2.2, four constants per vector, K[4i] in lane 0. */
++u128[16] SHA256_K = {
++  0xe9b5dba5b5c0fbcf71374491428a2f98,
++  0xab1c5ed5923f82a459f111f13956c25b,
++  0x550c7dc3243185be12835b01d807aa98,
++  0xc19bf1749bdc06a780deb1fe72be5d74,
++  0x240ca1cc0fc19dc6efbe4786e49b69c1,
++  0x76f988da5cb0a9dc4a7484aa2de92c6f,
++  0xbf597fc7b00327c8a831c66d983e5152,
++  0x1429296706ca6351d5a79147c6e00bf3,
++  0x53380d134d2c6dfc2e1b213827b70a85,
++  0x92722c8581c2c92e766a0abb650a7354,
++  0xc76c51a3c24b8b70a81a664ba2bfe8a1,
++  0x106aa070f40e3585d6990624d192e819,
++  0x34b0bcb52748774c1e376c0819a4c116,
++  0x682e6ff35b9cca4f4ed8aa4a391c0cb3,
++  0x8cc7020884c8781478a5636f748f82ee,
++  0xc67178f2bef9a3f7a4506ceb90befffa
++};
++
++/* FIPS 180-4 5.3.3: H0..H3 in lanes 0..3, then H4..H7. */
++u128[2] SHA256_IV = {
++  0xa54ff53a3c6ef372bb67ae856a09e667,
++  0x5be0cd191f83d9ab9b05688c510e527f
++};
++
++/* FIPS 180-4 4.2.3, two constants per vector, K[2i] in lane 0. */
++u128[40] SHA512_K = {
++  0x7137449123ef65cd428a2f98d728ae22,
++  0xe9b5dba58189dbbcb5c0fbcfec4d3b2f,
++  0x59f111f1b605d0193956c25bf348b538,
++  0xab1c5ed5da6d8118923f82a4af194f9b,
++  0x12835b0145706fbed807aa98a3030242,
++  0x550c7dc3d5ffb4e2243185be4ee4b28c,
++  0x80deb1fe3b1696b172be5d74f27b896f,
++  0xc19bf174cf6926949bdc06a725c71235,
++  0xefbe4786384f25e3e49b69c19ef14ad2,
++  0x240ca1cc77ac9c650fc19dc68b8cd5b5,
++  0x4a7484aa6ea6e4832de92c6f592b0275,
++  0x76f988da831153b55cb0a9dcbd41fbd4,
++  0xa831c66d2db43210983e5152ee66dfab,
++  0xbf597fc7beef0ee4b00327c898fb213f,
++  0xd5a79147930aa725c6e00bf33da88fc2,
++  0x142929670a0e6e7006ca6351e003826f,
++  0x2e1b21385c26c92627b70a8546d22ffc,
++  0x53380d139d95b3df4d2c6dfc5ac42aed,
++  0x766a0abb3c77b2a8650a73548baf63de,
++  0x92722c851482353b81c2c92e47edaee6,
++  0xa81a664bbc423001a2bfe8a14cf10364,
++  0xc76c51a30654be30c24b8b70d0f89791,
++  0xd69906245565a910d192e819d6ef5218,
++  0x106aa07032bbd1b8f40e35855771202a,
++  0x1e376c085141ab5319a4c116b8d2d0c8,
++  0x34b0bcb5e19b48a82748774cdf8eeb99,
++  0x4ed8aa4ae3418acb391c0cb3c5c95a63,
++  0x682e6ff3d6b2b8a35b9cca4f7763e373,
++  0x78a5636f43172f60748f82ee5defb2fc,
++  0x8cc702081a6439ec84c87814a1f0ab72,
++  0xa4506cebde82bde990befffa23631e28,
++  0xc67178f2e372532bbef9a3f7b2c67915,
++  0xd186b8c721c0c207ca273eceea26619c,
++  0xf57d4f7fee6ed178eada7dd6cde0eb1e,
++  0x0a637dc5a2c898a606f067aa72176fba,
++  0x1b710b35131c471b113f9804bef90dae,
++  0x32caab7b40c7249328db77f523047d84,
++  0x431d67c49c100d4c3c9ebe0a15c9bebc,
++  0x597f299cfc657e2a4cc5d4becb3e42b6,
++  0x6c44198c4a4758175fcb6fab3ad6faec
++};
++
++/* FIPS 180-4 5.3.5: (H0, H1), (H2, H3), (H4, H5), (H6, H7). */
++u128[4] SHA512_IV = {
++  0xbb67ae8584caa73b6a09e667f3bcc908,
++  0xa54ff53a5f1d36f13c6ef372fe94f82b,
++  0x9b05688c2b3e6c1f510e527fade682d1,
++  0x5be0cd19137e21791f83d9abfb41bd6b
++};
++
++/* SHA256, padded: "" */
++u128[4] SHA256_MSG_EMPTY = {
++  0x00000000000000000000000000000080,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000
++};
++
++/* SHA256, padded: "abc" */
++u128[4] SHA256_MSG_ABC = {
++  0x00000000000000000000000080636261,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x18000000000000000000000000000000
++};
++
++/* SHA256, padded: "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq" */
++u128[8] SHA256_MSG_TWO_BLOCK256 = {
++  0x67666564666564636564636264636261,
++  0x6b6a69686a6968676968676668676665,
++  0x6f6e6d6c6e6d6c6b6d6c6b6a6c6b6a69,
++  0x000000000000008071706f6e706f6e6d,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0xc0010000000000000000000000000000
++};
++
++/* SHA512, padded: "" */
++u128[8] SHA512_MSG_EMPTY = {
++  0x00000000000000000000000000000080,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000
++};
++
++/* SHA512, padded: "abc" */
++u128[8] SHA512_MSG_ABC = {
++  0x00000000000000000000000080636261,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x18000000000000000000000000000000
++};
++
++/* SHA512, padded: "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu" */
++u128[16] SHA512_MSG_TWO_BLOCK512 = {
++  0x69686766656463626867666564636261,
++  0x6b6a6968676665646a69686766656463,
++  0x6d6c6b6a696867666c6b6a6968676665,
++  0x6f6e6d6c6b6a69686e6d6c6b6a696867,
++  0x71706f6e6d6c6b6a706f6e6d6c6b6a69,
++  0x737271706f6e6d6c7271706f6e6d6c6b,
++  0x7574737271706f6e74737271706f6e6d,
++  0x00000000000000000000000000000080,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x00000000000000000000000000000000,
++  0x80030000000000000000000000000000
++};
++
++
++/*
++ * One SHA-256 block. abcd holds (A, B, C, D) in lanes 0..3 and efgh holds
++ * (E, F, G, H). Each iteration performs four rounds: SHA256H updates
++ * (A..D) and SHA256H2 updates (E..H) from the same W+K vector, and
++ * SHA256SU0/SU1 compute the next four schedule words in place.
++ */
++inline
++fn sha256_block(reg u128 abcd efgh, reg u128 m0 m1 m2 m3) -> reg u128, reg u128 {
++  reg u128 abcd0 efgh0 wk t;
++  inline int i;
++  abcd0 = abcd;
++  efgh0 = efgh;
++  m0 = #VREV32_16u8(m0);
++  m1 = #VREV32_16u8(m1);
++  m2 = #VREV32_16u8(m2);
++  m3 = #VREV32_16u8(m3);
++  for i = 0 to 16 {
++    wk = SHA256_K[i];
++    wk = wk +4u32 m0;
++    t = abcd;
++    abcd = #SHA256H(abcd, efgh, wk);
++    efgh = #SHA256H2(efgh, t, wk);
++    if (i < 12) {
++      m0 = #SHA256SU0(m0, m1);
++      m0 = #SHA256SU1(m0, m2, m3);
++    }
++    t = m0; m0 = m1; m1 = m2; m2 = m3; m3 = t;
++  }
++  abcd = abcd +4u32 abcd0;
++  efgh = efgh +4u32 efgh0;
++  return abcd, efgh;
++}
++
++/*
++ * One SHA-512 block, two rounds per iteration. ab, cd, ef, gh hold
++ * (A, B), (C, D), (E, F), (G, H), first element in lane 0. SHA512H takes
++ * the W+K pair added to (G, H) with its lanes swapped, (F, G) and (D, E);
++ * its result plus (C, D) is the next (E, F)-register, and SHA512H2 then
++ * forms the next (A, B)-register from it, (C, D) and (A, B).
++ */
++inline
++fn sha512_block(reg u128 ab cd ef gh, reg u128 m0 m1 m2 m3 m4 m5 m6 m7)
++  -> reg u128, reg u128, reg u128, reg u128 {
++  reg u128 ab0 cd0 ef0 gh0 wk fg de s t;
++  inline int i;
++  ab0 = ab; cd0 = cd; ef0 = ef; gh0 = gh;
++  m0 = #VREV64_16u8(m0); m1 = #VREV64_16u8(m1);
++  m2 = #VREV64_16u8(m2); m3 = #VREV64_16u8(m3);
++  m4 = #VREV64_16u8(m4); m5 = #VREV64_16u8(m5);
++  m6 = #VREV64_16u8(m6); m7 = #VREV64_16u8(m7);
++  for i = 0 to 40 {
++    wk = SHA512_K[i];
++    wk = wk +2u64 m0;
++    fg = #VEXT(ef, gh, 8);
++    wk = #VEXT(wk, wk, 8);
++    de = #VEXT(cd, ef, 8);
++    gh = gh +2u64 wk;
++    if (i < 32) {
++      s = #VEXT(m4, m5, 8);
++      m0 = #SHA512SU0(m0, m1);
++      m0 = #SHA512SU1(m0, m7, s);
++    }
++    gh = #SHA512H(gh, fg, de);
++    t = cd +2u64 gh;
++    gh = #SHA512H2(gh, cd, ab);
++    /* (A..H) rotate by two: gh is the new (A, B), t the new (E, F). */
++    s = ab; ab = gh; gh = ef; ef = t; cd = s;
++    s = m0; m0 = m1; m1 = m2; m2 = m3; m3 = m4; m4 = m5; m5 = m6; m6 = m7; m7 = s;
++  }
++  ab = ab +2u64 ab0; cd = cd +2u64 cd0;
++  ef = ef +2u64 ef0; gh = gh +2u64 gh0;
++  return ab, cd, ef, gh;
++}
++
++export
++fn sha256_empty() -> reg u128, reg u128 {
++  reg u128 abcd efgh m0 m1 m2 m3;
++  abcd = SHA256_IV[0];
++  efgh = SHA256_IV[1];
++  m0 = SHA256_MSG_EMPTY[0];
++  m1 = SHA256_MSG_EMPTY[1];
++  m2 = SHA256_MSG_EMPTY[2];
++  m3 = SHA256_MSG_EMPTY[3];
++  abcd, efgh = sha256_block(abcd, efgh, m0, m1, m2, m3);
++  return abcd, efgh;
++}
++
++export
++fn sha256_abc() -> reg u128, reg u128 {
++  reg u128 abcd efgh m0 m1 m2 m3;
++  abcd = SHA256_IV[0];
++  efgh = SHA256_IV[1];
++  m0 = SHA256_MSG_ABC[0];
++  m1 = SHA256_MSG_ABC[1];
++  m2 = SHA256_MSG_ABC[2];
++  m3 = SHA256_MSG_ABC[3];
++  abcd, efgh = sha256_block(abcd, efgh, m0, m1, m2, m3);
++  return abcd, efgh;
++}
++
++export
++fn sha256_two_block256() -> reg u128, reg u128 {
++  reg u128 abcd efgh m0 m1 m2 m3;
++  abcd = SHA256_IV[0];
++  efgh = SHA256_IV[1];
++  m0 = SHA256_MSG_TWO_BLOCK256[0];
++  m1 = SHA256_MSG_TWO_BLOCK256[1];
++  m2 = SHA256_MSG_TWO_BLOCK256[2];
++  m3 = SHA256_MSG_TWO_BLOCK256[3];
++  abcd, efgh = sha256_block(abcd, efgh, m0, m1, m2, m3);
++  m0 = SHA256_MSG_TWO_BLOCK256[4];
++  m1 = SHA256_MSG_TWO_BLOCK256[5];
++  m2 = SHA256_MSG_TWO_BLOCK256[6];
++  m3 = SHA256_MSG_TWO_BLOCK256[7];
++  abcd, efgh = sha256_block(abcd, efgh, m0, m1, m2, m3);
++  return abcd, efgh;
++}
++
++export
++fn sha512_empty() -> reg u128, reg u128, reg u128, reg u128 {
++  reg u128 ab cd ef gh m0 m1 m2 m3 m4 m5 m6 m7;
++  ab = SHA512_IV[0];
++  cd = SHA512_IV[1];
++  ef = SHA512_IV[2];
++  gh = SHA512_IV[3];
++  m0 = SHA512_MSG_EMPTY[0];
++  m1 = SHA512_MSG_EMPTY[1];
++  m2 = SHA512_MSG_EMPTY[2];
++  m3 = SHA512_MSG_EMPTY[3];
++  m4 = SHA512_MSG_EMPTY[4];
++  m5 = SHA512_MSG_EMPTY[5];
++  m6 = SHA512_MSG_EMPTY[6];
++  m7 = SHA512_MSG_EMPTY[7];
++  ab, cd, ef, gh = sha512_block(ab, cd, ef, gh, m0, m1, m2, m3, m4, m5, m6, m7);
++  return ab, cd, ef, gh;
++}
++
++export
++fn sha512_abc() -> reg u128, reg u128, reg u128, reg u128 {
++  reg u128 ab cd ef gh m0 m1 m2 m3 m4 m5 m6 m7;
++  ab = SHA512_IV[0];
++  cd = SHA512_IV[1];
++  ef = SHA512_IV[2];
++  gh = SHA512_IV[3];
++  m0 = SHA512_MSG_ABC[0];
++  m1 = SHA512_MSG_ABC[1];
++  m2 = SHA512_MSG_ABC[2];
++  m3 = SHA512_MSG_ABC[3];
++  m4 = SHA512_MSG_ABC[4];
++  m5 = SHA512_MSG_ABC[5];
++  m6 = SHA512_MSG_ABC[6];
++  m7 = SHA512_MSG_ABC[7];
++  ab, cd, ef, gh = sha512_block(ab, cd, ef, gh, m0, m1, m2, m3, m4, m5, m6, m7);
++  return ab, cd, ef, gh;
++}
++
++export
++fn sha512_two_block512() -> reg u128, reg u128, reg u128, reg u128 {
++  reg u128 ab cd ef gh m0 m1 m2 m3 m4 m5 m6 m7;
++  ab = SHA512_IV[0];
++  cd = SHA512_IV[1];
++  ef = SHA512_IV[2];
++  gh = SHA512_IV[3];
++  m0 = SHA512_MSG_TWO_BLOCK512[0];
++  m1 = SHA512_MSG_TWO_BLOCK512[1];
++  m2 = SHA512_MSG_TWO_BLOCK512[2];
++  m3 = SHA512_MSG_TWO_BLOCK512[3];
++  m4 = SHA512_MSG_TWO_BLOCK512[4];
++  m5 = SHA512_MSG_TWO_BLOCK512[5];
++  m6 = SHA512_MSG_TWO_BLOCK512[6];
++  m7 = SHA512_MSG_TWO_BLOCK512[7];
++  ab, cd, ef, gh = sha512_block(ab, cd, ef, gh, m0, m1, m2, m3, m4, m5, m6, m7);
++  m0 = SHA512_MSG_TWO_BLOCK512[8];
++  m1 = SHA512_MSG_TWO_BLOCK512[9];
++  m2 = SHA512_MSG_TWO_BLOCK512[10];
++  m3 = SHA512_MSG_TWO_BLOCK512[11];
++  m4 = SHA512_MSG_TWO_BLOCK512[12];
++  m5 = SHA512_MSG_TWO_BLOCK512[13];
++  m6 = SHA512_MSG_TWO_BLOCK512[14];
++  m7 = SHA512_MSG_TWO_BLOCK512[15];
++  ab, cd, ef, gh = sha512_block(ab, cd, ef, gh, m0, m1, m2, m3, m4, m5, m6, m7);
++  return ab, cd, ef, gh;
++}
+diff --git a/eclib/JModel_armv8a.ec b/eclib/JModel_armv8a.ec
+index a45606c35..fc4d802c6 100644
+--- a/eclib/JModel_armv8a.ec
++++ b/eclib/JModel_armv8a.ec
+@@ -399,3 +399,92 @@ op VSLI_4u32 (d n: W128.t) (s: W8.t) : W128.t =
+   W4u32.map2 (fun (a b: W32.t) => orw (andw a (invw (W32.onew `<<<` to_uint s))) (b `<<<` to_uint s)) d n.
+ op VSLI_2u64 (d n: W128.t) (s: W8.t) : W128.t =
+   W2u64.map2 (fun (a b: W64.t) => orw (andw a (invw (W64.onew `<<<` to_uint s))) (b `<<<` to_uint s)) d n.
++
++(* -------------------------------------------------------------------- *)
++(* SHA-256 (FEAT_SHA256). Element 0 of a W128.t is bits 31:0. *)
++
++op SHAchoose (x y z: W32.t) : W32.t = ((y +^ z) `&` x) +^ z.
++
++op SHAmajority32 (x y z: W32.t) : W32.t = (x `&` y) `|` ((x `|` y) `&` z).
++
++op SHAmajority64 (x y z: W64.t) : W64.t = (x `&` y) `|` ((x `|` y) `&` z).
++
++op SHA256hashSIGMA0 (x: W32.t) : W32.t = (x `|>>>|` 2) +^ (x `|>>>|` 13) +^ (x `|>>>|` 22).
++
++op SHA256hashSIGMA1 (x: W32.t) : W32.t = (x `|>>>|` 6) +^ (x `|>>>|` 11) +^ (x `|>>>|` 25).
++
++(* One iteration of SHA256hash on (x0, x1, x2, x3), (y0, y1, y2, y3): the
++   final rotation moves y3 to x0 and x3 to y0. *)
++op sha256hash_step (xy: (W32.t * W32.t * W32.t * W32.t) * (W32.t * W32.t * W32.t * W32.t)) (wk: W32.t) =
++  let (x, y) = xy in
++  let (x0, x1, x2, x3) = x in
++  let (y0, y1, y2, y3) = y in
++  let t = y3 + SHA256hashSIGMA1 y0 + SHAchoose y0 y1 y2 + wk in
++  ((t + SHA256hashSIGMA0 x0 + SHAmajority32 x0 x1 x2, x0, x1, x2), (t + x3, y0, y1, y2)).
++
++op sha256hash (x y w: W128.t) (part1: bool) : W128.t =
++  let s0 = ((x \bits32 0, (x \bits32 1), (x \bits32 2), (x \bits32 3)),
++            (y \bits32 0, (y \bits32 1), (y \bits32 2), (y \bits32 3))) in
++  let s1 = sha256hash_step s0 (w \bits32 0) in
++  let s2 = sha256hash_step s1 (w \bits32 1) in
++  let s3 = sha256hash_step s2 (w \bits32 2) in
++  let s4 = sha256hash_step s3 (w \bits32 3) in
++  let (x', y') = s4 in
++  let r = if part1 then x' else y' in
++  let (r0, r1, r2, r3) = r in
++  W4u32.pack4 [r0; r1; r2; r3].
++
++op SHA256H (d n m: W128.t) : W128.t = sha256hash d n m true.
++
++op SHA256H2 (d n m: W128.t) : W128.t = sha256hash n d m false.
++
++op sha256su0_sigma (x: W32.t) : W32.t = (x `|>>>|` 7) +^ (x `|>>>|` 18) +^ (x `>>>` 3).
++
++op sha256su1_sigma (x: W32.t) : W32.t = (x `|>>>|` 17) +^ (x `|>>>|` 19) +^ (x `>>>` 10).
++
++op SHA256SU0 (d n: W128.t) : W128.t =
++  let t = [(d \bits32 1); (d \bits32 2); (d \bits32 3); (n \bits32 0)] in
++  W4u32.pack4 (map (fun i => sha256su0_sigma (nth W32.zero t i) + (d \bits32 i)) (iota_ 0 4)).
++
++op SHA256SU1 (d n m: W128.t) : W128.t =
++  let t0 = [(n \bits32 1); (n \bits32 2); (n \bits32 3); (m \bits32 0)] in
++  let r0 = sha256su1_sigma (m \bits32 2) + (d \bits32 0) + nth W32.zero t0 0 in
++  let r1 = sha256su1_sigma (m \bits32 3) + (d \bits32 1) + nth W32.zero t0 1 in
++  let r2 = sha256su1_sigma r0 + (d \bits32 2) + nth W32.zero t0 2 in
++  let r3 = sha256su1_sigma r1 + (d \bits32 3) + nth W32.zero t0 3 in
++  W4u32.pack4 [r0; r1; r2; r3].
++
++(* -------------------------------------------------------------------- *)
++(* SHA-512 (FEAT_SHA512). Element 0 of a W128.t is bits 63:0. *)
++
++op SHA512Sigma1 (x: W64.t) : W64.t = (x `|>>>|` 14) +^ (x `|>>>|` 18) +^ (x `|>>>|` 41).
++
++op SHA512Sigma0 (x: W64.t) : W64.t = (x `|>>>|` 28) +^ (x `|>>>|` 34) +^ (x `|>>>|` 39).
++
++op sha512sigma0 (x: W64.t) : W64.t = (x `|>>>|` 1) +^ (x `|>>>|` 8) +^ (x `>>>` 7).
++
++op sha512sigma1 (x: W64.t) : W64.t = (x `|>>>|` 19) +^ (x `|>>>|` 61) +^ (x `>>>` 6).
++
++op SHA512H (d n m: W128.t) : W128.t =
++  let x0 = (n \bits64 0) in let x1 = (n \bits64 1) in
++  let y0 = (m \bits64 0) in let y1 = (m \bits64 1) in
++  let w0 = (d \bits64 0) in let w1 = (d \bits64 1) in
++  let v1 = ((y1 `&` x0) +^ (invw y1 `&` x1)) + SHA512Sigma1 y1 + w1 in
++  let tmp = v1 + y0 in
++  let v0 = ((tmp `&` y1) +^ (invw tmp `&` x0)) + SHA512Sigma1 tmp + w0 in
++  W2u64.pack2 [v0; v1].
++
++op SHA512H2 (d n m: W128.t) : W128.t =
++  let x0 = (n \bits64 0) in
++  let y0 = (m \bits64 0) in let y1 = (m \bits64 1) in
++  let w0 = (d \bits64 0) in let w1 = (d \bits64 1) in
++  let v1 = SHAmajority64 x0 y1 y0 + SHA512Sigma0 y0 + w1 in
++  let v0 = SHAmajority64 v1 y0 y1 + SHA512Sigma0 v1 + w0 in
++  W2u64.pack2 [v0; v1].
++
++op SHA512SU0 (d n: W128.t) : W128.t =
++  W2u64.pack2 [(d \bits64 0) + sha512sigma0 (d \bits64 1); (d \bits64 1) + sha512sigma0 (n \bits64 0)].
++
++op SHA512SU1 (d n m: W128.t) : W128.t =
++  W2u64.pack2 [(d \bits64 0) + sha512sigma1 (n \bits64 0) + (m \bits64 0);
++               (d \bits64 1) + sha512sigma1 (n \bits64 1) + (m \bits64 1)].
+diff --git a/proofs/_CoqProject b/proofs/_CoqProject
+index 4c59902fd..f366eb3f8 100644
+--- a/proofs/_CoqProject
++++ b/proofs/_CoqProject
+@@ -69,6 +69,7 @@ compiler/arm.v
+ compiler/armv8a.v
+ compiler/armv8a_decl.v
+ compiler/armv8a_simd.v
++compiler/armv8a_simd_facts.v
+ compiler/armv8a_extra.v
+ compiler/armv8a_instr_decl.v
+ compiler/armv8a_lowering.v
+diff --git a/proofs/compiler/armv8a_instr_decl.v b/proofs/compiler/armv8a_instr_decl.v
+index 2f0300bb4..41c5bdfe5 100644
+--- a/proofs/compiler/armv8a_instr_decl.v
++++ b/proofs/compiler/armv8a_instr_decl.v
+@@ -188,7 +188,17 @@ Variant armv8a_mnemonic : Type :=
+ | VSHL                           (* Shift left (immediate, vector) *)
+ | VUSHR                          (* Unsigned shift right (immediate, vector) *)
+ | VSRI                           (* Shift right and insert (immediate) *)
+-| VSLI.                          (* Shift left and insert (immediate) *)
++| VSLI                           (* Shift left and insert (immediate) *)
++
++(* Cryptographic extension: SHA-256 (FEAT_SHA256) and SHA-512 (FEAT_SHA512). *)
++| SHA256H                        (* SHA-256 hash update, part 1 *)
++| SHA256H2                       (* SHA-256 hash update, part 2 *)
++| SHA256SU0                      (* SHA-256 schedule update 0 *)
++| SHA256SU1                      (* SHA-256 schedule update 1 *)
++| SHA512H                        (* SHA-512 hash update, part 1 *)
++| SHA512H2                       (* SHA-512 hash update, part 2 *)
++| SHA512SU0                      (* SHA-512 schedule update 0 *)
++| SHA512SU1.                     (* SHA-512 schedule update 1 *)
+ 
+ #[ export ]
+ Instance eqTC_armv8a_mnemonic : eqTypeC armv8a_mnemonic :=
+@@ -214,6 +224,8 @@ Definition armv8a_mnemonics : seq armv8a_mnemonic :=
+     ; VAND; VBIC; VORR; VEOR; VNOT
+     ; VADD; VSUB
+     ; VSHL; VUSHR; VSRI; VSLI
++    ; SHA256H; SHA256H2; SHA256SU0; SHA256SU1
++    ; SHA512H; SHA512H2; SHA512SU0; SHA512SU1
+   ].
+ 
+ Lemma armv8a_mnemonic_fin_axiom : Finite.axiom armv8a_mnemonics.
+@@ -391,6 +403,14 @@ Definition string_of_armv8a_mnemonic (mn : armv8a_mnemonic) : string :=
+   | VUSHR => "VUSHR"
+   | VSRI => "VSRI"
+   | VSLI => "VSLI"
++  | SHA256H => "SHA256H"
++  | SHA256H2 => "SHA256H2"
++  | SHA256SU0 => "SHA256SU0"
++  | SHA256SU1 => "SHA256SU1"
++  | SHA512H => "SHA512H"
++  | SHA512H2 => "SHA512H2"
++  | SHA512SU0 => "SHA512SU0"
++  | SHA512SU1 => "SHA512SU1"
+   end%string.
+ 
+ (* Assembly mnemonic of the Advanced SIMD instructions. *)
+@@ -422,6 +442,8 @@ Definition vector_esizes (mn : armv8a_mnemonic) : seq wsize :=
+   | VMOV | VAND | VBIC | VORR | VEOR | VNOT => [:: U8 ]
+   | VLDR | VSTR => [:: U128 ]
+   | VADD | VSUB | VSHL | VUSHR | VSRI | VSLI => [:: U8; U16; U32; U64 ]
++  | SHA256H | SHA256H2 | SHA256SU0 | SHA256SU1 => [:: U32 ]
++  | SHA512H | SHA512H2 | SHA512SU0 | SHA512SU1 => [:: U64 ]
+   | _ => [::]
+   end.
+ 
+@@ -3353,6 +3375,155 @@ Definition armv8a_VSLI_semi (ve : wsize) (wd wn : word U128) (sh : word U8) : ty
+ Definition armv8a_VSLI_instr : instr_desc_t :=
+   mk_v1d_imm_instr VSLI (CAimmC_armv8a_vshl esize) (armv8a_VSLI_semi esize).
+ 
++
++(* -------------------------------------------------------------------- *)
++(* SHA-256 and SHA-512.
++   The destination register is also the first source: [Vd] holds the state
++   or schedule words being updated. The hash updates name the first two
++   operands as Q registers and the last as a 4S/2D vector; the schedule
++   updates use the 4S/2D arrangement throughout. *)
++
++(* Destination and one other source. *)
++Definition mk_v2d_instr mn (szs : seq wsize)
++  (semi : word U128 -> word U128 -> ty_v) : instr_desc_t :=
++  let tin := [:: lvec; lvec ] in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Ea 0; Ea 1 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 2;
++    id_args_kinds := ak_vv;
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str mn;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop mn szs;
++    id_valid := vvalid mn;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* Destination and two other sources. *)
++Definition mk_v3d_instr mn (szs : seq wsize)
++  (semi : word U128 -> word U128 -> word U128 -> ty_v) : instr_desc_t :=
++  let tin := [:: lvec; lvec; lvec ] in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Ea 0; Ea 1; Ea 2 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 3;
++    id_args_kinds := ak_vvv;
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str mn;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop mn szs;
++    id_valid := vvalid mn;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* [SHA256H] ARM DDI 0602 2026-03
++   Syntax: SHA256H <Qd>, <Qn>, <Vm>.4S
++   Semantics: four SHA-256 rounds by the shared SHA256hash function (see
++   [sha256hash], armv8a_simd.v), returning the updated (a, b, c, d).
++   [Qd] holds the working variables (a, b, c, d) and [Qn] (e, f, g, h),
++   element 0 first; [Vm] holds W[t] + K[t] for four rounds. *)
++Definition armv8a_SHA256H_semi (wd wn wm : word U128) : ty_v :=
++  sha256hash wd wn wm true.
++
++Definition armv8a_SHA256H_instr : instr_desc_t :=
++  mk_v3d_instr SHA256H [:: U128; U128; U32 ] armv8a_SHA256H_semi.
++
++(* [SHA256H2] ARM DDI 0602 2026-03
++   Syntax: SHA256H2 <Qd>, <Qn>, <Vm>.4S
++   Semantics: the same four rounds with Qn as (a, b, c, d) and Qd as
++   (e, f, g, h), returning the updated (e, f, g, h). *)
++Definition armv8a_SHA256H2_semi (wd wn wm : word U128) : ty_v :=
++  sha256hash wn wd wm false.
++
++Definition armv8a_SHA256H2_instr : instr_desc_t :=
++  mk_v3d_instr SHA256H2 [:: U128; U128; U32 ] armv8a_SHA256H2_semi.
++
++(* [SHA256SU0] ARM DDI 0602 2026-03
++   Syntax: SHA256SU0 <Vd>.4S, <Vn>.4S
++   Semantics: element e of the result is Vd[e] plus the small sigma-0 of
++   FIPS 180-4 applied to element e + 1 of the sequence Vd[1..3], Vn[0]
++   (see [sha256su0], armv8a_simd.v). *)
++Definition armv8a_SHA256SU0_semi (wd wn : word U128) : ty_v :=
++  sha256su0 wd wn.
++
++Definition armv8a_SHA256SU0_instr : instr_desc_t :=
++  mk_v2d_instr SHA256SU0 [:: U32; U32 ] armv8a_SHA256SU0_semi.
++
++(* [SHA256SU1] ARM DDI 0602 2026-03
++   Syntax: SHA256SU1 <Vd>.4S, <Vn>.4S, <Vm>.4S
++   Semantics: element e of the result is Vd[e] plus element e of the
++   sequence Vn[1..3], Vm[0], plus the small sigma-1 of FIPS 180-4 applied
++   to Vm[2 + e] for e = 0, 1 and to result element e - 2 for e = 2, 3 (see
++   [sha256su1], armv8a_simd.v). *)
++Definition armv8a_SHA256SU1_semi (wd wn wm : word U128) : ty_v :=
++  sha256su1 wd wn wm.
++
++Definition armv8a_SHA256SU1_instr : instr_desc_t :=
++  mk_v3d_instr SHA256SU1 [:: U32; U32; U32 ] armv8a_SHA256SU1_semi.
++
++(* [SHA512H] ARM DDI 0602 2026-03
++   Syntax: SHA512H <Qd>, <Qn>, <Vm>.2D
++   Semantics: with x = Vn, y = Vm and w = Vd, two applications of
++   Ch(e, f, g) + Sigma1(e) + w of FIPS 180-4 (SHA-512), the second one on
++   the first result plus y[0]; see [sha512h], armv8a_simd.v, and
++   SHA512H_H2_rounds in armv8a_simd_facts.v for the round it computes. *)
++Definition armv8a_SHA512H_semi (wd wn wm : word U128) : ty_v :=
++  sha512h wd wn wm.
++
++Definition armv8a_SHA512H_instr : instr_desc_t :=
++  mk_v3d_instr SHA512H [:: U128; U128; U64 ] armv8a_SHA512H_semi.
++
++(* [SHA512H2] ARM DDI 0602 2026-03
++   Syntax: SHA512H2 <Qd>, <Qn>, <Vm>.2D
++   Semantics: with x = Vn, y = Vm and w = Vd, two applications of
++   Maj + Sigma0 + w of FIPS 180-4 (SHA-512), the second one on the first
++   result; see [sha512h2], armv8a_simd.v. *)
++Definition armv8a_SHA512H2_semi (wd wn wm : word U128) : ty_v :=
++  sha512h2 wd wn wm.
++
++Definition armv8a_SHA512H2_instr : instr_desc_t :=
++  mk_v3d_instr SHA512H2 [:: U128; U128; U64 ] armv8a_SHA512H2_semi.
++
++(* [SHA512SU0] ARM DDI 0602 2026-03
++   Syntax: SHA512SU0 <Vd>.2D, <Vn>.2D
++   Semantics: element 0 is Vd[0] + sigma0(Vd[1]) and element 1 is
++   Vd[1] + sigma0(Vn[0]), sigma0 the small sigma-0 of SHA-512 (FIPS 180-4,
++   4.1.3). *)
++Definition armv8a_SHA512SU0_semi (wd wn : word U128) : ty_v :=
++  sha512su0 wd wn.
++
++Definition armv8a_SHA512SU0_instr : instr_desc_t :=
++  mk_v2d_instr SHA512SU0 [:: U64; U64 ] armv8a_SHA512SU0_semi.
++
++(* [SHA512SU1] ARM DDI 0602 2026-03
++   Syntax: SHA512SU1 <Vd>.2D, <Vn>.2D, <Vm>.2D
++   Semantics: element e is Vd[e] + sigma1(Vn[e]) + Vm[e], sigma1 the small
++   sigma-1 of SHA-512 (FIPS 180-4, 4.1.3). *)
++Definition armv8a_SHA512SU1_semi (wd wn wm : word U128) : ty_v :=
++  sha512su1 wd wn wm.
++
++Definition armv8a_SHA512SU1_instr : instr_desc_t :=
++  mk_v3d_instr SHA512SU1 [:: U64; U64; U64 ] armv8a_SHA512SU1_semi.
++
+ (* -------------------------------------------------------------------- *)
+ (* Description of instructions. *)
+ 
+@@ -3446,6 +3617,14 @@ Definition mn_desc (mn : armv8a_mnemonic) : instr_desc_t :=
+   | VUSHR => armv8a_VUSHR_instr
+   | VSRI => armv8a_VSRI_instr
+   | VSLI => armv8a_VSLI_instr
++  | SHA256H => armv8a_SHA256H_instr
++  | SHA256H2 => armv8a_SHA256H2_instr
++  | SHA256SU0 => armv8a_SHA256SU0_instr
++  | SHA256SU1 => armv8a_SHA256SU1_instr
++  | SHA512H => armv8a_SHA512H_instr
++  | SHA512H2 => armv8a_SHA512H2_instr
++  | SHA512SU0 => armv8a_SHA512SU0_instr
++  | SHA512SU1 => armv8a_SHA512SU1_instr
+   end.
+ 
+ End ARMV8A_INSTR.
+diff --git a/proofs/compiler/armv8a_simd.v b/proofs/compiler/armv8a_simd.v
+index bcab78d36..1378ff6e3 100644
+--- a/proofs/compiler/armv8a_simd.v
++++ b/proofs/compiler/armv8a_simd.v
+@@ -19,6 +19,14 @@ Import Utf8 ZArith.
+ 
+ #[local] Open Scope word_scope.
+ 
++(* -------------------------------------------------------------------- *)
++(* Element access. *)
++
++(* The [i]-th [ve]-bit element of [w], counting from the least significant
++   end. *)
++Definition velem_at (ve : wsize) (w : u128) (i : nat) : word ve :=
++  nth (wrepr ve 0) (split_vec ve w) i.
++
+ (* -------------------------------------------------------------------- *)
+ (* Element-wise shifts and inserts. *)
+ 
+@@ -32,3 +40,136 @@ Definition vsri_elem {ve : wsize} (sh : Z) (d n : word ve) : word ve :=
+ Definition vsli_elem {ve : wsize} (sh : Z) (d n : word ve) : word ve :=
+   wor (wand d (wnot (wshl (-1)%R sh))) (wshl n sh).
+ 
++(* -------------------------------------------------------------------- *)
++(* SHA-256 (FEAT_SHA256). *)
++
++(* SHAchoose (shared pseudocode): each bit is the bit of [y] where [x] is
++   set and the bit of [z] elsewhere, the Ch function of FIPS 180-4. *)
++Definition sha_choose (x y z : u32) : u32 :=
++  wxor (wand (wxor y z) x) z.
++
++(* SHAmajority (shared pseudocode): the bitwise majority of [x], [y] and
++   [z], the Maj function of FIPS 180-4, for 32- and 64-bit words. *)
++Definition sha_majority {ws : wsize} (x y z : word ws) : word ws :=
++  wor (wand x y) (wand (wor x y) z).
++
++(* SHA256hashSIGMA0 (shared pseudocode): the XOR of [x] rotated right by 2,
++   13 and 22, the big Sigma-0 of SHA-256 (FIPS 180-4, 4.1.2). *)
++Definition sha256_hSIGMA0 (x : u32) : u32 :=
++  wxor (wxor (wror x 2) (wror x 13)) (wror x 22).
++
++(* SHA256hashSIGMA1 (shared pseudocode): the XOR of [x] rotated right by 6,
++   11 and 25, the big Sigma-1 of SHA-256. *)
++Definition sha256_hSIGMA1 (x : u32) : u32 :=
++  wxor (wxor (wror x 6) (wror x 11)) (wror x 25).
++
++Notation lanes4 := (u32 * u32 * u32 * u32)%type.
++
++Definition lanes4_of (w : u128) : lanes4 :=
++  (velem_at U32 w 0, velem_at U32 w 1, velem_at U32 w 2, velem_at U32 w 3).
++
++Definition u128_of_lanes4 (l : lanes4) : u128 :=
++  let '(l0, l1, l2, l3) := l in make_vec U128 [:: l0; l1; l2; l3 ].
++
++(* One iteration of the loop of SHA256hash. [x] and [y] are given element
++   0 first. The iteration ends by rotating the 256-bit value formed by [y]
++   above [x] left by one 32-bit element, which moves the top element of [y]
++   to element 0 of [x] and the top element of [x] to element 0 of [y]. *)
++Definition sha256hash_step (xy : lanes4 * lanes4) (wk : u32) : lanes4 * lanes4 :=
++  let '((x0, x1, x2, x3), (y0, y1, y2, y3)) := xy in
++  let chs := sha_choose y0 y1 y2 in
++  let maj := sha_majority x0 x1 x2 in
++  let t := y3 + sha256_hSIGMA1 y0 + chs + wk in
++  let x3' := t + x3 in
++  let y3' := t + sha256_hSIGMA0 x0 + maj in
++  ((y3', x0, x1, x2), (x3', y0, y1, y2)).
++
++(* SHA256hash (shared pseudocode, cited): four iterations of
++   [sha256hash_step], one per 32-bit element of [w] in order, starting from
++   [x] and [y]; the result is the final [x] when [part1] holds and the final
++   [y] otherwise. *)
++Definition sha256hash (x y w : u128) (part1 : bool) : u128 :=
++  let '(x', y') := foldl sha256hash_step (lanes4_of x, lanes4_of y) (split_vec U32 w) in
++  u128_of_lanes4 (if part1 then x' else y').
++
++(* The message-schedule functions of SHA256SU0 and SHA256SU1. *)
++Definition sha256su0_sigma (x : u32) : u32 :=
++  wxor (wxor (wror x 7) (wror x 18)) (wshr x 3).
++
++Definition sha256su1_sigma (x : u32) : u32 :=
++  wxor (wxor (wror x 17) (wror x 19)) (wshr x 10).
++
++(* SHA256SU0 Vd.4S, Vn.4S with [op1] = Vd and [op2] = Vn: element [e] is
++   op1[e] plus the small sigma-0 of element [e] of the sequence op1[1],
++   op1[2], op1[3], op2[0]. *)
++Definition sha256su0 (op1 op2 : u128) : u128 :=
++  let t := [:: velem_at U32 op1 1; velem_at U32 op1 2; velem_at U32 op1 3;
++               velem_at U32 op2 0 ] in
++  make_vec U128
++    (map2 (fun te o1 => sha256su0_sigma te + o1) t (split_vec U32 op1)).
++
++(* SHA256SU1 Vd.4S, Vn.4S, Vm.4S with [op1] = Vd, [op2] = Vn, [op3] = Vm,
++   and [t0] the sequence op2[1], op2[2], op2[3], op3[0]: element [e] is
++   op1[e] + t0[e] plus the small sigma-1 of op3[e + 2] for e = 0, 1, and of
++   result element e - 2 for e = 2, 3. *)
++Definition sha256su1 (op1 op2 op3 : u128) : u128 :=
++  let o1 := velem_at U32 op1 in
++  let t0 := [:: velem_at U32 op2 1; velem_at U32 op2 2; velem_at U32 op2 3;
++                velem_at U32 op3 0 ] in
++  let t0e := nth 0%R t0 in
++  let r0 := sha256su1_sigma (velem_at U32 op3 2) + o1 0%N + t0e 0%N in
++  let r1 := sha256su1_sigma (velem_at U32 op3 3) + o1 1%N + t0e 1%N in
++  let r2 := sha256su1_sigma r0 + o1 2%N + t0e 2%N in
++  let r3 := sha256su1_sigma r1 + o1 3%N + t0e 3%N in
++  make_vec U128 [:: r0; r1; r2; r3 ].
++
++(* -------------------------------------------------------------------- *)
++(* SHA-512 (FEAT_SHA512). Element 0 is [w[63:0]], element 1 [w[127:64]]. *)
++
++Definition sha512_Sigma1 (x : u64) : u64 :=
++  wxor (wxor (wror x 14) (wror x 18)) (wror x 41).
++
++Definition sha512_Sigma0 (x : u64) : u64 :=
++  wxor (wxor (wror x 28) (wror x 34)) (wror x 39).
++
++Definition sha512_sigma0 (x : u64) : u64 :=
++  wxor (wxor (wror x 1) (wror x 8)) (wshr x 7).
++
++Definition sha512_sigma1 (x : u64) : u64 :=
++  wxor (wxor (wror x 19) (wror x 61)) (wshr x 6).
++
++(* SHA512H Qd, Qn, Vm.2D with [x] = Vn, [y] = Vm and [w] = Vd. *)
++Definition sha512h (w x y : u128) : u128 :=
++  let x0 := velem_at U64 x 0 in let x1 := velem_at U64 x 1 in
++  let y0 := velem_at U64 y 0 in let y1 := velem_at U64 y 1 in
++  let w0 := velem_at U64 w 0 in let w1 := velem_at U64 w 1 in
++  let v1 := wxor (wand y1 x0) (wand (wnot y1) x1) in
++  let v1 := v1 + sha512_Sigma1 y1 + w1 in
++  let tmp := v1 + y0 in
++  let v0 := wxor (wand tmp y1) (wand (wnot tmp) x0) in
++  let v0 := v0 + sha512_Sigma1 tmp + w0 in
++  make_vec U128 [:: v0; v1 ].
++
++(* SHA512H2 Qd, Qn, Vm.2D with [x] = Vn, [y] = Vm and [w] = Vd. *)
++Definition sha512h2 (w x y : u128) : u128 :=
++  let x0 := velem_at U64 x 0 in
++  let y0 := velem_at U64 y 0 in let y1 := velem_at U64 y 1 in
++  let w0 := velem_at U64 w 0 in let w1 := velem_at U64 w 1 in
++  let v1 := sha_majority x0 y1 y0 in
++  let v1 := v1 + sha512_Sigma0 y0 + w1 in
++  let v0 := sha_majority v1 y0 y1 in
++  let v0 := v0 + sha512_Sigma0 v1 + w0 in
++  make_vec U128 [:: v0; v1 ].
++
++(* SHA512SU0 Vd.2D, Vn.2D with [x] = Vn and [w] = Vd. *)
++Definition sha512su0 (w x : u128) : u128 :=
++  let x0 := velem_at U64 x 0 in
++  let w0 := velem_at U64 w 0 in let w1 := velem_at U64 w 1 in
++  make_vec U128 [:: w0 + sha512_sigma0 w1; w1 + sha512_sigma0 x0 ].
++
++(* SHA512SU1 Vd.2D, Vn.2D, Vm.2D with [x] = Vn, [y] = Vm and [w] = Vd. *)
++Definition sha512su1 (w x y : u128) : u128 :=
++  let x0 := velem_at U64 x 0 in let x1 := velem_at U64 x 1 in
++  let y0 := velem_at U64 y 0 in let y1 := velem_at U64 y 1 in
++  let w0 := velem_at U64 w 0 in let w1 := velem_at U64 w 1 in
++  make_vec U128 [:: w0 + sha512_sigma1 x0 + y0; w1 + sha512_sigma1 x1 + y1 ].
+diff --git a/proofs/compiler/armv8a_simd_facts.v b/proofs/compiler/armv8a_simd_facts.v
+new file mode 100644
+index 000000000..1e9d9079e
+--- /dev/null
++++ b/proofs/compiler/armv8a_simd_facts.v
+@@ -0,0 +1,370 @@
++(* Properties of the ARMv8-A Advanced SIMD semantics of armv8a_simd.v.
++
++   Proof-only: nothing in the compiler depends on this file. It states what
++   the transcribed instruction semantics compute, in the terms of the
++   standards they implement:
++   - [split_vec_make_vec]: the elements of a packed vector are the packed
++     words, element 0 first;
++   - the SHA-2 helper functions of the Arm pseudocode are the FIPS 180-4
++     functions (sha256.v for SHA-256, defined below for SHA-512);
++   - [SHA256H_rounds]: SHA256H and SHA256H2 perform four FIPS 180-4 SHA-256
++     rounds; [SHA256SU_schedule]: SHA256SU0 then SHA256SU1 compute four
++     message-schedule words;
++   - [SHA512H_H2_rounds]: SHA512H, SHA512H2 and an element-wise addition
++     perform two SHA-512 rounds; [SHA512SU_schedule]: SHA512SU0 then
++     SHA512SU1 compute two message-schedule words;
++   - the [*_instr_*] lemmas: the same statements about the [id_semi] of the
++     instruction descriptions, which fix the role of each operand;
++   These are statements about the semantics as transcribed; they do not
++   validate the transcription against the hardware (the differential and
++   known-answer tests do that). *)
++
++From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype tuple div ssralg word_ssrZ.
++Require Import utils word sha256 sem_type arch_decl armv8a_simd armv8a_instr_decl.
++Import Utf8 ZArith.
++
++(* [word] is opaque in Jasmin; the proof relates it to the underlying
++   [mathcomp.word] words to compare bits. *)
++Transparent word.
++Lemma split_vec_make_vec (ve : wsize) (l : seq (word ve)) :
++  (size l * ve)%nat = U128 -> split_vec ve (make_vec U128 l) = l.
++Proof.
++  move=> hsz.
++  have hve : (0 < nat_of_wsize ve)%nat by case: (ve).
++  have hn : (nat_of_wsize U128 %/ ve + nat_of_wsize U128 %% ve)%nat = size l.
++  - by rewrite -hsz mulnK // modnMl addn0.
++  rewrite /split_vec hn.
++  apply: (@eq_from_nth (word ve) (wrepr ve 0%Z)); first by rewrite size_map size_iota.
++  rewrite size_map size_iota => i hi.
++  rewrite (nth_map 0%nat) ?size_iota // nth_iota // add0n.
++  apply/eqP/mathcomp.word.word.eq_from_wbit => j.
++  rewrite mathcomp.word.word.subwordE mathcomp.word.word.wbit_t2wE (nth_mktuple _ _ j).
++  have hlt : (j + i * ve < nat_of_wsize U128)%nat.
++  - rewrite -hsz; apply: (@leq_trans (ve + i * ve)); first by rewrite ltn_add2r ltn_ord.
++    by rewrite -mulSn leq_mul2r hi orbT.
++  rewrite /make_vec /wrepr.
++  rewrite -[(j + i * ve)%nat]/(nat_of_ord (Ordinal hlt)) mathcomp.word.word.wbit_mkword /=.
++  rewrite -[mathcomp.word.word.wcat_r l]/(mathcomp.word.word.urepr (mathcomp.word.word.wcat (in_tuple l))).
++  rewrite mathcomp.word.word.wcat_wbitE.
++  rewrite addnC divnMDl // modnMDl divn_small // modn_small // addn0.
++  by congr (mathcomp.word.word.wbit (mathcomp.word.word.toword _) _); apply: set_nth_default.
++Qed.
++Opaque word.
++
++Lemma sha_chooseE e f g : sha_choose e f g = ch e f g.
++Proof.
++  apply/eqP/eq_from_wbit_n => i.
++  rewrite /sha_choose /ch !(wxorE, wandE) wN1E ltn_ord.
++  by case: (wbit_n e i); case: (wbit_n f i); case: (wbit_n g i).
++Qed.
++
++Lemma sha_majorityE (a b c : u32) : sha_majority a b c = maj a b c.
++Proof.
++  apply/eqP/eq_from_wbit_n => i.
++  rewrite /sha_majority /maj !(wxorE, wandE, worE).
++  by case: (wbit_n a i); case: (wbit_n b i); case: (wbit_n c i).
++Qed.
++
++Lemma sha256_hSIGMA0E x : sha256_hSIGMA0 x = Σ₀ x.
++Proof. by rewrite /sha256_hSIGMA0 /Σ₀ wxorA. Qed.
++
++Lemma sha256_hSIGMA1E x : sha256_hSIGMA1 x = Σ₁ x.
++Proof. by rewrite /sha256_hSIGMA1 /Σ₁ wxorA. Qed.
++
++Lemma sha256su0_sigmaE x : sha256su0_sigma x = σ₀ x.
++Proof. by rewrite /sha256su0_sigma /σ₀ wxorA. Qed.
++
++Lemma sha256su1_sigmaE x : sha256su1_sigma x = σ₁ x.
++Proof. by rewrite /sha256su1_sigma /σ₁ wxorA. Qed.
++
++(* FIPS 180-4, 6.2.2 step 3: one SHA-256 round on the working variables
++   (a, b, c, d, e, f, g, h), with [wk] = K_t + W_t. *)
++Definition sha256_round (s : u32 * u32 * u32 * u32 * u32 * u32 * u32 * u32) (wk : u32) :=
++  let '(a, b, c, d, e, f, g, h) := s in
++  let t1 := (h + Σ₁ e + ch e f g + wk)%R in
++  let t2 := (Σ₀ a + maj a b c)%R in
++  ((t1 + t2)%R, a, b, c, (d + t1)%R, e, f, g).
++
++Definition abcd_efgh (s : u32 * u32 * u32 * u32 * u32 * u32 * u32 * u32) :=
++  let '(a, b, c, d, e, f, g, h) := s in ((a, b, c, d), (e, f, g, h)).
++
++Lemma sha256hash_stepE s wk :
++  sha256hash_step (abcd_efgh s) wk = abcd_efgh (sha256_round s wk).
++Proof.
++  case: s => [[[[[[[a b] c] d] e] f] g] h] /=.
++  rewrite sha_chooseE sha_majorityE sha256_hSIGMA0E sha256_hSIGMA1E.
++  by rewrite (GRing.addrC d) !GRing.addrA.
++Qed.
++
++Lemma sha256hash_foldE s l :
++  foldl sha256hash_step (abcd_efgh s) l = abcd_efgh (foldl sha256_round s l).
++Proof.
++  by elim: l s => [// | wk l ih] s /=; rewrite sha256hash_stepE ih.
++Qed.
++
++Definition sha256_state (abcd efgh : u128) :=
++  let '(a, b, c, d) := lanes4_of abcd in
++  let '(e, f, g, h) := lanes4_of efgh in
++  (a, b, c, d, e, f, g, h).
++
++Lemma abcd_efgh_state abcd efgh :
++  abcd_efgh (sha256_state abcd efgh) = (lanes4_of abcd, lanes4_of efgh).
++Proof. by rewrite /sha256_state; case: lanes4_of => [[[? ?] ?] ?]; case: lanes4_of => [[[? ?] ?] ?]. Qed.
++
++(* SHA256H and SHA256H2 perform the four FIPS 180-4 rounds whose K_t + W_t
++   are the elements of [wk], element 0 first: SHA256H returns the new
++   (a, b, c, d) and SHA256H2 the new (e, f, g, h), element 0 first. *)
++Lemma sha256hash_rounds abcd efgh wk :
++  let s := foldl sha256_round (sha256_state abcd efgh) (split_vec U32 wk) in
++  let '(a, b, c, d, e, f, g, h) := s in
++  sha256hash abcd efgh wk true = make_vec U128 [:: a; b; c; d ]
++  /\ sha256hash abcd efgh wk false = make_vec U128 [:: e; f; g; h ].
++Proof.
++  rewrite /sha256hash -abcd_efgh_state sha256hash_foldE.
++  by case: foldl => [[[[[[[a b] c] d] e] f] g] h].
++Qed.
++
++
++(* -------------------------------------------------------------------- *)
++(* Elements of a packed vector. *)
++
++Lemma velem_at_make_vec (ve : wsize) (l : seq (word ve)) i :
++  (size l * ve)%nat = U128 -> velem_at ve (make_vec U128 l) i = nth (wrepr ve 0) l i.
++Proof. by move=> h; rewrite /velem_at split_vec_make_vec. Qed.
++
++Lemma lift2_vec_make_vec (ve : wsize) op (l1 l2 : seq (word ve)) :
++  (size l1 * ve)%nat = U128 -> (size l2 * ve)%nat = U128 ->
++  lift2_vec ve op U128 (make_vec U128 l1) (make_vec U128 l2) = make_vec U128 (map2 op l1 l2).
++Proof. by move=> h1 h2; rewrite /lift2_vec !split_vec_make_vec. Qed.
++
++Lemma lanes4_of_make_vec (a b c d : u32) :
++  lanes4_of (make_vec U128 [:: a; b; c; d ]) = (a, b, c, d).
++Proof. by rewrite /lanes4_of !velem_at_make_vec. Qed.
++
++Lemma split_vec_make_vec4 (a b c d : u32) :
++  split_vec U32 (make_vec U128 [:: a; b; c; d ]) = [:: a; b; c; d ].
++Proof. exact: split_vec_make_vec. Qed.
++
++(* SHA256H and SHA256H2 on packed working variables: [abcd] holds (a, b, c,
++   d) and [efgh] holds (e, f, g, h), element 0 first, and [wk] holds K_t +
++   W_t for four consecutive rounds. *)
++Lemma SHA256H_rounds (a b c d e f g h k0 k1 k2 k3 : u32) :
++  let '(a', b', c', d', e', f', g', h') :=
++    foldl sha256_round (a, b, c, d, e, f, g, h) [:: k0; k1; k2; k3 ] in
++  let abcd := make_vec U128 [:: a; b; c; d ] in
++  let efgh := make_vec U128 [:: e; f; g; h ] in
++  let wk := make_vec U128 [:: k0; k1; k2; k3 ] in
++  sha256hash abcd efgh wk true = make_vec U128 [:: a'; b'; c'; d' ]
++  /\ sha256hash abcd efgh wk false = make_vec U128 [:: e'; f'; g'; h' ].
++Proof.
++  have := sha256hash_rounds (make_vec U128 [:: a; b; c; d ])
++            (make_vec U128 [:: e; f; g; h ]) (make_vec U128 [:: k0; k1; k2; k3 ]).
++  rewrite /sha256_state !lanes4_of_make_vec split_vec_make_vec4.
++  by case: (foldl _ _ _) => [[[[[[[? ?] ?] ?] ?] ?] ?] ?].
++Qed.
++
++(* SHA256SU0 then SHA256SU1 compute the next four message-schedule words of
++   FIPS 180-4, 6.2.2 step 1:
++     W_t = σ₁(W_{t-2}) + W_{t-7} + σ₀(W_{t-15}) + W_{t-16}. *)
++Lemma SHA256SU_schedule (w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 : u32) :
++  let w16 := (σ₁ w14 + w9 + σ₀ w1 + w0)%R in
++  let w17 := (σ₁ w15 + w10 + σ₀ w2 + w1)%R in
++  let w18 := (σ₁ w16 + w11 + σ₀ w3 + w2)%R in
++  let w19 := (σ₁ w17 + w12 + σ₀ w4 + w3)%R in
++  sha256su1
++    (sha256su0 (make_vec U128 [:: w0; w1; w2; w3 ]) (make_vec U128 [:: w4; w5; w6; w7 ]))
++    (make_vec U128 [:: w8; w9; w10; w11 ])
++    (make_vec U128 [:: w12; w13; w14; w15 ])
++  = make_vec U128 [:: w16; w17; w18; w19 ].
++Proof.
++  rewrite /sha256su1 /sha256su0 split_vec_make_vec4 /=.
++  rewrite !velem_at_make_vec //=.
++  rewrite !sha256su0_sigmaE !sha256su1_sigmaE.
++  have E (x y z u : u32) :
++    add_word (add_word x (add_word y u)) z = add_word (add_word (add_word x z) y) u.
++  - have : (x + (y + u) + z = x + z + y + u)%R.
++    + by rewrite GRing.addrA (GRing.addrAC (x + y)%R) (GRing.addrAC x).
++    exact.
++  by rewrite !E.
++Qed.
++
++(* -------------------------------------------------------------------- *)
++(* SHA-512: FIPS 180-4, 4.1.3 and 6.4.2. *)
++
++Definition Ch64 (x y z : u64) : u64 := wxor (wand x y) (wand (wnot x) z).
++Definition Maj64 (x y z : u64) : u64 := wxor (wand x y) (wxor (wand x z) (wand y z)).
++Definition Sigma0_512 (x : u64) : u64 := wxor (wror x 28) (wxor (wror x 34) (wror x 39)).
++Definition Sigma1_512 (x : u64) : u64 := wxor (wror x 14) (wxor (wror x 18) (wror x 41)).
++Definition sigma0_512 (x : u64) : u64 := wxor (wror x 1) (wxor (wror x 8) (wshr x 7)).
++Definition sigma1_512 (x : u64) : u64 := wxor (wror x 19) (wxor (wror x 61) (wshr x 6)).
++
++Lemma sha_majority64E (a b c : u64) : sha_majority a b c = Maj64 a b c.
++Proof.
++  apply/eqP/eq_from_wbit_n => i.
++  rewrite /sha_majority /Maj64 !(wxorE, wandE, worE).
++  by case: (wbit_n a i); case: (wbit_n b i); case: (wbit_n c i).
++Qed.
++
++Lemma sha512_Sigma0E x : sha512_Sigma0 x = Sigma0_512 x.
++Proof. by rewrite /sha512_Sigma0 /Sigma0_512 wxorA. Qed.
++
++Lemma sha512_Sigma1E x : sha512_Sigma1 x = Sigma1_512 x.
++Proof. by rewrite /sha512_Sigma1 /Sigma1_512 wxorA. Qed.
++
++Lemma sha512_sigma0E x : sha512_sigma0 x = sigma0_512 x.
++Proof. by rewrite /sha512_sigma0 /sigma0_512 wxorA. Qed.
++
++Lemma sha512_sigma1E x : sha512_sigma1 x = sigma1_512 x.
++Proof. by rewrite /sha512_sigma1 /sigma1_512 wxorA. Qed.
++
++Definition sha512_round (s : u64 * u64 * u64 * u64 * u64 * u64 * u64 * u64) (kw : u64) :=
++  let '(a, b, c, d, e, f, g, h) := s in
++  let t1 := (h + Sigma1_512 e + Ch64 e f g + kw)%R in
++  let t2 := (Sigma0_512 a + Maj64 a b c)%R in
++  ((t1 + t2)%R, a, b, c, (d + t1)%R, e, f, g).
++
++(* SHA512SU0 then SHA512SU1 compute the next two message-schedule words of
++   FIPS 180-4, 6.4.2 step 1:
++     W_t = σ₁(W_{t-2}) + W_{t-7} + σ₀(W_{t-15}) + W_{t-16}. *)
++Lemma SHA512SU_schedule (w0 w1 w2 w3 w9 w10 w14 w15 : u64) :
++  sha512su1
++    (sha512su0 (make_vec U128 [:: w0; w1 ]) (make_vec U128 [:: w2; w3 ]))
++    (make_vec U128 [:: w14; w15 ])
++    (make_vec U128 [:: w9; w10 ])
++  = make_vec U128
++      [:: (sigma1_512 w14 + w9 + sigma0_512 w1 + w0)%R;
++          (sigma1_512 w15 + w10 + sigma0_512 w2 + w1)%R ].
++Proof.
++  rewrite /sha512su1 /sha512su0 !velem_at_make_vec //=.
++  rewrite !sha512_sigma0E !sha512_sigma1E.
++  have E (x y z u : u64) :
++    add_word (add_word (add_word u y) x) z = add_word (add_word (add_word x z) y) u.
++  - have : (u + y + x + z = x + z + y + u)%R.
++    + by rewrite (GRing.addrC u y) (GRing.addrAC y u x) (GRing.addrAC (y + x)%R u z)
++                 (GRing.addrC y x) (GRing.addrAC x y z).
++    exact.
++  by rewrite (E (sigma1_512 w14)) (E (sigma1_512 w15)).
++Qed.
++
++Lemma Maj64_perm (a b c : u64) : Maj64 c b a = Maj64 a b c.
++Proof.
++  apply/eqP/eq_from_wbit_n => i.
++  rewrite /Maj64 !(wxorE, wandE).
++  by case: (wbit_n a i); case: (wbit_n b i); case: (wbit_n c i).
++Qed.
++
++Lemma Ch64E (e f g : u64) : wxor (wand e f) (wand (wnot e) g) = Ch64 e f g.
++Proof. by []. Qed.
++
++(* Two SHA-512 rounds with SHA512H, SHA512H2 and an element-wise addition.
++   [x; y] is the vector [make_vec U128 [:: x; y]]: x in element 0 (the low
++   64 bits), y in element 1. The state pairs are packed in order, (a, b) as
++   [a; b], and so on. With k0 = K_t + W_t and k1 = K_{t+1} + W_{t+1}:
++     hw = SHA512H([g + k1; h + k0], [f; g], [d; e])
++   SHA512H2(hw, [c; _], [a; b]) is [a; b] after the two rounds, and
++   [c; d] + hw is [e; f] after them. The operands [f; g] and [d; e] are
++   EXT #8 of adjacent state registers, and [g + k1; h + k0] is [g; h] plus
++   the W+K pair with its elements swapped. *)
++Lemma SHA512H_H2_rounds (a b c d e f g h k0 k1 x : u64) :
++  let '(a2, b2, c2, d2, e2, f2, g2, h2) :=
++    sha512_round (sha512_round (a, b, c, d, e, f, g, h) k0) k1 in
++  let hw := sha512h (make_vec U128 [:: (g + k1)%R; (h + k0)%R ])
++                    (make_vec U128 [:: f; g ]) (make_vec U128 [:: d; e ]) in
++  sha512h2 hw (make_vec U128 [:: c; x ]) (make_vec U128 [:: a; b ])
++    = make_vec U128 [:: a2; b2 ]
++  /\ lift2_vec U64 +%R U128 (make_vec U128 [:: c; d ]) hw
++    = make_vec U128 [:: e2; f2 ].
++Proof.
++  rewrite /= /sha512h /sha512h2 !velem_at_make_vec //=.
++  rewrite !sha512_Sigma1E !sha512_Sigma0E !sha_majority64E !Ch64E (Maj64_perm a b c).
++  rewrite !add_wordE.
++  set T1 := (h + Sigma1_512 e + Ch64 e f g + k0)%R.
++  have -> : (Ch64 e f g + Sigma1_512 e + (h + k0) = T1)%R.
++  - by rewrite GRing.addrA (GRing.addrC (_ + _)%R h) (GRing.addrC (Ch64 _ _ _)) GRing.addrA.
++  set a1 := (T1 + (Sigma0_512 a + Maj64 a b c))%R.
++  have -> : (Maj64 a b c + Sigma0_512 a + T1 = a1)%R.
++  - by rewrite GRing.addrC (GRing.addrC (Maj64 _ _ _)).
++  rewrite (GRing.addrC T1 d).
++  set e1 := (d + T1)%R.
++  set T1' := (g + Sigma1_512 e1 + Ch64 e1 e f + k1)%R.
++  have -> : (Ch64 e1 e f + Sigma1_512 e1 + (g + k1) = T1')%R.
++  - by rewrite GRing.addrA (GRing.addrC (_ + _)%R g) (GRing.addrC (Ch64 _ _ _)) GRing.addrA.
++  have -> : (Maj64 a1 a b + Sigma0_512 a1 + T1' = T1' + (Sigma0_512 a1 + Maj64 a1 a b))%R.
++  - by rewrite GRing.addrC (GRing.addrC (Maj64 _ _ _)).
++  split; first by [].
++  by rewrite lift2_vec_make_vec.
++Qed.
++
++(* -------------------------------------------------------------------- *)
++(* The same statements about the instruction descriptions, whose [id_semi]
++   is the semantics of the instructions in the compiler: they fix which
++   operand of each instruction holds which part of the state. *)
++
++Section INSTR.
++Context (opts : armv8a_options).
++
++Lemma SHA256H_H2_instr_rounds (a b c d e f g h k0 k1 k2 k3 : u32) :
++  let '(a', b', c', d', e', f', g', h') :=
++    foldl sha256_round (a, b, c, d, e, f, g, h) [:: k0; k1; k2; k3 ] in
++  let abcd := make_vec U128 [:: a; b; c; d ] in
++  let efgh := make_vec U128 [:: e; f; g; h ] in
++  let wk := make_vec U128 [:: k0; k1; k2; k3 ] in
++  id_semi (armv8a_SHA256H_instr opts) abcd efgh wk = ok (make_vec U128 [:: a'; b'; c'; d' ])
++  /\ id_semi (armv8a_SHA256H2_instr opts) efgh abcd wk = ok (make_vec U128 [:: e'; f'; g'; h' ]).
++Proof.
++  move: (SHA256H_rounds a b c d e f g h k0 k1 k2 k3).
++  case: (foldl sha256_round (a, b, c, d, e, f, g, h) [:: k0; k1; k2; k3 ])
++    => [[[[[[[a' b'] c'] d'] e'] f'] g'] h'] [h1 h2].
++  by split => /=; rewrite /id_semi /= /armv8a_SHA256H_semi /armv8a_SHA256H2_semi ?h1 ?h2.
++Qed.
++
++Lemma SHA256SU_instr_schedule
++  (w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 : u32) :
++  let w16 := (σ₁ w14 + w9 + σ₀ w1 + w0)%R in
++  let w17 := (σ₁ w15 + w10 + σ₀ w2 + w1)%R in
++  let w18 := (σ₁ w16 + w11 + σ₀ w3 + w2)%R in
++  let w19 := (σ₁ w17 + w12 + σ₀ w4 + w3)%R in
++  Let x := id_semi (armv8a_SHA256SU0_instr opts)
++             (make_vec U128 [:: w0; w1; w2; w3 ]) (make_vec U128 [:: w4; w5; w6; w7 ]) in
++  id_semi (armv8a_SHA256SU1_instr opts) x
++    (make_vec U128 [:: w8; w9; w10; w11 ]) (make_vec U128 [:: w12; w13; w14; w15 ])
++  = ok (make_vec U128 [:: w16; w17; w18; w19 ]).
++Proof.
++  rewrite /id_semi /= /armv8a_SHA256SU1_semi /armv8a_SHA256SU0_semi.
++  by rewrite (SHA256SU_schedule w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15).
++Qed.
++
++(* The element-wise addition is VADD at 64-bit elements. *)
++Lemma SHA512H_H2_instr_rounds (a b c d e f g h k0 k1 x : u64) :
++  opts_size opts = U64 ->
++  let '(a2, b2, c2, d2, e2, f2, g2, h2) :=
++    sha512_round (sha512_round (a, b, c, d, e, f, g, h) k0) k1 in
++  Let hw := id_semi (armv8a_SHA512H_instr opts)
++              (make_vec U128 [:: (g + k1)%R; (h + k0)%R ])
++              (make_vec U128 [:: f; g ]) (make_vec U128 [:: d; e ]) in
++  Let ab := id_semi (armv8a_SHA512H2_instr opts) hw
++              (make_vec U128 [:: c; x ]) (make_vec U128 [:: a; b ]) in
++  Let ef := id_semi (armv8a_VADD_instr opts) (make_vec U128 [:: c; d ]) hw in
++  ok (ab, ef) = ok (make_vec U128 [:: a2; b2 ], make_vec U128 [:: e2; f2 ]).
++Proof.
++  move=> hsz.
++  move: (SHA512H_H2_rounds a b c d e f g h k0 k1 x).
++  case: (sha512_round (sha512_round (a, b, c, d, e, f, g, h) k0) k1)
++    => [[[[[[[a2 b2] c2] d2] e2] f2] g2] h2] /= [hab hef].
++  by rewrite /id_semi /= /armv8a_SHA512H_semi /armv8a_SHA512H2_semi /armv8a_VADD_semi hsz hab hef.
++Qed.
++
++Lemma SHA512SU_instr_schedule (w0 w1 w2 w3 w9 w10 w14 w15 : u64) :
++  Let x := id_semi (armv8a_SHA512SU0_instr opts)
++             (make_vec U128 [:: w0; w1 ]) (make_vec U128 [:: w2; w3 ]) in
++  id_semi (armv8a_SHA512SU1_instr opts) x
++    (make_vec U128 [:: w14; w15 ]) (make_vec U128 [:: w9; w10 ])
++  = ok (make_vec U128
++          [:: (sigma1_512 w14 + w9 + sigma0_512 w1 + w0)%R;
++              (sigma1_512 w15 + w10 + sigma0_512 w2 + w1)%R ]).
++Proof.
++  rewrite /id_semi /= /armv8a_SHA512SU1_semi /armv8a_SHA512SU0_semi.
++  by rewrite SHA512SU_schedule.
++Qed.
++
++End INSTR.
