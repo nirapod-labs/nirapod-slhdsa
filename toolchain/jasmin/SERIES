@@ -27,3 +27,4 @@ patches/0013-safetylib-report-unbounded-memory-ranges.patch 15e9e90d5d48821a7bcf
 patches/0014-safetylib-for-loop-counters-point-to-no-memory-regio.patch 4f8e4d83f81e8b68daf19233d90103a0b7d9356940cc97db72d103e2a00c8ae5
 patches/0015-safetylib-faster-start-up-with-large-global-tables.patch 38a2770730871bff8fce2d37392ef8fee963e00eb8388c7181899245524e2870
 patches/0016-changes-changelog-entry-for-the-safety-checker-fixes.patch eb9173fed3d99cb7c7d001d74953a9ef1f117a9f8a92f7010139115b1e34f240
+patches/0017-armv8a-add-EXTR-and-the-bit-field-instructions.patch b825ee2e4a91386396f4c9a393945815959b1a07ed314d75570e69b1b88d9380

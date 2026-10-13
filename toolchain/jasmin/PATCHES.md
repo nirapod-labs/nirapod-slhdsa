@@ -36,6 +36,7 @@ replaces.
 | 0001-0006 | PR #1624, head `282fcaa4192e` | LDP and STP; architecture-specific conditions on memory arguments | assembly generation and global-load lowering proved; instruction semantics trusted |
 | 0007-0008 | PR #1594, head `a30c006246fc` | Mach-O relocation operators in ARMv8-A assembly | printer only (trusted) |
 | 0009-0016 | PR #1625, head `02a2330a04c9` | safety checker: unsound verdicts, false alarms, CallTopHeuristic | safety checker (trusted) |
+| 0017 | this project: port of PR #1617, head `00e7e972eeb6` | EXTR, BFC, BFI, BFXIL, SBFX, UBFX | instruction semantics trusted |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -91,6 +92,28 @@ known defects are fixed before any verdict is used:
   counter;
 - the CallTopHeuristic call policy aborted on its first use;
 - start-up time quadratic in the size of the global tables.
+
+### 0017, EXTR and bit-field instructions (port of #1617)
+
+UBFX and SBFX extract a bit field in one instruction, BFI and BFXIL insert
+one, and EXTR extracts a word from a register pair. Used for index
+computations on digest bits and multi-word shifts.
+
+The pull request, by Benjamin Gregoire and Côme Le Breton, declares the
+instructions in the descriptor form that preceded the pin. At the pin an
+instruction has a total semantics, with its safety condition, its
+initialization condition and its well-formedness as separate fields
+(`id_semi_total`, `id_err`, `id_init`, `id_wf`), and the pull request does
+not compile. 0017 is one commit of this project that ports it: the
+instructions, argument kinds, printing, tests and changelog entry are those
+of the pull request; EXTR takes its semantics unchanged as
+`id_semi_total`. The pull request's semantics of BFC, BFI, BFXIL, SBFX and
+UBFX asserted the conditions on their immediates that `id_safe` also
+states, with lemmas relating the two; the port keeps the same `id_safe`
+conditions and removes the assertions and those lemmas, so the semantics is
+total and equal to the old one wherever the conditions hold. 0017 is not
+the pull request's code and is replaced by upstream's revision when there
+is one.
 
 ## Assembly checks
 
