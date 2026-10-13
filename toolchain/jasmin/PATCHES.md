@@ -34,6 +34,7 @@ replaces.
 | Patches | Origin | Content | Proof status |
 |---|---|---|---|
 | 0001-0006 | PR #1624, head `282fcaa4192e` | LDP and STP; architecture-specific conditions on memory arguments | assembly generation and global-load lowering proved; instruction semantics trusted |
+| 0007-0008 | PR #1594, head `a30c006246fc` | Mach-O relocation operators in ARMv8-A assembly | printer only (trusted) |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -62,6 +63,19 @@ CONSTRAINED UNPREDICTABLE. Register allocation gives the two destinations
 of one instruction distinct registers; `ldp_same_dest.jazz`, which loads
 both into one variable, compiles. Without the printer check, that test no
 longer fails if the two registers are equal.
+
+### #1594, Mach-O relocation operators
+
+At the pin, `jasminc -arch armv8a` prints the address of a global as
+`adrp x, sym` and `add x, x, :lo12:sym`, the ELF syntax, whatever `-system`
+says. The macOS assembler rejects `:lo12:`; Mach-O needs `sym@PAGE` and
+`sym@PAGEOFF`. macOS on AArch64 is a supported platform and the hash kernels
+read constant tables, which are globals. The pull request also adds the
+`armv8a-macos` category to the compiler's assembly tests.
+
+Reproducer: `compiler/tests/success/armv8a/global_read.jazz` with
+`jasminc -arch armv8a -system macosx`, then
+`clang -c -x assembler -target arm64-apple-macos` on the output.
 
 ## Assembly checks
 

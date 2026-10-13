@@ -17,3 +17,5 @@ patches/0003-armv8a-changelog-entry-for-LDP-and-STP.patch 10d6890dd91a4442d900e2
 patches/0004-lower_glob_load-use-the-first-destination-of-a-load-.patch 083dc8a232dffb2087936ec3436e72bf9b7bdd7f9e78f704a1d8ccac3077624d
 patches/0005-armv8a-check-the-LDP-STP-offset-range-on-the-scaled-.patch 515255315e1a87024db792da624a6e370c0467ab4cef333320a5cc5cc608da02
 patches/0006-armv8a-remove-the-printer-check-for-LDP-with-equal-d.patch 031c2445471cc239c09cc4fcbd55c3553bbe502c13fcd2a022074c408433324a
+patches/0007-armv8a-print-Mach-O-relocation-operators-on-macOS.patch 4092276f4528caa5b5a47f1a667d44d52c1932d2a0d9e91e023c483ee60ac3ef
+patches/0008-armv8a-changelog-entry-for-the-Mach-O-relocation-fix.patch 340a6023592a9507752afa80ddbf7f4a909feec17acf7728314603ac6001a28f

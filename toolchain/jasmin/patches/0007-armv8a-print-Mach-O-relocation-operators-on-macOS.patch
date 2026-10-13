@@ -1,0 +1,124 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Thu, 1 Oct 2026 19:18:01 +0600
+Subject: [PATCH] armv8a: print Mach-O relocation operators on macOS
+
+(cherry picked from commit 7a1b37956414692892d592a04ba3296e7a0ca076)
+---
+ compiler/Makefile            |  1 +
+ compiler/config/tests.config |  5 +++++
+ compiler/scripts/check       | 12 ++++++++++--
+ compiler/src/pp_arm_v8a.ml   | 25 +++++++++++++++++++------
+ 4 files changed, 35 insertions(+), 8 deletions(-)
+
+diff --git a/compiler/Makefile b/compiler/Makefile
+index 6910bf04e..55bb27c55 100644
+--- a/compiler/Makefile
++++ b/compiler/Makefile
+@@ -12,6 +12,7 @@ CHECKCATS ?= \
+ 	x86-64-windows \
+ 	arm-m4 \
+ 	armv8a \
++	armv8a-macos \
+ 	risc-v \
+ 	x86-64-stack-zero-loop \
+ 	x86-64-stack-zero-unrolled \
+diff --git a/compiler/config/tests.config b/compiler/config/tests.config
+index 45d1d995e..4b90bf0a4 100644
+--- a/compiler/config/tests.config
++++ b/compiler/config/tests.config
+@@ -83,6 +83,11 @@ bin = ./scripts/check
+ args = -arch armv8a
+ okdirs = tests/success/**/armv8a
+ 
++[test-armv8a-macos]
++bin = ./scripts/check
++args = -arch armv8a -system macosx
++okdirs = tests/success/**/armv8a
++
+ [test-armv8a-extraction]
+ bin = ./scripts/extract-and-check
+ args = armv8a
+diff --git a/compiler/scripts/check b/compiler/scripts/check
+index d755faa27..d2cdf0580 100755
+--- a/compiler/scripts/check
++++ b/compiler/scripts/check
+@@ -18,6 +18,10 @@ DLL=${DIR}/jasmin.so
+ if [ -d "${DIR}" ]; then rm -r ${DIR}; fi
+ mkdir -p $DIR
+ 
++# Whether the arguments select macOS, whose objects are Mach-O
++MACOS=no
++(echo $@ | grep -q -e "-system[ =]macosx") && MACOS=yes
++
+ set -x
+ 
+ $(dirname $0)/../jasminc -g -system linux -o ${ASM} "$@"
+@@ -32,6 +36,9 @@ elif [ $ARCH = "riscv" ]
+ then
+      # +m enables integer multiplication
+      ASARGS="--triple=riscv32 --mcpu=generic-rv32 -mattr=+m"
++elif [ $ARCH = "armv8a" ] && [ $MACOS = yes ]
++then
++    ASARGS="--triple=arm64-apple-macos"
+ elif [ $ARCH = "armv8a" ]
+ then
+     ASARGS="--triple=aarch64"
+@@ -41,5 +48,6 @@ fi
+ 
+ llvm-mc $ASARGS --filetype=obj -o ${OBJ} ${ASM}
+ 
+-# Compile as a shared library, except for ARMv7 for which it is known not to work
+-[ $ARCH = "arm-m4" ] || ld.lld -shared -o ${DLL} ${OBJ}
++# Compile as a shared library, except for ARMv7 for which it is known not to work,
++# and on macOS since ld.lld only links ELF objects
++[ $ARCH = "arm-m4" ] || [ $MACOS = yes ] || ld.lld -shared -o ${DLL} ${OBJ}
+diff --git a/compiler/src/pp_arm_v8a.ml b/compiler/src/pp_arm_v8a.ml
+index 3c93c38e8..0c9df36d2 100644
+--- a/compiler/src/pp_arm_v8a.ml
++++ b/compiler/src/pp_arm_v8a.ml
+@@ -1,6 +1,7 @@
+ (* Assembly printer for ARMv8-A (AArch64).
+ 
+-   GNU assembler (ELF) syntax. General-purpose registers are printed in
++   GNU assembler syntax, with Mach-O relocation operators when the target
++   system is macOS (see [pp_ADR]). General-purpose registers are printed in
+    their 64-bit X form except for the instruction operands that require the
+    32-bit W form (narrow loads and stores, 32-bit multiplies, zero
+    extensions). Immediate values are printed as nonnegative integers. *)
+@@ -111,10 +112,22 @@ let pp_mnemonic (ARMv8A_op (mn, _) as op) =
+   | _ -> String.lowercase_ascii pp.pp_aop_name
+ 
+ (* Split an [ADR] instruction to a global symbol into an [ADRP]/[ADD]
+-   pair using :lo12: relocations. *)
+-let pp_ADR dst addr =
+-  [ Instr ("adrp", [ dst; addr ]);
+-    Instr ("add", [ dst; dst; ":lo12:" ^ addr ]) ]
++   pair: [ADRP] computes the 4 KiB page of the address and [ADD] adds the
++   offset within that page. ELF assemblers write these operands [sym] and
++   [:lo12:sym]; Mach-O ones [sym@PAGE] and [sym@PAGEOFF]. *)
++let pp_ADR dst p =
++  let page, pageoff =
++    if is_target_system_macos () then
++      let pp_reloc r =
++        Format.asprintf "%s@@%s+%a" global_datas_label r Z.pp_print (Conv.z_of_int32 p)
++      in
++      (pp_reloc "PAGE", pp_reloc "PAGEOFF")
++    else
++      let addr = pp_rip_address p in
++      (addr, ":lo12:" ^ addr)
++  in
++  [ Instr ("adrp", [ dst; page ]);
++    Instr ("add", [ dst; dst; pageoff ]) ]
+ 
+ module Armv8aTarget : AsmTargetBuilder.AsmTarget with
+   type reg = Armv8a_decl.register
+@@ -209,7 +222,7 @@ module Armv8aTarget : AsmTargetBuilder.AsmTarget with
+         let pp = id.id_pp_asm args in
+         match op, args with
+         | ARMv8A_op (ADR, _), [ dst; Addr (Arip r) ] ->
+-            pp_ADR (pp_asm_arg dst) (pp_rip_address r)
++            pp_ADR (pp_asm_arg dst) r
+         | _, _ ->
+             let name = pp_mnemonic op in
+             (* Registers are printed in the W form when the instruction
