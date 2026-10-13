@@ -145,7 +145,10 @@ fn _hmac_sha512_keyblock_mem(
 /*
  * inner <- compress(IV, K0 ^ ipad), outer <- compress(IV, K0 ^ opad).
  *
- * inner and outer are the caller's stack arrays, passed by name.
+ * inner and outer are the caller's stack arrays, passed by name, because
+ * each stays live across a compression call. A stack array is addressed
+ * from the stack pointer and needs no register across the call; a reg ptr
+ * would have to be spilled around it and protected on reload.
  *
  * Residue: the local pad blocks hold K0 ^ ipad and K0 ^ opad on return.
  * Neither they nor the compression's schedule window are cleared here;
@@ -232,8 +235,9 @@ inline fn __hmac_sha512_init(
  * The outer message is one block of key plus the digest: total starts at
  * the block size and grows by the digest length.
  *
- * out and outer are the caller's stack arrays, passed by name, as at
- * __hmac_sha256_init.
+ * out and outer are the caller's stack arrays, passed by name, for the
+ * reason given at __hmac_sha256_init: both stay live across the inner
+ * digest's finalize call.
  */
 inline fn __hmac_sha256_finalize(
   stack u8[32] out,
