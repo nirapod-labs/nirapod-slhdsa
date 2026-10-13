@@ -110,9 +110,10 @@ speculative constant-time checkers treat them as other operators: their
 outputs carry the join of the security levels of their inputs.
 
 The architecture makes these instructions data-independent-time only while
-PSTATE.DIT is set. Compiled Jasmin functions do not set it: the caller must
-set it around calls that handle secret data and restore it afterwards. The
-library's C layer sets PSTATE.DIT around key generation and signing.
+PSTATE.DIT is set. Compiled Jasmin code does not set PSTATE.DIT, and the
+series adds no instruction that could. The caller must set it around calls
+that handle secret data and restore it afterwards; in this library that
+caller is the C layer, around key generation and signing.
 
 ### Calling convention
 
