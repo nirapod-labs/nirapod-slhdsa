@@ -39,7 +39,7 @@ RULES = {
         ("CAVP checks passed with no failure",
          r"^cavp: (\d+) checks passed, 0 failed$", 7128),
         ("differential checks passed with no failure",
-         r"^diff: (\d+) checks passed, 0 failed$", 66000),
+         r"^diff: (\d+) checks passed, 0 failed$", 22000),
         ("negative control: failing checks with every family detected",
          r"^negative_control: PASS, every family detected \((\d+) failing checks\)$", 1),
     ],

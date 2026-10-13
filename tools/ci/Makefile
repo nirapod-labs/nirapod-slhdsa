@@ -129,9 +129,8 @@ not_applicable = @echo "$(1): NOT APPLICABLE, the $(2) component is absent (none
 # Components that have landed on main. The pull request that lands a
 # component adds it here; from then on a tree without any of its
 # directories fails every target, so deleting a component cannot turn its
-# checks into NOT APPLICABLE. Only the toolchain, which is not a component,
-# has landed so far.
-CI_REQUIRED :=
+# checks into NOT APPLICABLE.
+CI_REQUIRED := hash
 CI_REQUIRED_UNKNOWN := $(filter-out $(CI_COMPONENTS),$(CI_REQUIRED))
 CI_REQUIRED_MISSING := $(strip $(foreach c,$(CI_REQUIRED),$(if $(call present,$(c)),,$(c))))
 ifneq ($(CI_REQUIRED_UNKNOWN),)
@@ -233,22 +232,21 @@ CI_TARGET := $(CI_ARCH)-$(CI_FORMAT)
 # ----------------
 #
 # A kernel set is one choice of the four kernel roots of tests/hash/Makefile.
-# Each architecture is tested twice: with the portable scalar kernels, and
-# with all of its own kernels selected together. Between them, the CAVP and
-# differential tests run every kernel the architecture has; ci-source fails
-# when a variant directory exists that no set selects, or a set selects one
-# that does not exist. CI_HASH_CPU_<set> lists the CPU features the set
-# needs on the runner.
-
-CI_HASH_SETS := scalar $(CI_ARCH)
+# Each architecture is tested with the portable scalar kernels and, once it
+# has kernels of its own, a second time with all of them selected together.
+# Between them, the CAVP and differential tests run every kernel the
+# architecture has; ci-source fails when a variant directory exists that no
+# set selects, or a set selects one that does not exist. CI_HASH_CPU_<set>
+# lists the CPU features the set needs on the runner.
 
 CI_HASH_VARS_scalar  :=
 CI_HASH_CPU_scalar   :=
-CI_HASH_VARS_x86_64  := KECCAKX_VARIANT=x86_64/avx2 SHA2_VARIANT=x86_64/shani \
-                        SHA2X_VARIANT=x86_64/avx2
-CI_HASH_CPU_x86_64   := avx2 sha_ni
-CI_HASH_VARS_aarch64 := KECCAK_VARIANT=aarch64/scalar
+CI_HASH_VARS_x86_64  :=
+CI_HASH_CPU_x86_64   :=
+CI_HASH_VARS_aarch64 :=
 CI_HASH_CPU_aarch64  :=
+
+CI_HASH_SETS := scalar $(if $(CI_HASH_VARS_$(CI_ARCH)),$(CI_ARCH))
 
 # <family>/<arch>/<variant> of each assignment: KECCAK* select keccak/,
 # SHA2* select sha2/.
