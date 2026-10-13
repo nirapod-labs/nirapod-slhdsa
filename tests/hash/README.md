@@ -23,7 +23,7 @@ recorded results carry the revision and host they were obtained on.
 | `vectors/fetch.sh` | fetch and verify the NIST CAVP response files |
 | `tools/check_constants.py` | recompute every constant table from its definition |
 | `tools/gen_test_arrays.py` | generator of `jasmin/test_arrays.jinc` |
-| `tools/negative_control.sh` | show that the tests detect a wrong round constant |
+| `tools/negative_control.sh` | show that the tests detect a wrong round constant and a dropped squeeze store |
 | `tools/fill_check.sh` | run the tests with the one-shot SHA-2 buffers filled with 0xa5 |
 
 The test exports are named `nirapod_slhdsa_hashtest_*`. They are linked
@@ -101,6 +101,8 @@ differential run, and requires a failure in every family the Makefile
 lists: the three single-way families,
 and the three multi-way kernels. Every kernel variant reads the shared
 constant tables, so the control covers the variants selected for the run.
+A second copy drops the last byte store of the single-way and of the
+4-way squeeze, and its squeeze sweep must fail for both.
 
 **Fill check** (`make fill-check`). The one-shot SHA-2 functions and the
 HMAC test exports zero their buffer before first use only so that the

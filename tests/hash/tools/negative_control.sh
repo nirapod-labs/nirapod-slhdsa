@@ -14,6 +14,11 @@
 # in NEG_FAMILIES has a failing check; a mutation that does not match its
 # source text, a build failure or an undetected family fails the control.
 #
+# A second copy drops one store from each array squeeze: the last byte
+# store of the single-way and of the 4-way extract, which writes the byte
+# tail of an output. The squeeze sweep of that copy must fail for both, so
+# the sweep is shown to catch a single output byte left unwritten.
+#
 # The two steps can run on different hosts, as the x86-64 tests do:
 #
 #     negative_control.sh build <hash source dir> <work dir> <test unit .jazz>
@@ -47,24 +52,47 @@ build() {
     return 0
   }
 
+  # drop_store(file, store): delete the last line of the copy at work/store
+  # that contains store.
+  drop_store() {
+    file=$work/store/hash/$1 store=$2
+    n=$(grep -c -F -- "$store" "$file" || true)
+    [ "$n" -ge 1 ] || { echo "negative_control: '$store' not found in $1" >&2; exit 1; }
+    awk -v s="$store" -v n="$n" 'index($0, s) && ++k == n { next } { print }' "$file" > "$file.new"
+    mv "$file.new" "$file"
+    [ "$(grep -c -F -- "$store" "$file" || true)" -eq $((n - 1)) ] || {
+      echo "negative_control: $1 store not dropped" >&2
+      exit 1
+    }
+  }
+
+  mkdir -p "$work/store"
+  cp -R "$src" "$work/store/hash"
+  drop_store keccak/sponge_array.jinc "out[off] = (8u)t;"
+  drop_store keccak/sponge_x4_array.jinc "out3[off] = (8u)t;"
+
   mutate keccak/keccak_constants.jinc "0x0000000000000001, 0x0000000000008082" "0x0000000000000003, 0x0000000000008082"
   mutate sha2/sha256_k.jinc "0x428a2f98, 0x71374491" "0x428a2f99, 0x71374491"
   mutate sha2/sha512_k.jinc "0x428a2f98d728ae22" "0x428a2f98d728ae23"
 
-  h=$work/hash
-  "$JASMINC" -arch "$JARCH" -system "$SYSTEM" \
-    -I Hash="$h" -I HashWord="$h/$ARCH" \
-    -I KeccakKernel="$h/$KECCAK_DIR" -I KeccakKernelX="$h/$KECCAKX_DIR" \
-    -I Sha2Kernel="$h/$SHA2_DIR" -I Sha2KernelX="$h/$SHA2X_DIR" \
-    -o "$work/hash_test.s" "$unit"
+  for d in "$work" "$work/store"; do
+    h=$d/hash
+    "$JASMINC" -arch "$JARCH" -system "$SYSTEM" \
+      -I Hash="$h" -I HashWord="$h/$ARCH" \
+      -I KeccakKernel="$h/$KECCAK_DIR" -I KeccakKernelX="$h/$KECCAKX_DIR" \
+      -I Sha2Kernel="$h/$SHA2_DIR" -I Sha2KernelX="$h/$SHA2X_DIR" \
+      -o "$d/hash_test.s" "$unit"
+  done
 }
 
 run() {
   work=$1 harness=$2 vectors=$3
 
-  test -f "$work/hash_test.s" || { echo "negative_control: no mutated build in $work" >&2; exit 1; }
-  # shellcheck disable=SC2086
-  $CC -O2 -o "$work/hash_test" "$harness" "$work/hash_test.s" $CRYPTO_LIBS
+  for d in "$work" "$work/store"; do
+    test -f "$d/hash_test.s" || { echo "negative_control: no mutated build in $d" >&2; exit 1; }
+    # shellcheck disable=SC2086
+    $CC -O2 -o "$d/hash_test" "$harness" "$d/hash_test.s" $CRYPTO_LIBS
+  done
 
   "$work/hash_test" cavp "$vectors" > "$work/run.log" 2>&1 || true
   "$work/hash_test" diff 1 200 >> "$work/run.log" 2>&1 || true
@@ -76,6 +104,15 @@ run() {
     }
   done
   echo "negative_control: PASS, every family detected ($(grep -c '^FAIL' "$work/run.log") failing checks)"
+
+  "$work/store/hash_test" squeeze 1 > "$work/store/run.log" 2>&1 || true
+  for way in x1 x4; do
+    grep -q "^FAIL squeeze_$way " "$work/store/run.log" || {
+      echo "negative_control: FAIL, the dropped $way squeeze store was not detected" >&2
+      exit 1
+    }
+  done
+  echo "negative_control: PASS, every dropped squeeze store detected ($(grep -c '^FAIL' "$work/store/run.log") failing checks)"
 }
 
 case $mode in

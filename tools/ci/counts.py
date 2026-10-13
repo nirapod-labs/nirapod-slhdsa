@@ -19,8 +19,8 @@
 #               DIFF_ITERS=2000 (on the normal and on the 0xa5-filled
 #               build), the squeeze sweep over every tested length, rate
 #               and start position, a fill check that filled every zeroed
-#               buffer site,
-#               and a negative control that detected every mutated family
+#               buffer site, and a negative control that detected every
+#               mutated family and every dropped squeeze store
 #   acvp        tests/acvp `check`: the verdict line of the full vector set
 #   diff        tests/diff/difftest.py: agreeing cases of all 12 sets times
 #               the 28 interface combinations
@@ -52,6 +52,8 @@ RULES = {
          r"^fill_check: PASS, every test passes with 0xa5-filled buffers \((\d+) sites filled\)$", 4),
         ("negative control: failing checks with every family detected",
          r"^negative_control: PASS, every family detected \((\d+) failing checks\)$", 1),
+        ("negative control: failing squeeze checks with every dropped store detected",
+         r"^negative_control: PASS, every dropped squeeze store detected \((\d+) failing checks\)$", 1),
     ],
     "acvp": [
         ("ACVP cases, all run and passed",
