@@ -5,9 +5,12 @@
 # ========
 #
 # Single entry point of the build. It compiles the parameter-set units with
-# the Jasmin compiler:
+# the Jasmin compiler, assembles them with the C wrapper into two static
+# libraries:
 #
-#     make, make asm  build/<target>/asm/<set>-<variant>.s for every unit
+#     make            build/<target>/lib/libnirapod_slhdsa.a
+#                     build/<target>/lib/libnirapod_slhdsa_testing.a
+#     make asm        only the Jasmin assembly
 #     make gen        write the assembly of every target and its manifest
 #                     into gen/ (this tree does not carry gen/)
 #     make gen-check  regenerate into build/gen-check and fail on any byte
@@ -16,12 +19,12 @@
 #     make clean      remove build/
 #
 # <target> is <arch>-<format>: aarch64-macho, aarch64-elf or x86_64-elf,
-# detected from the host. `make gen` builds the assembly of all three,
-# which needs no target hardware.
+# detected from the host for the libraries. `make gen` builds
+# the assembly of all three, which needs no target hardware.
 #
 # Tools: JASMINC (and JASMIN_CT for analysis targets) must be the Jasmin
-# build that toolchain/build.sh makes from the pins under toolchain/.
-# JASMINC is required: when it is unset, make looks for
+# build that toolchain/build.sh makes from the pins under toolchain/; CC
+# must accept C99. JASMINC is required: when it is unset, make looks for
 # the assembly in gen/<target>/, which a clean checkout of this tree does
 # not have.
 #
@@ -30,6 +33,8 @@
 
 JASMINC  ?=
 JASMIN_CT ?= jasmin-ct
+CC       ?= cc
+AR       ?= ar
 
 # Source roots. Every source path below goes through one of these.
 JASMIN_SRC  ?= src
@@ -138,6 +143,7 @@ JASMIN_FLAGS = -arch $(JASMIN_ARCH) -system $(JASMIN_SYSTEM) \
 JASMIN_DEPS := $(sort $(shell find $(JASMIN_SRC) $(HASH_SRC) -name '*.jinc'))
 
 ASM   := $(addprefix $(OUT)/asm/,$(addsuffix .s,$(UNITS)))
+JOBJ  := $(addprefix $(OUT)/obj/,$(addsuffix .o,$(UNITS)))
 
 # The compilation unit of <set>-<variant> wraps sets/<set>.jinc in the
 # namespace that names its symbols (capi/jasmin.h).
@@ -153,7 +159,7 @@ $(OUT)/asm/%.s: $(OUT)/units/%.jazz $(JASMIN_DEPS)
 	$(JASMINC) $(JASMIN_FLAGS) $(JASMIN_INCLUDES) -o $@ $<
 	@echo "$(JASMIN_FLAGS) $(JASMIN_INCLUDES)" > $(@:.s=.flags)
 
-# The assembly of the units: compiled here when JASMINC is set,
+# The assembly the objects come from: compiled here when JASMINC is set,
 # else gen/<target>/ as `make gen` writes it (absent from this tree).
 GEN_DIR ?= gen
 ifeq ($(strip $(JASMINC)),)
@@ -164,15 +170,110 @@ else
 ASM_DIR := $(OUT)/asm
 endif
 
+$(OUT)/obj/%.o: $(ASM_DIR)/%.s
+	@mkdir -p $(@D)
+	$(CC) -c -o $@ $<
+
+# --------------------------------------------------------------------
+# C wrapper and libraries
+# --------------------------------------------------------------------
+#
+# Every C file is compiled twice (capi/internal.h, "Two builds"):
+#
+#     obj/c/          production objects
+#     obj/c-testing/  the same sources with NIRAPOD_SLHDSA_TESTING, which
+#                     adds the FIPS 205 internal functions, caller-chosen
+#                     seeds and opt_rand, and the fault-check switch, plus
+#                     capi/testing/testing.c
+#
+# Libraries:
+#
+#     libnirapod_slhdsa.a          the production objects and the Jasmin
+#                                  units, linked into one relocatable object
+#                                  in which only the functions of
+#                                  include/nirapod_slhdsa.h stay global; every
+#                                  other symbol, Jasmin exports included, is
+#                                  made local (ld -r with an exported-symbols
+#                                  list on Mach-O; ld -r, then objcopy
+#                                  --keep-global-symbols on ELF)
+#     libnirapod_slhdsa_testing.a  the testing objects and the same Jasmin
+#                                  units, every symbol as compiled; for tests
+#                                  only, and the only library they link
+
+CFLAGS ?= -O2
+CWARN  := -std=c99 -Wall -Wextra -Wpedantic -Wshadow -Wmissing-prototypes \
+          -Wstrict-prototypes -Wpointer-arith -Werror
+CPPFLAGS += -I$(INCLUDE_DIR) -I$(CAPI_SRC) -I$(CAPI_SRC)/testing
+TESTING_DEF := -DNIRAPOD_SLHDSA_TESTING
+
+LD      ?= ld
+OBJCOPY ?= objcopy
+
+CAPI_FILES := api clear dispatch entropy sets timing
+CAPI_DEPS  := $(wildcard $(CAPI_SRC)/*.h) $(INCLUDE_DIR)/nirapod_slhdsa.h
+COBJ       := $(addprefix $(OUT)/obj/c/,$(addsuffix .o,$(CAPI_FILES)))
+TCOBJ      := $(addprefix $(OUT)/obj/c-testing/,$(addsuffix .o,$(CAPI_FILES) testing))
+
+$(OUT)/obj/c/%.o: $(CAPI_SRC)/%.c $(CAPI_DEPS)
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CWARN) $(CFLAGS) -c -o $@ $<
+
+$(OUT)/obj/c-testing/%.o: $(CAPI_SRC)/%.c $(CAPI_DEPS)
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(TESTING_DEF) $(CWARN) $(CFLAGS) -c -o $@ $<
+
+$(OUT)/obj/c-testing/testing.o: $(CAPI_SRC)/testing/testing.c $(CAPI_DEPS) \
+                                $(CAPI_SRC)/testing/nirapod_slhdsa_testing.h
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(TESTING_DEF) $(CWARN) $(CFLAGS) -c -o $@ $<
+
+LIB         := $(OUT)/lib/libnirapod_slhdsa.a
+TESTING_LIB := $(OUT)/lib/libnirapod_slhdsa_testing.a
+
+# The symbols that stay global: the header's functions, with the Mach-O
+# prefix where the format has one.
+SYM_PREFIX  := $(if $(filter macho,$(FORMAT)),_,)
+EXPORTS     := $(OUT)/lib/exports.txt
+CHECK_EXPORTS := sh $(TESTS_DIR)/abi/check-exports.sh
+
+$(EXPORTS): $(INCLUDE_DIR)/nirapod_slhdsa.h $(TESTS_DIR)/abi/check-exports.sh
+	@mkdir -p $(@D)
+	$(CHECK_EXPORTS) list $< $(SYM_PREFIX) > $@
+
+LIB_OBJ := $(OUT)/obj/libnirapod_slhdsa.o
+
+# The link recipe is in this Makefile: a change to it relinks the object.
+ifeq ($(FORMAT),macho)
+$(LIB_OBJ): $(COBJ) $(JOBJ) $(EXPORTS) Makefile
+	$(LD) -r -o $@ $(COBJ) $(JOBJ) -exported_symbols_list $(EXPORTS)
+else
+$(LIB_OBJ): $(COBJ) $(JOBJ) $(EXPORTS) Makefile
+	$(LD) -r -o $@.all $(COBJ) $(JOBJ)
+	$(OBJCOPY) --keep-global-symbols=$(EXPORTS) $@.all $@
+	rm -f $@.all
+endif
+
+$(LIB): $(LIB_OBJ)
+	@mkdir -p $(@D)
+	rm -f $@
+	$(AR) rcs $@ $^
+
+$(TESTING_LIB): $(TCOBJ) $(JOBJ)
+	@mkdir -p $(@D)
+	rm -f $@
+	$(AR) rcs $@ $^
+
 # --------------------------------------------------------------------
 # Entry points
 # --------------------------------------------------------------------
 
-.PHONY: all asm clean
+.PHONY: all asm lib clean
 
-all: asm
+all: lib
 
 asm: $(ASM)
+
+lib: $(LIB) $(TESTING_LIB)
 
 # --------------------------------------------------------------------
 # Generated assembly (gen/)
