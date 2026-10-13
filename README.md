@@ -58,22 +58,22 @@ flowchart TB
   subgraph proof["Proof"]
     sec["SPHINCS+ security proof"]
     spec["FIPS 205 specification<br/>in EasyCrypt"]
-    sec -. "open" .- spec
+    sec -- "EUF-CMA" --- spec
   end
   spec -. "equivalence, open" .- core
   classDef planned stroke-dasharray: 5 4
-  class asm,sec,spec planned
+  class asm planned
 ```
 
 Dashed boxes are not on this branch yet; dotted links are proofs still open. The pinned
-compiler, the hash layer, the core and the C API are here today; the assembly is built
-from them, not shipped.
+compiler, the hash layer, the core, the C API, the EasyCrypt specification of FIPS 205 and
+its EUF-CMA proof are here today; the assembly is built from them, not shipped.
 
 ## What is proven, and what is not
 
 | Claim | Evidence | Scope |
 | :---- | :------- | :---- |
-| EUF-CMA security of the FIPS 205 specification | not yet in this repository | — |
+| EUF-CMA security of the FIPS 205 specification | proved in EasyCrypt from the SPHINCS+ proof of ePrint 2024/910; `make -C proofs check` re-checks both | the specification, not the Jasmin code; the specification is checked against FIPS 205 by review and `proofs/spec/validation/`, and has not been run on ACVP vectors; all 12 parameter sets, pure and pre-hash, deterministic and hedged signing; a concrete bound in PRF, ITSR, tweakable-hash and pre-hash collision terms; hypotheses and limits in [`proofs/README.md`](proofs/README.md#security-of-the-specification) |
 | The Jasmin implementation is equivalent to the specification | open | — |
 | Hash primitives match FIPS 180-4 and FIPS 202 | partly proved in EasyCrypt on the code `jasmin2ec` extracts | `_sha256_compress` and `_sha512_compress`, the one-block entry points of the portable SHA-2 kernels, with their round functions, on the x86-64 and AArch64 models, total correctness; not the entry points that read blocks from memory (`_sha*_compress_blocks`, used by the streaming hash), nor the SHA-NI and A64 kernels the x86-64 and AArch64 test configurations select; the rest is open ([`proofs/README.md`](proofs/README.md#extracted-models-and-correctness-proofs)) |
 | Constant time and speculative constant time on every secret-dependent path | checked by `jasmin-ct` and `jasmin-ct --sct` on every parameter-set unit (`make ct`, run by CI on both architectures); passes on every unit of both architectures, see the status table | the Jasmin source, under the security types of its exports; conditional on memory safety, which is not checked yet; declassifications argued in [`docs/DECLASSIFICATION.md`](docs/DECLASSIFICATION.md) |

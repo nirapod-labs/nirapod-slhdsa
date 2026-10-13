@@ -5,12 +5,15 @@ SPDX-License-Identifier: Apache-2.0
 
 # Proofs
 
-EasyCrypt development for nirapod-slhdsa. So far it holds byte-level
-specifications of the hash functions FIPS 205 uses, models of the Jasmin
-hash code extracted with `jasmin2ec`, and proofs that parts of that code
-compute the specified functions.
+EasyCrypt development for nirapod-slhdsa: a byte-level specification of
+FIPS 205 and of the hash functions it uses, lemmas that check parts of that
+specification against the standard, its EUF-CMA security, and the start of
+the functional-correctness proofs that are to connect it to the Jasmin
+implementation.
 
-**Status.** The implementation theorems cover the one-block entry points
+**Status.** The specification, its validation theories and the EUF-CMA
+theorems of the specification for all twelve parameter sets are written and
+check. The implementation theorems so far cover the one-block entry points
 `_sha256_compress` and `_sha512_compress` of the portable SHA-256 and
 SHA-512 kernels, and their round functions (below). The kernels' other
 entry points, `_sha256_compress_blocks` and `_sha512_compress_blocks`, which
@@ -25,30 +28,150 @@ is verified.
 |---|---|
 | `spec/Bytes.ec` | byte strings and the notation of FIPS 205 section 2.3 |
 | `spec/hash/` | FIPS 180-4 (SHA-224/256/384/512, SHA-512/224, SHA-512/256), FIPS 198-1 HMAC, RFC 8017 MGF1, and the byte interface to FIPS 202 |
+| `spec/slhdsa/` | FIPS 205: parameter sets, Algorithms 1 to 25, addresses, the section 11 hash instantiations, context framing and pre-hash |
+| `spec/validation/` | checks of parts of the specification against the standard (below) |
+| `security/` | EUF-CMA of the specification, from the imported SPHINCS+ proof |
 | `extracted/` | the extraction entry and the models `jasmin2ec` extracts from the Jasmin sources, one directory per (architecture, variant) |
 | `correctness/` | functional-correctness proofs of the extracted models |
 | `inventory/` | per (architecture, variant): every axiom in scope and the claimed theorem statements, as EasyCrypt prints them |
 | `tools/` | the proof-hole scan, the FIPS 180-4 constant derivation, the extraction script, the inventory generator |
 
-The FIPS 202 bit-level specification is imported unchanged from
-[formosa-crypto/crypto-specs](https://github.com/formosa-crypto/crypto-specs)
-and lives in `../third_party/crypto-specs/` with its licence and
-provenance.
+Two EasyCrypt developments are imported unchanged, each in
+`../third_party/` with its licence and provenance:
 
-## The hash specifications
+- the FIPS 202 bit-level specification of
+  [formosa-crypto/crypto-specs](https://github.com/formosa-crypto/crypto-specs),
+  in `crypto-specs/`;
+- the EUF-CMA security proof of SPHINCS+ of
+  [formosa-crypto/formosa-slhdsa](https://github.com/formosa-crypto/formosa-slhdsa)
+  (ePrint 2024/910), in `formosa-slhdsa/`.
 
-Each function is an EasyCrypt operator on byte strings that cites the
-section of its standard. The specifications cover byte-string messages
-only: FIPS 180-4 and FIPS 202 also define their functions on bit strings
-whose length is not a multiple of eight, which FIPS 205 never uses. The
-FIPS 180-4 constant tables are checked by `make check-constants`, which
-re-derives them from their definitions. The hash functions themselves
-cannot be evaluated inside EasyCrypt (machine words are abstract there).
-Of the specifications, only the two compression functions are tested
-against vectors, through the kernels proven equal to them, which pass the
-CAVP tests of `tests/hash`. Padding, the full hashes and their truncated
-variants, HMAC, MGF1 and the FIPS 202 byte interface are checked by review
-only, until proofs of the code that implements them reach them.
+## The specification
+
+The specification is a set of EasyCrypt operators, one per algorithm of the
+standard, each citing its algorithm and the pseudocode lines it transcribes.
+Keys and signatures are byte strings in the formats of FIPS 205 Figures 15
+to 17, and every function takes its parameter set as an argument. Where the
+transcription departs in form from the pseudocode, the theory header says
+how and why:
+
+- loops are folds over integer ranges; a `while` loop runs with explicit
+  fuel, and the fuel's sufficiency is argued where it is used;
+- the recursive tree-hash algorithms (9 and 15) recurse on the list of
+  heights still to build;
+- addresses are passed by value, which FIPS 205 section 4.2 allows;
+- random inputs are arguments (`addrnd = None` selects deterministic
+  signing), and a module `SLH_DSA` samples them for the probabilistic
+  interface.
+
+The specification covers byte-string messages only. FIPS 180-4 and FIPS 202
+also define their functions on bit strings whose length is not a multiple of
+eight; FIPS 205 never uses those.
+
+## What the validation theories establish
+
+Each statement below is a machine-checked lemma about the specification.
+They check the parts of the transcription listed here against the standard;
+they do not prove anything about an implementation.
+
+- `Validate_Params`: every row of Table 2 satisfies the relations the
+  standard states between its columns (w, len1, len2 by Algorithm 1,
+  Equation 5.3, h = d * h', m, public-key and signature sizes, security
+  category).
+- `Validate_Encoding`: Algorithms 2 to 4 and the WOTS+ checksum evaluate to
+  independently computed values on small inputs, including bit fields that
+  cross byte boundaries; sizes and ranges of `toByte` and `base_2b` in
+  general.
+- `Validate_Address`: an address built with every Table 1 function has the
+  byte layout of Figures 2 and 6; the getters read it back; compression
+  gives Figure 18; the Table 3 functions agree with compressing the full
+  address on that example; every Table 1 function preserves size 32.
+- `Validate_Framing`: the pure and pre-hash message framings of section 10.2
+  are injective for contexts of at most 255 bytes (the pre-hash one up to
+  the digest), and no pure framing equals a pre-hash framing.
+
+Nothing else in the specification is executed. Algorithms 5 to 25 (beyond
+the closed forms `security/FIPS205_TreeForms.ec` restates and proves) and
+the hash instantiations of section 11 (PRF, PRF_msg, H_msg, F, H and T_l,
+their padding and the choice of SHA-256 or SHA-512) are checked by review
+against the standard only. The specification has not been run on ACVP
+vectors; that check is open, and is planned through the equivalence with
+the implementation, once the implementation is tested on them.
+
+The FIPS 180-4 constant tables are checked by `make check-constants`, which
+re-derives them from their definitions.
+
+The hash functions themselves cannot be evaluated inside EasyCrypt (machine
+words are abstract there). Of the hash specifications, only the two SHA-2
+compression functions are tested against vectors, through the kernels proven
+equal to them, which pass the CAVP tests of `tests/hash`. Padding, the full
+hashes and their truncated variants, HMAC, MGF1 and the FIPS 202 byte
+interface are checked by review only, until proofs of the code that
+implements them reach them.
+
+## Security of the specification
+
+`security/` instantiates the imported SPHINCS+ scheme with the functions of
+the specification, proves that its signing and verification compute the
+FIPS 205 algorithms byte for byte, and carries its EUF-CMA bound over to
+the external interface of FIPS 205. `SPHINCS_Sets.ec` states the results for
+each of the twelve parameter sets of Table 2, as `SLH_DSA_<SET>.<lemma>`:
+
+- `slhdsa_euf_cma_spec`: deterministic signing. The scheme is the
+  specification's own: key generation by `SLH_DSA.keygen` (Algorithm 21),
+  signing by `slh_sign` and `hash_slh_sign` with `addrnd` absent,
+  verification by `SLH_DSA.verify` and `SLH_DSA.hash_verify`, with pure
+  and pre-hash requests under one key. The success probability of any
+  forger is at most the sum of the terms below, each for an explicit
+  adversary built from the forger.
+- `slhdsa_euf_cma_hedged_spec`: the same for hedged signing
+  (`SLH_DSA.sign` and `SLH_DSA.hash_sign`, a fresh `opt_rand` for every
+  signature).
+- `slhdsa_euf_cma` and `slhdsa_euf_cma_hedged`: the same bounds for the
+  internal scheme of section 9 behind the framing of section 10
+  (`ExternalFraming.ec`).
+
+The terms of the bound:
+
+- PRF advantage of PRF on the 32-byte address, and of PRF_msg on
+  (opt_rand, M') with opt_rand of n bytes, under uniformly drawn n-byte
+  keys;
+- interleaved target subset resilience of H_msg on (PK.seed, PK.root, M'),
+  with the FIPS 205 split of the digest into FORS indices and instance;
+- the multi-target TCR, UD, PRE and DSPR terms of the imported proof, for
+  the tweakable hash `thfc` of `SPHINCS_Instance.eca`, which extends F, H
+  and T_l to all bit strings. These ask more than the same properties of
+  F, H and T_l on the inputs FIPS 205 gives them: a winning pair may use
+  byte lengths FIPS 205 never gives a function, and for the SHA2 sets with
+  n = 24 or 32 it may mix SHA-256 and SHA-512;
+- collision resistance of the pre-hash functions, through an explicit
+  collision finder.
+
+Hypotheses: the forger terminates whenever its signing oracle does, and it
+does not access the state of the games and reductions (the module
+restrictions of each statement). Nothing else is assumed: every property of
+a hash function appears as a term of the bound, and every axiom the imported
+proof states about its abstract functions is realized for the FIPS 205
+functions, `two_encodings` by `WOTS_Encoding.ec`.
+
+Limits:
+
+- The theorems are about the EasyCrypt operators of the specification,
+  not about the Jasmin code.
+- A key used for both deterministic and hedged signatures is not covered;
+  each theorem fixes one mode for every signature.
+- The bound is concrete; no numeric security level is derived from it.
+- The randomness of key generation and of hedged signing is modelled as
+  uniform n-byte strings.
+- The signature games type a signature as a byte string, so the error
+  indication of `slh_sign` and `hash_slh_sign` is read as the empty string.
+- On inputs that are not whole bytes, which FIPS 205 never hashes, `thfc`
+  hashes a padded string under address type 7. That this branch makes no
+  game easier, although it shares one function across address types and
+  ignores the declared length, is argued in the header of
+  `SPHINCS_Instance.eca` and not proved.
+- Software-visible behaviour only: faults and physical leakage are out of
+  scope.
 
 ## Extracted models and correctness proofs
 
@@ -129,7 +252,7 @@ tools/ci/toolchain.sh exec make -C proofs check check-inventory check-extraction
 `toolchain.sh exec` runs the command in the toolchain's opam switch, so that
 EasyCrypt finds the pinned provers. `check` runs the proof-hole scan and the
 constant derivation, then compiles every `.ec` file of this directory and of
-`../third_party/crypto-specs` on its own, without `.eco` caches, and the
+the two imported developments on its own, without `.eco` caches, and the
 correctness proofs once per extracted model. EasyCrypt does not re-check the
 proofs of theories a file loads with `require`, so a run that compiled only
 top-level files would not have checked their dependencies; this one does.
@@ -140,8 +263,10 @@ rejects, outside comments, `admit` and `admitted` and the commands that let
 a file pass without its proofs being checked: `pragma` (`pragma
 Proofs:weak` turns checking off), `exit` (ends the file early with success)
 and `fail` (expects a command to fail, so a statement it prefixes is never
-established). `check-spec` limits the compilation to `spec/`. Variables:
-`EASYCRYPT`, `EC_PROVERS`, `EC_TIMEOUT`, `JASMIN2EC`, `JASMIN_SRC`, `PYTHON`.
+established). `check-spec` limits the compilation to `spec/`;
+`check-formosa` re-checks the imported SPHINCS+ proof alone, the longest
+part of `check`. Variables: `EASYCRYPT`, `EC_PROVERS`, `EC_TIMEOUT`,
+`JASMIN2EC`, `JASMIN_SRC`, `PYTHON`.
 
 `check-inventory` requires, for each pair, every theory that pair is
 checked with, has EasyCrypt print every axiom then in scope, the statement
@@ -160,23 +285,34 @@ and Jasmin libraries are part of the pinned toolchain. Proofs and helper
 lemmas are not listed. `make inventory` rewrites the files.
 
 The SMT provers are those of the EasyCrypt pin in `../toolchain/easycrypt/`.
-The imported theories are checked with the prover selection of their own
-upstream project file.
+Each imported development is checked with the prover selection and timeout
+of its own upstream project file.
 
 ## Assumptions
 
 Every axiom the proofs can use is listed in `inventory/`, per pair; the
 x86-64 list is longer only because the x86-64 instruction model loads the
-AES axioms and has two of its own. None comes from the specification or
-correctness theories. The imported crypto-specs theory JWordList defines
+AES axioms and has two of its own. The specification, validation, security
+and correctness theories declare no axioms except these: the section
+hypotheses on the adversary named above; `I_verify_ll` in
+`ExternalFraming.ec`, termination of internal verification, discharged for
+SLH-DSA by `SLH_verify_ll`; and the parameter-set hypothesis `P_in` of the
+abstract theory `SPHINCS_Instance.eca`, realized for every set in
+`SPHINCS_Sets.ec`. The per-set theories also carry the four defining axioms
+of each EasyCrypt `Subtype` clone (`insubN`, `insubT`, `valP`, `valK` on a
+fresh type); they are satisfiable because each clone proves its predicate
+inhabited. The imported crypto-specs theory JWordList defines
 `stores8` and `stores64` with `axiomatized by`, and states the hypotheses
 of its abstract theory `ListEmbedding` as axioms that each of its three
-clones realizes. The rest belong to the EasyCrypt standard library and the
-Jasmin EasyCrypt library (`eclib`) of the pinned toolchain, including the
-parameters of the array theories the extracted models clone;
-`../toolchain/jasmin/ECLIB_AXIOMS` and `../docs/TOOLCHAIN.md` describe the
-`eclib` ones. Both libraries belong to the trusted base together with
-EasyCrypt itself and its SMT provers.
+clones realizes. The imported SPHINCS+ proof states the hypotheses on its
+abstract parameters, functions and encodings as axioms (for example
+`two_encodings`, `ch0`, `chS` and `dist_adrstypes`): its theorem applies to
+a concrete scheme only through a clone that realizes them. The rest belong
+to the EasyCrypt standard library and the Jasmin EasyCrypt library
+(`eclib`) of the pinned toolchain, including the parameters of the array
+theories the extracted models clone; `../toolchain/jasmin/ECLIB_AXIOMS` and
+`../docs/TOOLCHAIN.md` describe the `eclib` ones. Both libraries belong to
+the trusted base together with EasyCrypt itself and its SMT provers.
 
 The correctness theorems are about the models `jasmin2ec` extracts, so the
 extraction belongs to the trusted base too, and so do the `eclib` models
