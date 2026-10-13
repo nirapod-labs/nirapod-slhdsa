@@ -54,7 +54,8 @@
 #       run COMMAND, append its output to the check's log, and return its
 #       status
 #   verdict.sh record CHECK KEY [FILE...]
-#       record a pass, keeping FILE... (paths from the root). Run only after
+#       record a pass under KEY, which has to be the key of the inputs this
+#       job keyed, keeping FILE... (paths from the root). Run only after
 #       every step of the check has passed, and only on main
 #   verdict.sh toolchain REUSE COMPILER_KEY RECORD_FOUND
 #       for each check keyed in this job (build/verdict/*.key), the newest
@@ -70,10 +71,11 @@
 #   verdict.sh reuse CHECK KEY VERDICTS
 #       VERDICTS is the toolchain job's verdicts output. When it names a
 #       run for CHECK, download that run's verdict, check that it is a pass
-#       under KEY recorded on main, put its files back in place, and state
-#       the reuse, the run that recorded it and the end of its log in the
-#       log and the job summary. Writes reused=true, or reused=false when
-#       there is no verdict to reuse and the check has to run.
+#       under KEY, made from the same key material as this job's, and
+#       recorded on main, put its files back in place, and state the reuse,
+#       the run that recorded it and the end of its log in the log and the
+#       job summary. Writes reused=true, or reused=false when there is no
+#       verdict to reuse and the check has to run.
 
 set -euo pipefail
 
@@ -194,13 +196,15 @@ cmd_run() {
 
 cmd_record() {
   [ $# -ge 2 ] || die "usage: verdict.sh record CHECK KEY [FILE...]"
-  local check=$1 key=$2 f d
+  local check=$1 key=$2 f d expect
   shift 2
   check_name "$check"
   d="$DIR/$check"
   [ -n "$key" ] || die "record $check: no key"
   [ -s "$d/log" ] || die "record $check: no log; the check did not run through 'verdict.sh run'"
   [ -f "$DIR/$check.material" ] || die "record $check: no key material; run 'verdict.sh key' first"
+  expect="verdict-$check-$(sed -n 's/^platform //p' "$DIR/$check.material")-$(sha256_of < "$DIR/$check.material" | cut -d' ' -f1)"
+  [ "$key" = "$expect" ] || die "record $check: $key is not the key of this job's inputs, $expect"
   rm -rf "$d/files"
   mkdir -p "$d/files"
   for f in "$@"; do
@@ -222,14 +226,20 @@ cmd_record() {
 }
 
 # report CHECK KEY RUN: the verdict downloaded from RUN into $DIR/CHECK is
-# a pass under KEY, recorded on main by that run; put its files back and
-# state the reuse.
+# a pass under KEY, made from the inputs this job keyed, and recorded on
+# main by that run; put its files back and state the reuse.
 report() {
-  local check=$1 key=$2 run=$3 d f url commit event
+  local check=$1 key=$2 run=$3 d f n url commit event
   d="$DIR/$check"
   [ -f "$d/record" ] || die "reuse $check: the verdict of run $run has no record"
-  grep -qx "verdict PASS" "$d/record" || die "reuse $check: the record of run $run is not a pass"
-  grep -qxF "key $key" "$d/record" || die "reuse $check: the record of run $run is not for $key"
+  [ -f "$DIR/$check.material" ] || die "reuse $check: no key material; run 'verdict.sh key' first"
+  # The record opens with the verdict, the key and the key material, in
+  # that order (cmd_record).
+  [ "$(sed -n 1p "$d/record")" = "verdict PASS" ] || die "reuse $check: the record of run $run is not a pass"
+  [ "$(sed -n 2p "$d/record")" = "key $key" ] || die "reuse $check: the record of run $run is not for $key"
+  n=$(wc -l < "$DIR/$check.material")
+  sed -n "3,$((n + 2))p" "$d/record" | cmp -s - "$DIR/$check.material" \
+    || die "reuse $check: the inputs in the record of run $run are not this job's ($DIR/$check.material)"
   [ -f "$d/log" ] || die "reuse $check: the verdict of run $run has no log"
   event=$(sed -n 's/^event //p' "$d/record")
   case "$event" in
