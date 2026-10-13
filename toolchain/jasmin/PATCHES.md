@@ -42,6 +42,7 @@ replaces.
 | 0021 | this project | ARMv8-A: `a & !b` lowered to BIC | lowering proved |
 | 0022 | this project | ARMv8-A: store of an immediate through a scratch register | lowering proved |
 | 0023 | this project | ARMv8-A: 32-bit load zero-extended to 64 bits (LDRW, written `LDR <Wt>`) | lowering proved; instruction semantics and printing trusted |
+| 0024 | this project | safety checker: abstract values and environments shared when unchanged; relational constraints printed sorted | safety checker (trusted) |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -217,6 +218,22 @@ instructions. The lowering proof needs no change; `make -C proofs all`
 checks it again with the new case. Test:
 `compiler/tests/success/armv8a/ldrw.jazz`, with a load from a pointer and
 from a global array. Upstream status: not yet proposed.
+
+### 0024, sharing unchanged abstract values (this project)
+
+APRON's `Abstract1.change_environment` copied the abstract value even when
+the environment was unchanged, and the environment of an expression was
+rebuilt for every evaluation although its variables are nearly always
+present already. The patch returns the value or the environment as it is in
+those cases, caches the APRON variable of each analysed variable, and builds
+array-cell names without `Format`. The checker never modifies an abstract
+value in place, so sharing one is safe, and verdicts are unchanged.
+
+Without the copy, APRON can return the constraints of a relational value in
+another order, and the safety report printed them in the order returned.
+The patch prints them sorted, so the report depends on the value only. The
+expected output of the safety tests (`compiler/tests/safety/run.expected`)
+changes in that order alone. Upstream status: not yet proposed.
 
 ## Assembly checks
 
