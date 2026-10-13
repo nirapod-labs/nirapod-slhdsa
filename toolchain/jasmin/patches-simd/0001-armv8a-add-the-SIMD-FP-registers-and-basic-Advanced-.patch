@@ -1,0 +1,1870 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Mon, 12 Oct 2026 15:46:03 +0600
+Subject: [PATCH] armv8a: add the SIMD&FP registers and basic Advanced SIMD
+ instructions
+
+The SIMD&FP registers V0 to V31 become the vector registers of the
+architecture, modelled as 128-bit words. The calling convention passes
+vector arguments in V0 to V7 and results in V0 to V3, and declares V8 to
+V15 callee-saved. The procedure call standard only requires the low 64
+bits of V8 to V15 to be preserved; the compiler saves and restores all 128.
+
+New instructions, with a V prefix where the assembly mnemonic is also a
+general-purpose one: MOV (vector), LDR and STR of a Q register, AND, BIC,
+ORR, EOR, NOT, ADD, SUB, SHL, USHR, SRI and SLI. The element size of the
+arrangement is the suffix of the intrinsic: VADD_4u32 is ADD Vd.4S. A
+memory-argument condition restricts the address of a Q-register load or
+store to the encodable forms, and immediate conditions restrict the shift
+amounts to the range of each instruction. All of them are listed as
+data-independent-time instructions.
+
+Lowering maps u128 moves, loads and stores, the bitwise operators and the
+element-wise additions, subtractions and shifts by a constant to these
+instructions. Linearization saves and restores vector registers with
+STR and LDR of a Q register.
+---
+ changes/01-feature/armv8a-advanced-simd.md    |   5 +
+ compiler/safetylib/armv8a_safety.ml           |   4 +-
+ compiler/src/armv8a_arch_full.ml              |   4 +-
+ compiler/src/coreArchFactory.mli              |   2 +-
+ compiler/src/pp_arm_v8a.ml                    |  29 +-
+ .../fail/asmgen/armv8a/vldr_offset_range.jazz |   7 +
+ .../asmgen/armv8a/vldr_offset_unaligned.jazz  |   7 +
+ .../fail/asmgen/armv8a/vshl_amount_range.jazz |   8 +
+ .../fail/asmgen/armv8a/vstr_scaled_index.jazz |   7 +
+ .../fail/asmgen/armv8a/vushr_amount_zero.jazz |   8 +
+ compiler/tests/negative.expected              |  52 +-
+ compiler/tests/success/armv8a/simd_moves.jazz |  90 ++++
+ compiler/tests/success/armv8a/simd_ops.jazz   |  40 ++
+ eclib/JModel_armv8a.ec                        | 100 ++++
+ proofs/_CoqProject                            |   1 +
+ proofs/compiler/armv8a_decl.v                 | 133 ++++-
+ proofs/compiler/armv8a_instr_decl.v           | 458 +++++++++++++++++-
+ proofs/compiler/armv8a_lowering.v             |  57 ++-
+ proofs/compiler/armv8a_lowering_proof.v       | 200 +++++++-
+ proofs/compiler/armv8a_params.v               |  30 +-
+ proofs/compiler/armv8a_params_proof.v         |  44 +-
+ proofs/compiler/armv8a_simd.v                 |  34 ++
+ 22 files changed, 1266 insertions(+), 54 deletions(-)
+ create mode 100644 changes/01-feature/armv8a-advanced-simd.md
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vldr_offset_range.jazz
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vldr_offset_unaligned.jazz
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vshl_amount_range.jazz
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vstr_scaled_index.jazz
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vushr_amount_zero.jazz
+ create mode 100644 compiler/tests/success/armv8a/simd_moves.jazz
+ create mode 100644 compiler/tests/success/armv8a/simd_ops.jazz
+ create mode 100644 proofs/compiler/armv8a_simd.v
+
+diff --git a/changes/01-feature/armv8a-advanced-simd.md b/changes/01-feature/armv8a-advanced-simd.md
+new file mode 100644
+index 000000000..43bdbd221
+--- /dev/null
++++ b/changes/01-feature/armv8a-advanced-simd.md
+@@ -0,0 +1,5 @@
++- armv8a: add the SIMD&FP registers V0 to V31 as 128-bit vector registers,
++  with Advanced SIMD moves, loads and stores of Q registers, bitwise
++  operations, element-wise additions and subtractions, and shifts by an
++  immediate (SHL, USHR, SRI, SLI); u128 assignments and operators are lowered
++  to them, and V8 to V15 are saved as callee-saved registers.
+diff --git a/compiler/safetylib/armv8a_safety.ml b/compiler/safetylib/armv8a_safety.ml
+index 386d9e172..00749d675 100644
+--- a/compiler/safetylib/armv8a_safety.ml
++++ b/compiler/safetylib/armv8a_safety.ml
+@@ -12,7 +12,7 @@ module Armv8a_safety
+   (A: Arch_full.Arch
+       with type reg = Armv8a_decl.register
+        and type regx = Arch_utils.empty
+-       and type xreg = Arch_utils.empty
++       and type xreg = Armv8a_decl.vregister
+        and type rflag = Arm_common.rflag
+        and type cond = Arm_common.condt
+        and type asm_op = Armv8a_instr_decl.armv8a_asm_op
+@@ -20,7 +20,7 @@ module Armv8a_safety
+   : SafetyArch
+     with type reg = Armv8a_decl.register
+      and type regx = Arch_utils.empty
+-     and type xreg = Arch_utils.empty
++     and type xreg = Armv8a_decl.vregister
+      and type rflag = Arm_common.rflag
+      and type cond = Arm_common.condt
+      and type asm_op = Armv8a_instr_decl.armv8a_asm_op
+diff --git a/compiler/src/armv8a_arch_full.ml b/compiler/src/armv8a_arch_full.ml
+index a5b1b089b..8135aa5d8 100644
+--- a/compiler/src/armv8a_arch_full.ml
++++ b/compiler/src/armv8a_arch_full.ml
+@@ -2,7 +2,7 @@
+ open Arch_decl
+ 
+ module type Armv8a_input = sig
+-  val call_conv : (Armv8a_decl.register, Arch_utils.empty, Arch_utils.empty, Arm_common.rflag, Arm_common.condt) calling_convention
++  val call_conv : (Armv8a_decl.register, Arch_utils.empty, Armv8a_decl.vregister, Arm_common.rflag, Arm_common.condt) calling_convention
+ end
+ 
+ (* Create arch_toIdent for ARMv8A *)
+@@ -21,7 +21,7 @@ module Armv8a (Lowering_params : Armv8a_input) = struct
+ 
+   type reg = AD.register
+   type regx = Arch_utils.empty
+-  type xreg = Arch_utils.empty
++  type xreg = AD.vregister
+   type nonrec rflag = Arm_common.rflag
+   type cond = Arm_common.condt
+   type asm_op = Armv8a_instr_decl.armv8a_asm_op
+diff --git a/compiler/src/coreArchFactory.mli b/compiler/src/coreArchFactory.mli
+index 0a21d11d7..c1885cf25 100644
+--- a/compiler/src/coreArchFactory.mli
++++ b/compiler/src/coreArchFactory.mli
+@@ -19,7 +19,7 @@ module Core_arch_RISCV : Arch_full.Core_arch
+ module Core_arch_ARMV8A : Arch_full.Core_arch
+   with type reg = Armv8a_decl.register
+    and type regx = Arch_utils.empty
+-   and type xreg = Arch_utils.empty
++   and type xreg = Armv8a_decl.vregister
+    and type rflag = Arm_common.rflag
+    and type cond = Arm_common.condt
+    and type asm_op = Armv8a_instr_decl.armv8a_asm_op
+diff --git a/compiler/src/pp_arm_v8a.ml b/compiler/src/pp_arm_v8a.ml
+index 0c9df36d2..63a95e7eb 100644
+--- a/compiler/src/pp_arm_v8a.ml
++++ b/compiler/src/pp_arm_v8a.ml
+@@ -62,10 +62,29 @@ let pp_reg_address addr =
+ 
+ let pp_condt = hash_to_string string_of_condt
+ 
++(* A SIMD&FP register operand. The width paired with it in the instruction
++   description is the element size of its arrangement ([U8] for 16B, [U16]
++   for 8H, [U32] for 4S, [U64] for 2D), or [U128] for the Q name of the
++   register. *)
++let pp_vregister_name = hash_to_string vregister_to_string
++
++let pp_vregister (sz : Wsize.wsize) (r : vregister) =
++  let v = pp_vregister_name r in
++  let n = String.sub v 1 (String.length v - 1) in
++  match sz with
++  | Wsize.U8 -> v ^ ".16b"
++  | Wsize.U16 -> v ^ ".8h"
++  | Wsize.U32 -> v ^ ".4s"
++  | Wsize.U64 -> v ^ ".2d"
++  | Wsize.U128 -> "q" ^ n
++  | Wsize.U256 ->
++      hierror ~loc:Lnone ~kind:"assembly printing" ~internal:true
++        "no 256-bit view of a SIMD&FP register"
++
+ (* A64 has no conditional execution: a condition is always a proper operand
+    (CSEL, CSET, ...), declared last in the argument list, so it is printed
+    in place like any other operand. *)
+-let pp_asm_arg ?(wform = false) (arg : (register, Arch_utils.empty, Arch_utils.empty, rflag, condt) asm_arg) =
++let pp_asm_arg ?(wform = false) ?(vsz = Wsize.U128) (arg : (register, Arch_utils.empty, vregister, rflag, condt) asm_arg) =
+   match arg with
+   | Condt ct -> pp_condt ct
+   | Imm (ws, w) -> pp_imm (Conv.z_unsigned_of_word ws w)
+@@ -80,7 +99,7 @@ let pp_asm_arg ?(wform = false) (arg : (register, Arch_utils.empty, Arch_utils.e
+         ~internal:true
+         "memory operand relative to the instruction pointer"
+   | ImmRip _ -> assert false (* Only on ARMv7-M. *)
+-  | XReg _ -> .
++  | XReg r -> pp_vregister vsz r
+ 
+ (* -------------------------------------------------------------------- *)
+ 
+@@ -132,7 +151,7 @@ let pp_ADR dst p =
+ module Armv8aTarget : AsmTargetBuilder.AsmTarget with
+   type reg = Armv8a_decl.register
+   and type regx = Arch_utils.empty
+-  and type xreg = Arch_utils.empty
++  and type xreg = Armv8a_decl.vregister
+   and type rflag = Arm_common.rflag
+   and type cond = Arm_common.condt
+   and type asm_op = armv8a_asm_op
+@@ -140,7 +159,7 @@ module Armv8aTarget : AsmTargetBuilder.AsmTarget with
+ 
+   type reg = Armv8a_decl.register
+   type regx = Arch_utils.empty
+-  type xreg = Arch_utils.empty
++  type xreg = Armv8a_decl.vregister
+   type rflag = Arm_common.rflag
+   type cond = Arm_common.condt
+   type asm_op = armv8a_asm_op
+@@ -229,7 +248,7 @@ module Armv8aTarget : AsmTargetBuilder.AsmTarget with
+                declaration pairs them with a width of at most [U32]. *)
+             let pargs =
+               List.map
+-                (fun (sz, a) -> pp_asm_arg ~wform:(Wsize.size_8_32 sz) a)
++                (fun (sz, a) -> pp_asm_arg ~wform:(Wsize.size_8_32 sz) ~vsz:sz a)
+                 pp.pp_aop_args
+             in
+             let pargs =
+diff --git a/compiler/tests/fail/asmgen/armv8a/vldr_offset_range.jazz b/compiler/tests/fail/asmgen/armv8a/vldr_offset_range.jazz
+new file mode 100644
+index 000000000..bff011d44
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vldr_offset_range.jazz
+@@ -0,0 +1,7 @@
++/* The LDR <Qt> offset is above the unsigned 12-bit range scaled by 16. */
++export
++fn vldr_offset_range(reg u64 p) {
++    reg u128 a;
++    a = [:u128 p + 65536];
++    [:u128 p] = a;
++}
+diff --git a/compiler/tests/fail/asmgen/armv8a/vldr_offset_unaligned.jazz b/compiler/tests/fail/asmgen/armv8a/vldr_offset_unaligned.jazz
+new file mode 100644
+index 000000000..486725790
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vldr_offset_unaligned.jazz
+@@ -0,0 +1,7 @@
++/* The LDR <Qt> offset is outside the unscaled 9-bit range and not a multiple of 16. */
++export
++fn vldr_offset_unaligned(reg u64 p) {
++    reg u128 a;
++    a = [:u128 p + 264];
++    [:u128 p] = a;
++}
+diff --git a/compiler/tests/fail/asmgen/armv8a/vshl_amount_range.jazz b/compiler/tests/fail/asmgen/armv8a/vshl_amount_range.jazz
+new file mode 100644
+index 000000000..df58aafe6
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vshl_amount_range.jazz
+@@ -0,0 +1,8 @@
++/* SHL shifts by at most the element size minus one. */
++export
++fn vshl_amount_range(reg u64 p) {
++    reg u128 a;
++    a = [:u128 p];
++    a = #VSHL_4u32(a, 32);
++    [:u128 p] = a;
++}
+diff --git a/compiler/tests/fail/asmgen/armv8a/vstr_scaled_index.jazz b/compiler/tests/fail/asmgen/armv8a/vstr_scaled_index.jazz
+new file mode 100644
+index 000000000..f2efdcf47
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vstr_scaled_index.jazz
+@@ -0,0 +1,7 @@
++/* LDR/STR <Qt> only shift the register offset by 4: a scale of 8 is unencodable. */
++export
++fn vstr_scaled_index(reg u64 p i) {
++    reg u128 a;
++    a = [:u128 p];
++    [:u128 p + 8 * i] = a;
++}
+diff --git a/compiler/tests/fail/asmgen/armv8a/vushr_amount_zero.jazz b/compiler/tests/fail/asmgen/armv8a/vushr_amount_zero.jazz
+new file mode 100644
+index 000000000..dda491169
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vushr_amount_zero.jazz
+@@ -0,0 +1,8 @@
++/* USHR shifts by at least one. */
++export
++fn vushr_amount_zero(reg u64 p) {
++    reg u128 a;
++    a = [:u128 p];
++    a = #VUSHR_2u64(a, 0);
++    [:u128 p] = a;
++}
+diff --git a/compiler/tests/negative.expected b/compiler/tests/negative.expected
+index 30de22c24..ca3ae4371 100644
+--- a/compiler/tests/negative.expected
++++ b/compiler/tests/negative.expected
+@@ -592,6 +592,56 @@ Allowed args compatible with the input (except on immediate sizes and address sh
+ All allowed args (regardless of the input) are:
+   [[reg]; [reg]; [mem (glob not allowed) [Xn|SP, #imm], imm a multiple of 8 in [-512, 504]]]
+ 
++fail/asmgen/armv8a/vldr_offset_range.jazz:
++
++"fail/asmgen/armv8a/vldr_offset_range.jazz", line 5 (4-26):
++compilation error in function vldr_offset_range:
++asmgen: instruction VLDR is given at least one too large immediate or unencodable address as an argument.
++Allowed args compatible with the input (except on immediate sizes and address shapes) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++
++fail/asmgen/armv8a/vldr_offset_unaligned.jazz:
++
++"fail/asmgen/armv8a/vldr_offset_unaligned.jazz", line 5 (4-24):
++compilation error in function vldr_offset_unaligned:
++asmgen: instruction VLDR is given at least one too large immediate or unencodable address as an argument.
++Allowed args compatible with the input (except on immediate sizes and address shapes) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++
++fail/asmgen/armv8a/vshl_amount_range.jazz:
++
++"fail/asmgen/armv8a/vshl_amount_range.jazz", line 6 (4-26):
++compilation error in function vshl_amount_range:
++asmgen: instruction VSHL_4u32 is given at least one too large immediate as an argument.
++Allowed args compatible with the input (except on immediate sizes) are:
++  [[xreg]; [xreg]; [imm 8 [0, 31]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [xreg]; [imm 8 [0, 31]]]
++
++fail/asmgen/armv8a/vstr_scaled_index.jazz:
++
++"fail/asmgen/armv8a/vstr_scaled_index.jazz", line 6 (4-26):
++compilation error in function vstr_scaled_index:
++asmgen: instruction VSTR is given at least one too large immediate or unencodable address as an argument.
++Allowed args compatible with the input (except on immediate sizes and address shapes) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++
++fail/asmgen/armv8a/vushr_amount_zero.jazz:
++
++"fail/asmgen/armv8a/vushr_amount_zero.jazz", line 6 (4-26):
++compilation error in function vushr_amount_zero:
++asmgen: instruction VUSHR_2u64 is given at least one too large immediate as an argument.
++Allowed args compatible with the input (except on immediate sizes) are:
++  [[xreg]; [xreg]; [imm 8 [1, 64]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [xreg]; [imm 8 [1, 64]]]
++
+ fail/asmgen/x86-64/incompatible_args.jazz:
+ 
+ "fail/asmgen/x86-64/incompatible_args.jazz", line 4 (2-14):
+@@ -2096,4 +2146,4 @@ Statistics:
+ 	Pretyping:  65
+ 	Parsing:     5
+ 	Typing:      5
+-	Compile:   248
++	Compile:   253
+diff --git a/compiler/tests/success/armv8a/simd_moves.jazz b/compiler/tests/success/armv8a/simd_moves.jazz
+new file mode 100644
+index 000000000..337829e6d
+--- /dev/null
++++ b/compiler/tests/success/armv8a/simd_moves.jazz
+@@ -0,0 +1,90 @@
++/* Loads and stores at the encodable address forms. */
++export fn ldst(reg u64 src dst) {
++  reg u128 a b c d;
++  a = [:u128 src + 0];
++  b = [:u128 src + 16];
++  c = [:u128 src + 3];
++  d = [:u128 src - 7];
++  a = a ^ b;
++  [:u128 dst + 0] = a;
++  [:u128 dst + 33] = c;
++  [:u128 dst + 4080] = b;
++  [:u128 dst - 16] = d;
++}
++
++/* Register offset. */
++export fn ldst_reg(reg u64 src dst i) {
++  reg u128 a;
++  a = [:u128 src + i];
++  [:u128 dst + i] = a;
++}
++
++/* Vector arguments and result (V0-V7 in, V0 out). */
++export fn vargs(reg u128 a b c d e f g h) -> reg u128 {
++  reg u128 r;
++  r = a +4u32 b;
++  r = r ^ c;
++  r = r -2u64 d;
++  r = r | e;
++  r = r & !f;
++  r = r +16u8 g;
++  r = r ^ h;
++  return r;
++}
++
++/* Internal call with vector arguments and results. */
++fn inner(reg u128 x y) -> reg u128, reg u128 {
++  reg u128 s t;
++  s = x +2u64 y;
++  t = x ^ y;
++  return s, t;
++}
++
++export fn call_inner(reg u64 p) {
++  reg u128 a b s t;
++  a = [:u128 p + 0];
++  b = [:u128 p + 16];
++  s, t = inner(a, b);
++  [:u128 p + 32] = s;
++  [:u128 p + 48] = t;
++}
++
++/* 30 live vectors: forces the allocator to use V8-V15 (callee-saved). */
++export fn pressure(reg u64 p) {
++  inline int i;
++  reg u128[30] v;
++  reg u128 acc;
++  for i = 0 to 30 { v[i] = [:u128 p + 16 * i]; }
++  for i = 0 to 30 { v[i] = v[i] +4u32 v[(i + 1) % 30]; }
++  acc = v[0];
++  for i = 1 to 30 { acc = acc ^ v[i]; }
++  [:u128 p + 480] = acc;
++  for i = 0 to 30 { [:u128 p + 496 + 16 * i] = v[i]; }
++}
++
++/* Stack-resident vectors and a vector stack array. */
++export fn stackvec(reg u64 p) {
++  inline int i;
++  stack u128[4] s;
++  stack u128 t;
++  reg u128 a b;
++  for i = 0 to 4 { a = [:u128 p + 16 * i]; s[i] = a; }
++  b = s[3];
++  t = b;
++  a = s[0];
++  b = t;
++  a = a +8u16 b;
++  s[1] = a;
++  for i = 0 to 4 { a = s[i]; [:u128 p + 64 + 16 * i] = a; }
++}
++
++/* Explicit spill and reload. */
++export fn spill(reg u64 p) {
++  reg u128 a b;
++  a = [:u128 p + 0];
++  () = #spill(a);
++  b = [:u128 p + 16];
++  () = #unspill(a);
++  a = a ^ b;
++  [:u128 p + 32] = a;
++}
+diff --git a/compiler/tests/success/armv8a/simd_ops.jazz b/compiler/tests/success/armv8a/simd_ops.jazz
+new file mode 100644
+index 000000000..2a569f85b
+--- /dev/null
++++ b/compiler/tests/success/armv8a/simd_ops.jazz
+@@ -0,0 +1,40 @@
++/* Advanced SIMD operations: lowered source operators and intrinsics. */
++export
++fn simd_ops(reg u64 p) {
++    reg u128 a b c d;
++    a = [:u128 p];
++    b = [:u128 p + 16];
++
++    c = a ^ b;
++    c = c & b;
++    c = c | a;
++    c = c & !b;
++    c = !c;
++    c = c +16u8 a;
++    c = c +8u16 a;
++    c = c +4u32 a;
++    c = c +2u64 a;
++    c = c -16u8 b;
++    c = c -8u16 b;
++    c = c -4u32 b;
++    c = c -2u64 b;
++    c = c <<16u8 7;
++    c = c <<8u16 1;
++    c = c <<4u32 0;
++    c = c >>2u64 64;
++    c = c >>4u32 1;
++
++    d = #VMOV(a);
++    d = #VEOR(d, c);
++    d = #VAND(d, b);
++    d = #VORR(d, b);
++    d = #VBIC(d, a);
++    d = #VNOT(d);
++    d = #VADD_16u8(d, a);
++    d = #VSUB_2u64(d, b);
++    d = #VSHL_8u16(d, 15);
++    d = #VUSHR_16u8(d, 8);
++    d = #VSRI_4u32(d, a, 32);
++    d = #VSLI_2u64(d, b, 63);
++    [:u128 p + 32] = d;
++}
+diff --git a/eclib/JModel_armv8a.ec b/eclib/JModel_armv8a.ec
+index 37656be9c..a45606c35 100644
+--- a/eclib/JModel_armv8a.ec
++++ b/eclib/JModel_armv8a.ec
+@@ -299,3 +299,103 @@ op LDP_32 (x: W64.t) : W32.t * W32.t = (x \bits32 0, x \bits32 1).
+ op STP_64 (x y: W64.t) : W128.t = W2u64.pack2 [x; y].
+ 
+ op STP_32 (x y: W32.t) : W64.t = W2u32.pack2 [x; y].
++
++(* -------------------------------------------------------------------- *)
++(* Source-level operators on 128-bit vectors (the semantics of the Jasmin
++   operators +NuS, -NuS, *NuS, <<NuS, >>NuS and >>sNuS at u128; the shift
++   amount is a 128-bit word, and a shift by the element size or more gives
++   0, or the sign fill for the arithmetic shift). *)
++
++abbrev [-printing] (\vadd8u128)  (w1 w2: W128.t) = VPADD_16u8 w1 w2.
++abbrev [-printing] (\vadd16u128) (w1 w2: W128.t) = VPADD_8u16 w1 w2.
++abbrev [-printing] (\vadd32u128) (w1 w2: W128.t) = VPADD_4u32 w1 w2.
++abbrev [-printing] (\vadd64u128) (w1 w2: W128.t) = VPADD_2u64 w1 w2.
++
++abbrev [-printing] (\vsub8u128)  (w1 w2: W128.t) = VPSUB_16u8 w1 w2.
++abbrev [-printing] (\vsub16u128) (w1 w2: W128.t) = VPSUB_8u16 w1 w2.
++abbrev [-printing] (\vsub32u128) (w1 w2: W128.t) = VPSUB_4u32 w1 w2.
++abbrev [-printing] (\vsub64u128) (w1 w2: W128.t) = VPSUB_2u64 w1 w2.
++
++abbrev [-printing] (\vmul8u128)  (w1 w2: W128.t) = VPMULL_16u8 w1 w2.
++abbrev [-printing] (\vmul16u128) (w1 w2: W128.t) = VPMULL_8u16 w1 w2.
++abbrev [-printing] (\vmul32u128) (w1 w2: W128.t) = VPMULL_4u32 w1 w2.
++abbrev [-printing] (\vmul64u128) (w1 w2: W128.t) = VPMULL_2u64 w1 w2.
++
++op (\vshl8u128)  (w1 w2: W128.t) = W16u8.map (fun (e: W8.t)  => e `<<<` to_uint w2) w1.
++op (\vshl16u128) (w1 w2: W128.t) = W8u16.map (fun (e: W16.t) => e `<<<` to_uint w2) w1.
++op (\vshl32u128) (w1 w2: W128.t) = W4u32.map (fun (e: W32.t) => e `<<<` to_uint w2) w1.
++op (\vshl64u128) (w1 w2: W128.t) = W2u64.map (fun (e: W64.t) => e `<<<` to_uint w2) w1.
++
++op (\vshr8u128)  (w1 w2: W128.t) = W16u8.map (fun (e: W8.t)  => e `>>>` to_uint w2) w1.
++op (\vshr16u128) (w1 w2: W128.t) = W8u16.map (fun (e: W16.t) => e `>>>` to_uint w2) w1.
++op (\vshr32u128) (w1 w2: W128.t) = W4u32.map (fun (e: W32.t) => e `>>>` to_uint w2) w1.
++op (\vshr64u128) (w1 w2: W128.t) = W2u64.map (fun (e: W64.t) => e `>>>` to_uint w2) w1.
++
++op (\vsar8u128)  (w1 w2: W128.t) = W16u8.map (fun (e: W8.t)  => e `|>>>` to_uint w2) w1.
++op (\vsar16u128) (w1 w2: W128.t) = W8u16.map (fun (e: W16.t) => e `|>>>` to_uint w2) w1.
++op (\vsar32u128) (w1 w2: W128.t) = W4u32.map (fun (e: W32.t) => e `|>>>` to_uint w2) w1.
++op (\vsar64u128) (w1 w2: W128.t) = W2u64.map (fun (e: W64.t) => e `|>>>` to_uint w2) w1.
++
++(* -------------------------------------------------------------------- *)
++(* Advanced SIMD. A SIMD&FP register is a W128.t. The instructions with a
++   single arrangement keep their bare name; the others are suffixed with
++   their arrangement (VADD_4u32 is ADD <Vd>.4S, ...), as generated by the
++   Jasmin extraction. Shift amounts are the immediates of the
++   instructions, which assembly generation restricts to the encodable
++   range. *)
++
++op VMOV (x: W128.t) : W128.t = x.
++
++op VLDR (x: W128.t) : W128.t = x.
++
++op VSTR (x: W128.t) : W128.t = x.
++
++op VAND (x y: W128.t) : W128.t = andw x y.
++
++op VBIC (x y: W128.t) : W128.t = andw x (invw y).
++
++op VORR (x y: W128.t) : W128.t = orw x y.
++
++op VEOR (x y: W128.t) : W128.t = x +^ y.
++
++op VNOT (x: W128.t) : W128.t = invw x.
++
++op VADD_16u8 (x y: W128.t) : W128.t = VPADD_16u8 x y.
++op VADD_8u16 (x y: W128.t) : W128.t = VPADD_8u16 x y.
++op VADD_4u32 (x y: W128.t) : W128.t = VPADD_4u32 x y.
++op VADD_2u64 (x y: W128.t) : W128.t = VPADD_2u64 x y.
++
++op VSUB_16u8 (x y: W128.t) : W128.t = VPSUB_16u8 x y.
++op VSUB_8u16 (x y: W128.t) : W128.t = VPSUB_8u16 x y.
++op VSUB_4u32 (x y: W128.t) : W128.t = VPSUB_4u32 x y.
++op VSUB_2u64 (x y: W128.t) : W128.t = VPSUB_2u64 x y.
++
++op VSHL_16u8 (x: W128.t) (s: W8.t) : W128.t = W16u8.map (fun (e: W8.t)  => e `<<<` to_uint s) x.
++op VSHL_8u16 (x: W128.t) (s: W8.t) : W128.t = W8u16.map (fun (e: W16.t) => e `<<<` to_uint s) x.
++op VSHL_4u32 (x: W128.t) (s: W8.t) : W128.t = W4u32.map (fun (e: W32.t) => e `<<<` to_uint s) x.
++op VSHL_2u64 (x: W128.t) (s: W8.t) : W128.t = W2u64.map (fun (e: W64.t) => e `<<<` to_uint s) x.
++
++op VUSHR_16u8 (x: W128.t) (s: W8.t) : W128.t = W16u8.map (fun (e: W8.t)  => e `>>>` to_uint s) x.
++op VUSHR_8u16 (x: W128.t) (s: W8.t) : W128.t = W8u16.map (fun (e: W16.t) => e `>>>` to_uint s) x.
++op VUSHR_4u32 (x: W128.t) (s: W8.t) : W128.t = W4u32.map (fun (e: W32.t) => e `>>>` to_uint s) x.
++op VUSHR_2u64 (x: W128.t) (s: W8.t) : W128.t = W2u64.map (fun (e: W64.t) => e `>>>` to_uint s) x.
++
++(* SRI: in each element, the bits shifted in by [n >> s] replace those of
++   [d]; SLI likewise with [n << s]. *)
++op VSRI_16u8 (d n: W128.t) (s: W8.t) : W128.t =
++  W16u8.map2 (fun (a b: W8.t) => orw (andw a (invw (W8.onew `>>>` to_uint s))) (b `>>>` to_uint s)) d n.
++op VSRI_8u16 (d n: W128.t) (s: W8.t) : W128.t =
++  W8u16.map2 (fun (a b: W16.t) => orw (andw a (invw (W16.onew `>>>` to_uint s))) (b `>>>` to_uint s)) d n.
++op VSRI_4u32 (d n: W128.t) (s: W8.t) : W128.t =
++  W4u32.map2 (fun (a b: W32.t) => orw (andw a (invw (W32.onew `>>>` to_uint s))) (b `>>>` to_uint s)) d n.
++op VSRI_2u64 (d n: W128.t) (s: W8.t) : W128.t =
++  W2u64.map2 (fun (a b: W64.t) => orw (andw a (invw (W64.onew `>>>` to_uint s))) (b `>>>` to_uint s)) d n.
++
++op VSLI_16u8 (d n: W128.t) (s: W8.t) : W128.t =
++  W16u8.map2 (fun (a b: W8.t) => orw (andw a (invw (W8.onew `<<<` to_uint s))) (b `<<<` to_uint s)) d n.
++op VSLI_8u16 (d n: W128.t) (s: W8.t) : W128.t =
++  W8u16.map2 (fun (a b: W16.t) => orw (andw a (invw (W16.onew `<<<` to_uint s))) (b `<<<` to_uint s)) d n.
++op VSLI_4u32 (d n: W128.t) (s: W8.t) : W128.t =
++  W4u32.map2 (fun (a b: W32.t) => orw (andw a (invw (W32.onew `<<<` to_uint s))) (b `<<<` to_uint s)) d n.
++op VSLI_2u64 (d n: W128.t) (s: W8.t) : W128.t =
++  W2u64.map2 (fun (a b: W64.t) => orw (andw a (invw (W64.onew `<<<` to_uint s))) (b `<<<` to_uint s)) d n.
+diff --git a/proofs/_CoqProject b/proofs/_CoqProject
+index a10d6fc4f..4c59902fd 100644
+--- a/proofs/_CoqProject
++++ b/proofs/_CoqProject
+@@ -68,6 +68,7 @@ compiler/arm_stack_zeroization_proof.v
+ compiler/arm.v
+ compiler/armv8a.v
+ compiler/armv8a_decl.v
++compiler/armv8a_simd.v
+ compiler/armv8a_extra.v
+ compiler/armv8a_instr_decl.v
+ compiler/armv8a_lowering.v
+diff --git a/proofs/compiler/armv8a_decl.v b/proofs/compiler/armv8a_decl.v
+index 467059987..915895a55 100644
+--- a/proofs/compiler/armv8a_decl.v
++++ b/proofs/compiler/armv8a_decl.v
+@@ -1,8 +1,11 @@
+ (* ARMv8-A (AArch64) architecture declaration.
+ 
+- * Description of the A64 base architecture (no SIMD/FP, no extensions).
++ * Description of the A64 base architecture and of its Advanced SIMD
++ * register file (no floating point).
+  * General-purpose registers are modeled at their full 64-bit width (X
+  * registers); instructions come in 64-bit (X) and 32-bit (W) forms.
++ * SIMD&FP registers are modeled at their full 128-bit width (V/Q
++ * registers).
+  *)
+ From elpi.apps Require Import derive.std.
+ From mathcomp Require Import ssreflect ssrfun ssrbool eqtype fintype ssralg.
+@@ -244,11 +247,72 @@ Definition is_mov_imm (ws : wsize) (x : Z) : bool :=
+       is_wide_imm ws (Z.lnot x mod wbase ws)
+     | is_bitmask_imm ws x ].
+ 
++(* -------------------------------------------------------------------- *)
++(* SIMD&FP registers.
++
++   AArch64 has 32 SIMD&FP registers V0..V31, each 128 bits wide (Arm ARM
++   DDI0487M.a, B1.2 "Registers in AArch64 Execution state"). They are
++   modeled at their full width: the Q view of a register is the register
++   itself, and the narrower views (D, S, H, B) are not modeled as
++   registers. Writing a narrower view zero-extends the value to the whole
++   register (the setter of the V{width}(n) accessor, shared pseudocode,
++   A64 ISA release 2026-03, outside SVE); an instruction writing such a view
++   states the zero-extension in its semantics. *)
++
++#[only(eqbOK)] derive
++Variant vregister : Type :=
++| V0  | V1  | V2  | V3  | V4  | V5  | V6  | V7
++| V8  | V9  | V10 | V11 | V12 | V13 | V14 | V15
++| V16 | V17 | V18 | V19 | V20 | V21 | V22 | V23
++| V24 | V25 | V26 | V27 | V28 | V29 | V30 | V31.
++
++#[ export ]
++Instance eqTC_vregister : eqTypeC vregister :=
++  { ceqP := vregister_eqb_OK }.
++
++Canonical armv8a_vregister_eqType := @ceqT_eqType _ eqTC_vregister.
++
++Definition vregisters :=
++  [:: V0;  V1;  V2;  V3;  V4;  V5;  V6;  V7;
++      V8;  V9;  V10; V11; V12; V13; V14; V15;
++      V16; V17; V18; V19; V20; V21; V22; V23;
++      V24; V25; V26; V27; V28; V29; V30; V31 ].
++
++Lemma vregister_fin_axiom : Finite.axiom vregisters.
++Proof. by case. Qed.
++
++#[ export ]
++Instance finTC_vregister : finTypeC vregister :=
++  {
++    cenum  := vregisters;
++    cenumP := vregister_fin_axiom;
++  }.
++
++Canonical vregister_finType := @cfinT_finType _ finTC_vregister.
++
++Definition vregister_to_string (r : vregister) : string :=
++  match r with
++  | V0  => "v0"  | V1  => "v1"  | V2  => "v2"  | V3  => "v3"
++  | V4  => "v4"  | V5  => "v5"  | V6  => "v6"  | V7  => "v7"
++  | V8  => "v8"  | V9  => "v9"  | V10 => "v10" | V11 => "v11"
++  | V12 => "v12" | V13 => "v13" | V14 => "v14" | V15 => "v15"
++  | V16 => "v16" | V17 => "v17" | V18 => "v18" | V19 => "v19"
++  | V20 => "v20" | V21 => "v21" | V22 => "v22" | V23 => "v23"
++  | V24 => "v24" | V25 => "v25" | V26 => "v26" | V27 => "v27"
++  | V28 => "v28" | V29 => "v29" | V30 => "v30" | V31 => "v31"
++  end.
++
++#[ export ]
++Instance vreg_toS : ToString (lword armv8a_xreg_size) vregister :=
++  {| category  := "vector register"
++   ; to_string := vregister_to_string
++  |}.
++
+ (* -------------------------------------------------------------------- *)
+ (* Architecture declaration. *)
+ 
+ Notation register_ext := empty.
+-Notation xregister := empty.
++Notation xregister := vregister.
+ 
+ (* Immediate-argument conditions (see [caimm_cond] in arch_decl.v).
+    Each constructor is a validity predicate for an immediate operand and
+@@ -270,14 +334,22 @@ Notation xregister := empty.
+      operand (AND/ORR/EOR/ANDS/TST immediate class, DecodeBitMasks, J1.1).
+    - [CAimmC_armv8a_mov_imm]: immediates accepted by the MOV alias - a wide
+      immediate (MOVZ), an inverted wide immediate (MOVN) or a bitmask
+-     immediate (ORR), C6.2.192-C6.2.194. *)
++     immediate (ORR), C6.2.192-C6.2.194.
++   The Advanced SIMD conditions carry the element size [esize] of the
++   arrangement:
++   - [CAimmC_armv8a_vshl esize]: a left shift amount (SHL, SLI) in
++     [0, esize - 1] (SHL (vector), operand description).
++   - [CAimmC_armv8a_vshr esize]: a right shift amount (USHR, SRI) in
++     [1, esize] (USHR (vector), operand description). *)
+ #[only(eqbOK)] derive
+ Variant armv8a_caimm_cond :=
+   | CAimmC_armv8a_shift_amount of wsize
+   | CAimmC_armv8a_halfword_shift of wsize
+   | CAimmC_armv8a_arith_imm
+   | CAimmC_armv8a_bitmask_imm
+-  | CAimmC_armv8a_mov_imm.
++  | CAimmC_armv8a_mov_imm
++  | CAimmC_armv8a_vshl of wsize
++  | CAimmC_armv8a_vshr of wsize.
+ 
+ #[ export ]
+ Instance eqTC_armv8a_caimm_cond : eqTypeC armv8a_caimm_cond :=
+@@ -291,6 +363,8 @@ Definition armv8a_check_CAimm (checker : armv8a_caimm_cond) ws (w : word ws) : b
+   | CAimmC_armv8a_arith_imm => is_arith_imm (wunsigned w)
+   | CAimmC_armv8a_bitmask_imm => is_bitmask_imm ws (wunsigned w)
+   | CAimmC_armv8a_mov_imm => is_mov_imm ws (wunsigned w)
++  | CAimmC_armv8a_vshl ve => (wunsigned w <? wsize_bits ve)%Z
++  | CAimmC_armv8a_vshr ve => (0 <? wunsigned w)%Z && (wunsigned w <=? wsize_bits ve)%Z
+   end.
+ 
+ Definition armv8a_caimm_cond_pp (checker : armv8a_caimm_cond) : string :=
+@@ -301,6 +375,10 @@ Definition armv8a_caimm_cond_pp (checker : armv8a_caimm_cond) : string :=
+   | CAimmC_armv8a_arith_imm => "(arith imm12, optionally << 12)"
+   | CAimmC_armv8a_bitmask_imm => "(logical bitmask immediate)"
+   | CAimmC_armv8a_mov_imm => "(wide, inverted wide or bitmask immediate)"
++  | CAimmC_armv8a_vshl ve =>
++      match ve with U8 => "[0, 7]" | U16 => "[0, 15]" | U32 => "[0, 31]" | _ => "[0, 63]" end
++  | CAimmC_armv8a_vshr ve =>
++      match ve with U8 => "[1, 8]" | U16 => "[1, 16]" | U32 => "[1, 32]" | _ => "[1, 64]" end
+   end%string.
+ 
+ (* Memory-argument conditions (see [camem_cond] in arch_decl.v).
+@@ -309,10 +387,22 @@ Definition armv8a_caimm_cond_pp (checker : armv8a_caimm_cond) : string :=
+      register and no offset register, and the displacement is "a multiple of
+      8 in the range -512 to 504" (X registers) or "a multiple of 4 in the
+      range -256 to 252" (W registers), encoded in the imm7 field
+-     (ARM DDI 0487 M.d, C6.2.214 LDP and C6.2.414 STP). *)
++     (ARM DDI 0487 M.d, C6.2.214 LDP and C6.2.414 STP).
++   - [CAmemC_armv8a_q]: the address of a load or store of a 128-bit SIMD&FP
++     register (LDR/STR <Qt>). The encodable forms are a base register with
++     an unsigned offset that is a multiple of 16 in [0, 65520] (LDR
++     (immediate, SIMD&FP), unsigned offset, field imm12 scaled by 16), a
++     base register with a signed unscaled offset in [-256, 255] (LDUR
++     (SIMD&FP), field imm9, which assemblers select for this syntax), and a
++     base register with an unshifted register offset (LDR (register,
++     SIMD&FP), LSL #0).
++     The register offset scaled by 16 (LSL #4) is encodable but not
++     admitted: assembly generation represents scales 1, 2, 4 and 8 only
++     ([scale_of_z]), so an index scaled by 16 never reaches this check. *)
+ #[only(eqbOK)] derive
+ Variant armv8a_camem_cond :=
+-  | CAmemC_armv8a_pair of wsize.
++  | CAmemC_armv8a_pair of wsize
++  | CAmemC_armv8a_q.
+ 
+ #[ export ]
+ Instance eqTC_armv8a_camem_cond : eqTypeC armv8a_camem_cond :=
+@@ -323,12 +413,21 @@ Definition is_pair_offset (ws : wsize) (d : Z) : bool :=
+   let q := (d / n)%Z in
+   ((d mod n =? 0) && (-64 <=? q) && (q <=? 63))%Z.
+ 
++Definition is_q_offset (d : Z) : bool :=
++  ((-256 <=? d) && (d <=? 255))%Z
++  || ((d mod 16 =? 0) && (0 <=? d) && (d <=? 65520))%Z.
++
+ Definition armv8a_check_CAmem
+   (checker : armv8a_camem_cond) (disp : word armv8a_reg_size)
+-  (base : option register) (_ : nat) (ofs : option register) : bool :=
++  (base : option register) (scale : nat) (ofs : option register) : bool :=
+   match checker with
+   | CAmemC_armv8a_pair ws =>
+     isSome base && ~~ isSome ofs && is_pair_offset ws (wsigned disp)
++  | CAmemC_armv8a_q =>
++    isSome base &&
++    if ofs is Some _
++    then (disp == 0%R) && Nat.eqb scale 0
++    else is_q_offset (wsigned disp)
+   end.
+ 
+ Definition armv8a_camem_cond_pp (checker : armv8a_camem_cond) : string :=
+@@ -337,6 +436,8 @@ Definition armv8a_camem_cond_pp (checker : armv8a_camem_cond) : string :=
+     if ws == U64
+     then "[Xn|SP, #imm], imm a multiple of 8 in [-512, 504]"
+     else "[Xn|SP, #imm], imm a multiple of 4 in [-256, 252]"
++  | CAmemC_armv8a_q =>
++    "[Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]"
+   end%string.
+ 
+ #[ export ]
+@@ -346,7 +447,7 @@ Instance armv8a_decl : arch_decl register register_ext xregister rflag condt :=
+   ; cond_eqC  := eqTC_condt
+   ; toS_r     := reg_toS
+   ; toS_rx    := empty_toS lword64
+-  ; toS_x     := empty_toS lword128
++  ; toS_x     := vreg_toS
+   ; toS_f     := rflag_toS
+   ; reg_size_neq_xreg_size := refl_equal
+   ; ad_rsp := RSP
+@@ -369,18 +470,26 @@ Instance armv8a_decl : arch_decl register register_ext xregister rflag condt :=
+    x18 (reserved on Windows, on Apple platforms and under
+    shadow-call-stack Linux), and it is excluded from the register file
+    altogether (see the [register] declaration above), so this convention
+-   is valid on all platforms. *)
++   is valid on all platforms.
++
++   SIMD&FP registers (AAPCS64, Arm IHI 0055, "SIMD and Floating-Point
++   registers"): arguments in V0-V7, results in V0-V3, and V8-V15 are
++   callee-saved. The standard only requires the callee to preserve the low
++   64 bits of V8-V15; they are declared callee-saved as whole registers,
++   so the compiler saves and restores all 128 bits, which preserves more
++   than required. V16-V31 and V0-V7 are caller-saved. *)
+ 
+ Definition armv8a_call_conv : calling_convention :=
+   {| callee_saved :=
+       map ARReg [:: R19; R20; R21; R22; R23; R24; R25; R26; R27; R28
+                   ; R29; RSP ]
++      ++ map AXReg [:: V8; V9; V10; V11; V12; V13; V14; V15 ]
+    ; callee_saved_not_bool := erefl true
+    ; callee_saved_has_rsp  := erefl true
+    ; call_reg_args  := [:: R0; R1; R2; R3; R4; R5; R6; R7 ]
+-   ; call_xreg_args := [::]
++   ; call_xreg_args := [:: V0; V1; V2; V3; V4; V5; V6; V7 ]
+    ; call_reg_ret   := [:: R0; R1; R2; R3; R4; R5; R6; R7 ]
+-   ; call_xreg_ret  := [::]
++   ; call_xreg_ret  := [:: V0; V1; V2; V3 ]
+    ; call_reg_ret_uniq := erefl true
+    |}.
+ 
+@@ -394,6 +503,6 @@ Definition armv8a_internal_call_conv : internal_calling_convention :=
+           R19; R20; R21; R22; R23; R24;
+           R25; R26; R27; R28 ]
+    ; icall_regx  := [::]
+-   ; icall_xreg  := [::]
++   ; icall_xreg  := vregisters
+    ; icall_rflag := [:: CF; NF; ZF; VF ]
+   |}.
+diff --git a/proofs/compiler/armv8a_instr_decl.v b/proofs/compiler/armv8a_instr_decl.v
+index 11e936fa5..2f0300bb4 100644
+--- a/proofs/compiler/armv8a_instr_decl.v
++++ b/proofs/compiler/armv8a_instr_decl.v
+@@ -25,7 +25,7 @@ Require Import
+   sopn_semi
+   arch_decl
+   arch_utils.
+-Require Import armv8a_decl.
++Require Import armv8a_decl armv8a_simd.
+ 
+ 
+ Module E.
+@@ -167,7 +167,28 @@ Variant armv8a_mnemonic : Type :=
+ (* Barriers *)
+ | CSDB                           (* Consumption of speculative data barrier *)
+ | DSB                            (* Data synchronization barrier, full system *)
+-| ISB.                           (* Instruction synchronization barrier *)
++| ISB                            (* Instruction synchronization barrier *)
++
++(* Advanced SIMD. The [opts_size] option of these mnemonics is the element
++   size of the arrangement (U8 for 16B, U16 for 8H, U32 for 4S, U64 for 2D),
++   or U128 for the loads and stores of a whole Q register. Their Jasmin names
++   carry a V prefix, as several share their assembly mnemonic with a
++   general-purpose instruction (ADD, EOR, ...); the cryptographic-extension
++   mnemonics below keep their assembly names. *)
++| VMOV                           (* Move vector (MOV, alias of ORR (vector)) *)
++| VLDR                           (* Load a Q register *)
++| VSTR                           (* Store a Q register *)
++| VAND                           (* Bitwise AND (vector) *)
++| VBIC                           (* Bitwise bit clear (vector, register) *)
++| VORR                           (* Bitwise OR (vector, register) *)
++| VEOR                           (* Bitwise exclusive-OR (vector) *)
++| VNOT                           (* Bitwise NOT (vector) *)
++| VADD                           (* Add (vector) *)
++| VSUB                           (* Subtract (vector) *)
++| VSHL                           (* Shift left (immediate, vector) *)
++| VUSHR                          (* Unsigned shift right (immediate, vector) *)
++| VSRI                           (* Shift right and insert (immediate) *)
++| VSLI.                          (* Shift left and insert (immediate) *)
+ 
+ #[ export ]
+ Instance eqTC_armv8a_mnemonic : eqTypeC armv8a_mnemonic :=
+@@ -189,6 +210,10 @@ Definition armv8a_mnemonics : seq armv8a_mnemonic :=
+     ; LDR; LDRB; LDRH; LDRSB; LDRSH; LDRSW; LDRW; LDP
+     ; STR; STRB; STRH; STP
+     ; CSDB; DSB; ISB
++    ; VMOV; VLDR; VSTR
++    ; VAND; VBIC; VORR; VEOR; VNOT
++    ; VADD; VSUB
++    ; VSHL; VUSHR; VSRI; VSLI
+   ].
+ 
+ Lemma armv8a_mnemonic_fin_axiom : Finite.axiom armv8a_mnemonics.
+@@ -352,8 +377,62 @@ Definition string_of_armv8a_mnemonic (mn : armv8a_mnemonic) : string :=
+   | CSDB => "CSDB"
+   | DSB => "DSB"
+   | ISB => "ISB"
++  | VMOV => "VMOV"
++  | VLDR => "VLDR"
++  | VSTR => "VSTR"
++  | VAND => "VAND"
++  | VBIC => "VBIC"
++  | VORR => "VORR"
++  | VEOR => "VEOR"
++  | VNOT => "VNOT"
++  | VADD => "VADD"
++  | VSUB => "VSUB"
++  | VSHL => "VSHL"
++  | VUSHR => "VUSHR"
++  | VSRI => "VSRI"
++  | VSLI => "VSLI"
+   end%string.
+ 
++(* Assembly mnemonic of the Advanced SIMD instructions. *)
++Definition vasm_name (mn : armv8a_mnemonic) : string :=
++  match mn with
++  | VMOV => "MOV"
++  | VLDR => "LDR"
++  | VSTR => "STR"
++  | VAND => "AND"
++  | VBIC => "BIC"
++  | VORR => "ORR"
++  | VEOR => "EOR"
++  | VNOT => "NOT"
++  | VADD => "ADD"
++  | VSUB => "SUB"
++  | VSHL => "SHL"
++  | VUSHR => "USHR"
++  | VSRI => "SRI"
++  | VSLI => "SLI"
++  | _ => string_of_armv8a_mnemonic mn
++  end%string.
++
++(* The element sizes ([opts_size]) at which each Advanced SIMD mnemonic
++   exists; empty for the general-purpose mnemonics. A mnemonic with a single
++   element size has no size suffix in Jasmin; the others are suffixed with
++   their arrangement as on x86 ([VADD_4u32] is [ADD <Vd>.4S, ...]). *)
++Definition vector_esizes (mn : armv8a_mnemonic) : seq wsize :=
++  match mn with
++  | VMOV | VAND | VBIC | VORR | VEOR | VNOT => [:: U8 ]
++  | VLDR | VSTR => [:: U128 ]
++  | VADD | VSUB | VSHL | VUSHR | VSRI | VSLI => [:: U8; U16; U32; U64 ]
++  | _ => [::]
++  end.
++
++Definition velem_of_wsize (ws : wsize) : velem :=
++  match ws with
++  | U8 => VE8
++  | U16 => VE16
++  | U32 => VE32
++  | _ => VE64
++  end.
++
+ 
+ (* -------------------------------------------------------------------- *)
+ (* ARMv8-A operators are pairs of mnemonics and options. *)
+@@ -607,7 +686,10 @@ Notation msbf := (if osz == U64 then MSB_MERGE else MSB_CLEAR) (only parsing).
+ Let armv8a_mn_str (mn : armv8a_mnemonic) : unit -> string :=
+   if mn \in sized_mnemonics
+   then pp_sz (string_of_armv8a_mnemonic mn) osz
+-  else pp_s (string_of_armv8a_mnemonic mn).
++  else
++    if 1 < size (vector_esizes mn)
++    then pp_ve_sz (string_of_armv8a_mnemonic mn) (velem_of_wsize osz) U128
++    else pp_s (string_of_armv8a_mnemonic mn).
+ 
+ (* Argument kinds.
+    Immediate operands are checked against the A64 encoding rules
+@@ -2938,6 +3020,339 @@ Definition armv8a_DSB_instr : instr_desc_t := mk_barrier_instr DSB.
+ *)
+ Definition armv8a_ISB_instr : instr_desc_t := mk_barrier_instr ISB.
+ 
++
++(* -------------------------------------------------------------------- *)
++(* Advanced SIMD.
++   The operands are whole 128-bit registers (the Q form of the vector
++   instructions, [Q = 1]); the 64-bit (D) forms are not provided. The
++   [opts_size] option is the element size [esize] of the arrangement and
++   the descriptions are valid only at the element sizes listed by
++   [vector_esizes].
++
++   The semantics below are our transcriptions of the operational pseudocode
++   of the Arm A64 Instruction Set Architecture (ARM DDI 0602, release
++   2026-03, SIMD&FP instructions); each description cites its instruction
++   page and states the semantics in our words. They are trusted, as are the
++   semantics of the general-purpose instructions above. The word-level
++   helpers they use are in armv8a_simd.v.
++
++   The operational information of every instruction below classifies it as
++   a data-independent-time instruction (see About PSTATE.DIT), hence
++   [id_doit := DOIT]. *)
++
++Notation esize := (opts_size opts) (only parsing).
++
++Notation vvalid mn :=
++  ((has_shift opts == None) && (esize \in vector_esizes mn)) (only parsing).
++
++Notation lvec := (lword U128) (only parsing).
++Notation ty_v := (sem_ltuple [:: lvec ]) (only parsing).
++
++(* The [wsize] paired with a vector-register operand is the element size
++   of its arrangement, U128 standing for the Q register name; see the
++   assembly printer. *)
++Definition pp_armv8a_vop
++  (mn : armv8a_mnemonic) (szs : seq wsize) (args : seq asm_arg) : pp_asm_op :=
++  {|
++    pp_aop_name := vasm_name mn;
++    pp_aop_ext := PP_name;
++    pp_aop_args := zip szs args;
++  |}.
++
++Let ak_vv := [:: [:: [:: CAxmm ]; [:: CAxmm ] ] ].
++Let ak_vvv := [:: [:: [:: CAxmm ]; [:: CAxmm ]; [:: CAxmm ] ] ].
++Let ak_vv_imm (c : armv8a_caimm_cond) :=
++  [:: [:: [:: CAxmm ]; [:: CAxmm ]; [:: CAimm (Some c) U8 ] ] ].
++
++(* One vector source. *)
++Definition mk_v1_instr mn (semi : word U128 -> ty_v) : instr_desc_t :=
++  let tin := [:: lvec ] in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Ea 1 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 2;
++    id_args_kinds := ak_vv;
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str mn;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop mn [:: esize; esize ];
++    id_valid := vvalid mn;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* Two vector sources. *)
++Definition mk_v2_instr mn (semi : word U128 -> word U128 -> ty_v) : instr_desc_t :=
++  let tin := [:: lvec; lvec ] in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Ea 1; Ea 2 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 3;
++    id_args_kinds := ak_vvv;
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str mn;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop mn [:: esize; esize; esize ];
++    id_valid := vvalid mn;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* One vector source and an immediate. *)
++Definition mk_v1_imm_instr mn (c : armv8a_caimm_cond)
++  (semi : word U128 -> word U8 -> ty_v) : instr_desc_t :=
++  let tin := [:: lvec; lword U8 ] in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Ea 1; Ea 2 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 3;
++    id_args_kinds := ak_vv_imm c;
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str mn;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop mn [:: esize; esize; U8 ];
++    id_valid := vvalid mn;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* The destination is also a source (insertions): [Vd] is read, then
++   written. *)
++Definition mk_v1d_imm_instr mn (c : armv8a_caimm_cond)
++  (semi : word U128 -> word U128 -> word U8 -> ty_v) : instr_desc_t :=
++  let tin := [:: lvec; lvec; lword U8 ] in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Ea 0; Ea 1; Ea 2 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 3;
++    id_args_kinds := ak_vv_imm c;
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str mn;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop mn [:: esize; esize; U8 ];
++    id_valid := vvalid mn;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* [MOV (vector)] ARM DDI 0602 2026-03, alias of ORR (vector, register) with
++   Vm = Vn.
++   Syntax: MOV <Vd>.<T>, <Vn>.<T>  ==  ORR <Vd>.<T>, <Vn>.<T>, <Vn>.<T>
++   Semantics: the OR of Vn with itself, that is, a copy of Vn. *)
++Definition armv8a_VMOV_semi (wn : word U128) : ty_v := wn.
++
++Definition armv8a_VMOV_instr : instr_desc_t := mk_v1_instr VMOV armv8a_VMOV_semi.
++
++(* [LDR (immediate, SIMD&FP)], [LDUR (SIMD&FP)], [LDR (register, SIMD&FP)]
++   ARM DDI 0602 2026-03, 128-bit variants.
++   Syntax: LDR <Qt>, [<Xn|SP>{, #<pimm>}]
++           LDR <Qt>, [<Xn|SP>, <Xm>]
++           LDUR <Qt>, [<Xn|SP>{, #<simm>}]
++   The unsigned offset is a multiple of 16 up to 65520, the signed offset
++   lies in [-256, 255], and the register offset is used unshifted; the
++   address condition [CAmemC_armv8a_q] (armv8a_decl.v) accepts exactly
++   these forms.
++   Semantics: the 16 bytes at the address, as the whole register. The writeback (pre- and post-index) forms are not provided. As for the
++   general-purpose loads, the memory argument is unaligned ([Eu]): no
++   alignment is required, which matches the hardware for Normal memory when
++   alignment checking is disabled (SCTLR_ELx.A = 0), as in user mode on the
++   supported platforms. *)
++Definition armv8a_VLDR_semi (w : word U128) : ty_v := w.
++
++Let ak_v_q := [:: [:: [:: CAxmm ]; [:: CAmem false (Some CAmemC_armv8a_q) ] ] ].
++
++Definition armv8a_VLDR_instr : instr_desc_t :=
++  let tin := [:: lvec ] in
++  let semi := armv8a_VLDR_semi in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Eu 1 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 2;
++    id_args_kinds := ak_v_q;
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str VLDR;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop VLDR [:: U128; U64 ];
++    id_valid := vvalid VLDR;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* [STR (immediate, SIMD&FP)], [STUR (SIMD&FP)], [STR (register, SIMD&FP)]
++   ARM DDI 0602 2026-03, 128-bit variants.
++   Syntax: STR <Qt>, [<Xn|SP>{, #<pimm>}]
++           STR <Qt>, [<Xn|SP>, <Xm>]
++           STUR <Qt>, [<Xn|SP>{, #<simm>}]
++   Semantics: the whole register is written to the 16 bytes at the
++   address. *)
++Definition armv8a_VSTR_semi (w : word U128) : ty_v := w.
++
++(* The destination is memory, so the MSB flag has no effect; MSB_MERGE as
++   for the scalar stores. *)
++Definition armv8a_VSTR_instr : instr_desc_t :=
++  let tin := [:: lvec ] in
++  let semi := armv8a_VSTR_semi in
++  {|
++    id_msb_flag := MSB_MERGE;
++    id_tin := tin;
++    id_in := [:: Ea 0 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Eu 1 ];
++    id_semi_total := semi;
++    id_nargs := 2;
++    id_args_kinds := ak_v_q;
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str VSTR;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop VSTR [:: U128; U64 ];
++    id_valid := vvalid VSTR;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* [AND (vector)] ARM DDI 0602 2026-03
++   Syntax: AND <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
++   Semantics: bitwise Vn AND Vm. *)
++Definition armv8a_VAND_semi (wn wm : word U128) : ty_v := wand wn wm.
++
++Definition armv8a_VAND_instr : instr_desc_t := mk_v2_instr VAND armv8a_VAND_semi.
++
++(* [BIC (vector, register)] ARM DDI 0602 2026-03
++   Syntax: BIC <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
++   Semantics: bitwise Vn AND NOT Vm. *)
++Definition armv8a_VBIC_semi (wn wm : word U128) : ty_v := wand wn (wnot wm).
++
++Definition armv8a_VBIC_instr : instr_desc_t := mk_v2_instr VBIC armv8a_VBIC_semi.
++
++(* [ORR (vector, register)] ARM DDI 0602 2026-03
++   Syntax: ORR <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
++   Semantics: bitwise Vn OR Vm. *)
++Definition armv8a_VORR_semi (wn wm : word U128) : ty_v := wor wn wm.
++
++Definition armv8a_VORR_instr : instr_desc_t := mk_v2_instr VORR armv8a_VORR_semi.
++
++(* [EOR (vector)] ARM DDI 0602 2026-03
++   Syntax: EOR <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
++   Semantics: bitwise Vn XOR Vm (EOR shares its pseudocode with BSL, BIT
++   and BIF; with the constant operands of EOR it is the XOR). *)
++Definition armv8a_VEOR_semi (wn wm : word U128) : ty_v := wxor wn wm.
++
++Definition armv8a_VEOR_instr : instr_desc_t := mk_v2_instr VEOR armv8a_VEOR_semi.
++
++(* [NOT] ARM DDI 0602 2026-03 (alias MVN)
++   Syntax: NOT <Vd>.<T>, <Vn>.<T>
++   Semantics: the complement of every byte, that is, the complement of the
++   register. *)
++Definition armv8a_VNOT_semi (wn : word U128) : ty_v := wnot wn.
++
++Definition armv8a_VNOT_instr : instr_desc_t := mk_v1_instr VNOT armv8a_VNOT_semi.
++
++(* [ADD (vector)] ARM DDI 0602 2026-03
++   Syntax: ADD <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
++   Semantics: element-wise sum of Vn and Vm, modulo 2^esize. *)
++Definition armv8a_VADD_semi (ve : wsize) (wn wm : word U128) : ty_v :=
++  lift2_vec ve +%w U128 wn wm.
++
++Definition armv8a_VADD_instr : instr_desc_t :=
++  mk_v2_instr VADD (armv8a_VADD_semi esize).
++
++(* [SUB (vector)] ARM DDI 0602 2026-03
++   Syntax: SUB <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
++   Semantics: element-wise difference Vn - Vm, modulo 2^esize. *)
++Definition armv8a_VSUB_semi (ve : wsize) (wn wm : word U128) : ty_v :=
++  lift2_vec ve (fun x y => x - y)%w U128 wn wm.
++
++Definition armv8a_VSUB_instr : instr_desc_t :=
++  mk_v2_instr VSUB (armv8a_VSUB_semi esize).
++
++(* [SHL (vector)] ARM DDI 0602 2026-03
++   Syntax: SHL <Vd>.<T>, <Vn>.<T>, #<shift>
++   The shift amount lies in [0, esize - 1].
++   Semantics: every element of Vn shifted left by the amount. *)
++Definition armv8a_VSHL_semi (ve : wsize) (wn : word U128) (sh : word U8) : ty_v :=
++  lift1_vec ve (fun x => wshl x (wunsigned sh)) U128 wn.
++
++Definition armv8a_VSHL_instr : instr_desc_t :=
++  mk_v1_imm_instr VSHL (CAimmC_armv8a_vshl esize) (armv8a_VSHL_semi esize).
++
++(* [USHR (vector)] ARM DDI 0602 2026-03
++   Syntax: USHR <Vd>.<T>, <Vn>.<T>, #<shift>
++   The shift amount lies in [1, esize].
++   Semantics: every element of Vn, as an unsigned integer, shifted right by
++   the amount without rounding; a shift by [esize] gives 0, as [wshr]
++   does. *)
++Definition armv8a_VUSHR_semi (ve : wsize) (wn : word U128) (sh : word U8) : ty_v :=
++  lift1_vec ve (fun x => wshr x (wunsigned sh)) U128 wn.
++
++Definition armv8a_VUSHR_instr : instr_desc_t :=
++  mk_v1_imm_instr VUSHR (CAimmC_armv8a_vshr esize) (armv8a_VUSHR_semi esize).
++
++(* [SRI] ARM DDI 0602 2026-03
++   Syntax: SRI <Vd>.<T>, <Vn>.<T>, #<shift>
++   The shift amount lies in [1, esize].
++   Semantics: in every element, the bits of Vn shifted right by the amount
++   replace the low bits of Vd; the top [shift] bits of Vd are kept. *)
++Definition armv8a_VSRI_semi (ve : wsize) (wd wn : word U128) (sh : word U8) : ty_v :=
++  lift2_vec ve (vsri_elem (wunsigned sh)) U128 wd wn.
++
++Definition armv8a_VSRI_instr : instr_desc_t :=
++  mk_v1d_imm_instr VSRI (CAimmC_armv8a_vshr esize) (armv8a_VSRI_semi esize).
++
++(* [SLI] ARM DDI 0602 2026-03
++   Syntax: SLI <Vd>.<T>, <Vn>.<T>, #<shift>
++   The shift amount lies in [0, esize - 1].
++   Semantics: in every element, the bits of Vn shifted left by the amount
++   replace the high bits of Vd; the low [shift] bits of Vd are kept. *)
++Definition armv8a_VSLI_semi (ve : wsize) (wd wn : word U128) (sh : word U8) : ty_v :=
++  lift2_vec ve (vsli_elem (wunsigned sh)) U128 wd wn.
++
++Definition armv8a_VSLI_instr : instr_desc_t :=
++  mk_v1d_imm_instr VSLI (CAimmC_armv8a_vshl esize) (armv8a_VSLI_semi esize).
++
+ (* -------------------------------------------------------------------- *)
+ (* Description of instructions. *)
+ 
+@@ -3017,6 +3432,20 @@ Definition mn_desc (mn : armv8a_mnemonic) : instr_desc_t :=
+   | CSDB => armv8a_CSDB_instr
+   | DSB => armv8a_DSB_instr
+   | ISB => armv8a_ISB_instr
++  | VMOV => armv8a_VMOV_instr
++  | VLDR => armv8a_VLDR_instr
++  | VSTR => armv8a_VSTR_instr
++  | VAND => armv8a_VAND_instr
++  | VBIC => armv8a_VBIC_instr
++  | VORR => armv8a_VORR_instr
++  | VEOR => armv8a_VEOR_instr
++  | VNOT => armv8a_VNOT_instr
++  | VADD => armv8a_VADD_instr
++  | VSUB => armv8a_VSUB_instr
++  | VSHL => armv8a_VSHL_instr
++  | VUSHR => armv8a_VUSHR_instr
++  | VSRI => armv8a_VSRI_instr
++  | VSLI => armv8a_VSLI_instr
+   end.
+ 
+ End ARMV8A_INSTR.
+@@ -3037,13 +3466,34 @@ Definition armv8a_prim_sized (mn : armv8a_mnemonic) : prim_constructor armv8a_as
+        then Some (ARMv8A_op mn (opts_at sz))
+        else None).
+ 
++(* Advanced SIMD intrinsics: [#VEOR] for a mnemonic with a single element
++   size, [#VADD_16u8], [#VADD_8u16], [#VADD_4u32], [#VADD_2u64] for the
++   others. *)
++Definition armv8a_prim_vector (mn : armv8a_mnemonic) : prim_constructor armv8a_asm_op :=
++  let szs := vector_esizes mn in
++  if szs is [:: sz ]
++  then primM (ARMv8A_op mn (opts_at sz))
++  else
++    PrimX86
++      [seq PVv (velem_of_wsize sz) U128 | sz <- szs ]
++      (fun s =>
++         if s is PVv ve U128
++         then
++           if wsize_of_velem ve \in szs
++           then Some (ARMv8A_op mn (opts_at ve))
++           else None
++         else None).
++
+ Definition armv8a_prim_string : seq (string * prim_constructor armv8a_asm_op) :=
+   map
+     (fun mn =>
+        (string_of_armv8a_mnemonic mn,
+         if mn \in sized_mnemonics
+         then armv8a_prim_sized mn
+-        else primM (ARMv8A_op mn default_opts)))
++        else
++          if vector_esizes mn != [::]
++          then armv8a_prim_vector mn
++          else primM (ARMv8A_op mn default_opts)))
+     cenum.
+ 
+ #[ export ]
+diff --git a/proofs/compiler/armv8a_lowering.v b/proofs/compiler/armv8a_lowering.v
+index 113adcf2f..562c4fdaa 100644
+--- a/proofs/compiler/armv8a_lowering.v
++++ b/proofs/compiler/armv8a_lowering.v
+@@ -418,6 +418,58 @@ Definition lower_pexpr_aux (ws : wsize) (e : pexpr) : low_expr :=
+   | _ => le_skip
+   end.
+ 
++(* -------------------------------------------------------------------- *)
++(* Lowering of 128-bit expressions to Advanced SIMD instructions.
++   A 128-bit value lives in a SIMD&FP register. Moves, loads, the bitwise
++   operations and the element-wise additions, subtractions and shifts by a
++   constant are lowered; the bitwise operations use the 16B arrangement.
++   The vector shifts of Jasmin take their amount as a 128-bit word and
++   yield 0 when it reaches the element size: they are lowered only for a
++   constant amount within the range of the immediate forms (SHL: [0,
++   esize - 1], USHR: [1, esize]), where both semantics agree. *)
++
++Definition lower_vec_Pvar (v : gvar) : low_expr :=
++  if is_var_in_memory (gv v)
++  then le_issue VLDR U128 [:: Pvar v ]
++  else le_issue VMOV U8 [:: Pvar v ].
++
++Definition is_lnot128 (e : pexpr) : option pexpr :=
++  if e is Papp1 (Olnot U128) e' then Some e' else None.
++
++Definition lower_vec_Papp2 (op : sop2) (e0 e1 : pexpr) : low_expr :=
++  match op with
++  | Oland U128 =>
++      if is_lnot128 e1 is Some e1'
++      then le_issue VBIC U8 [:: e0; e1' ]
++      else le_issue VAND U8 [:: e0; e1 ]
++  | Olor U128 => le_issue VORR U8 [:: e0; e1 ]
++  | Olxor U128 => le_issue VEOR U8 [:: e0; e1 ]
++  | Ovadd ve U128 => le_issue VADD ve [:: e0; e1 ]
++  | Ovsub ve U128 => le_issue VSUB ve [:: e0; e1 ]
++  | Ovlsl ve U128 =>
++      let%opt n := is_wconst U128 e1 in
++      let%opt _ := oassert (wunsigned n <? wsize_bits ve)%Z in
++      le_issue VSHL ve [:: e0; eword_of_int U8 (wunsigned n) ]
++  | Ovlsr ve U128 =>
++      let%opt n := is_wconst U128 e1 in
++      let%opt _ := oassert ((0 <? wunsigned n) && (wunsigned n <=? wsize_bits ve))%Z in
++      le_issue VUSHR ve [:: e0; eword_of_int U8 (wunsigned n) ]
++  | _ => le_skip
++  end.
++
++Definition lower_vec_pexpr (e : pexpr) : low_expr :=
++  match e with
++  | Pvar v => lower_vec_Pvar v
++  | Pget _ _ _ _ _
++  | Pload _ _ _ => le_issue VLDR U128 [:: e ]
++  | Papp1 (Olnot U128) e => le_issue VNOT U8 [:: e ]
++  | Papp2 op a b => lower_vec_Papp2 op a b
++  | _ => le_skip
++  end.
++
++Definition lower_pexpr_word (ws : wsize) (e : pexpr) : low_expr :=
++  if ws == U128 then lower_vec_pexpr e else lower_pexpr_aux ws e.
++
+ (* A64 has no conditional execution: conditional expressions are lowered
+    to the conditional select instructions, whose operands must be
+    registers. *)
+@@ -491,7 +543,7 @@ Definition lower_pexpr (vi : var_info) (ws : wsize) (e : pexpr) :
+       let of_int e := Papp1 (Oword_of_int ws') e in
+       lower_Pif vi ws c (of_int e0) (of_int e1)
+   | _ =>
+-      no_pre (lower_pexpr_aux ws e)
++      no_pre (lower_pexpr_word ws e)
+   end.
+ 
+ (* Lower an assignment to memory.
+@@ -501,6 +553,9 @@ Definition lower_pexpr (vi : var_info) (ws : wsize) (e : pexpr) :
+      + a memory location.
+    - [e] must be a register. *)
+ Definition lower_store (ws : wsize) (e : pexpr) : option (armv8a_asm_op * seq pexpr) :=
++  if ws == U128 then
++    if e is Pvar _ then Some (ARMv8A_op VSTR (opts_at U128), [:: e ]) else None
++  else
+   let%opt mn := store_mn_of_wsize ws in
+   let osz := if (ws <= U16)%CMP then U64 else ws in
+   match e with
+diff --git a/proofs/compiler/armv8a_lowering_proof.v b/proofs/compiler/armv8a_lowering_proof.v
+index ff8372fbf..bb866ddad 100644
+--- a/proofs/compiler/armv8a_lowering_proof.v
++++ b/proofs/compiler/armv8a_lowering_proof.v
+@@ -1462,8 +1462,192 @@ Proof.
+   exact: lower_Papp2P.
+ Qed.
+ 
++(* -------------------------------------------------------------------- *)
++(* Lowering of 128-bit expressions to Advanced SIMD instructions. *)
++
++#[ local ]
++Definition Plower_vec_pexpr (e : pexpr) : Prop :=
++  forall s ws' aop es (w : word ws'),
++    lower_vec_pexpr e = Some (aop, es)
++    -> (U128 <= ws')%CMP
++    -> disj_fvars (read_e e)
++    -> sem_pexpr true (p_globs p) s e = ok (Vword w)
++    -> ok_lower_pexpr_aux s U128 aop es w.
++
++Lemma disj_fvars_eword_of_int ws z : disj_fvars (read_e (eword_of_int ws z)).
++Proof. done. Qed.
++
++Lemma disj_fvars_read_e_Papp1 op e :
++  disj_fvars (read_e (Papp1 op e)) -> disj_fvars (read_e e).
++Proof. done. Qed.
++
++Lemma is_lnot128P e e' : is_lnot128 e = Some e' -> e = Papp1 (Olnot U128) e'.
++Proof. by case: e => // -[] // -[] // ? [->]. Qed.
++
++(* The shift amount of a vector shift by a constant, given to the
++   instruction as an 8-bit immediate. *)
++Lemma vshift_amount (n : word U128) (ve : velem) :
++  (wunsigned n <=? wsize_bits ve)%Z ->
++  wunsigned (wrepr U8 (wunsigned n)) = wunsigned n.
++Proof.
++  move=> /ZleP h; apply: wunsigned_repr_small.
++  have [h0 _] := wunsigned_range n.
++  by case: ve h => /= h; split => //; apply: (Z.le_lt_trans _ _ _ h).
++Qed.
++
++Lemma lower_vec_PvarP gx : Plower_vec_pexpr (Pvar gx).
++Proof.
++  move=> s ws' aop es w h hws hfvx /= hget.
++  move: h; rewrite /lower_vec_pexpr /lower_vec_Pvar.
++  case: is_var_in_memory => -[? ?]; subst aop es.
++  all: split; last done.
++  all: rewrite /= hget /=; eexists; first reflexivity.
++  all: by rewrite /exec_sopn /= truncate_word_le.
++Qed.
++
++Lemma lower_vec_loadP e :
++  match e with Pload _ _ _ | Pget _ _ _ _ _ => Plower_vec_pexpr e
++  | _ => True end.
++Proof.
++  case: e => // [ al aa wsg x | al wsg ] e s ws' aop es w.
++  all: rewrite /lower_vec_pexpr => -[? ?] hws hfve; subst aop es.
++  all: rewrite /sem_pexpr -/(sem_pexpr _ _ s e).
++  - apply: on_arr_gvarP => n t hty ok_t.
++    apply: rbindP => idx.
++    apply: rbindP => ? ok_idx /to_intI ?; subst.
++    apply: rbindP => r ok_r /ok_inj /Vword_inj[] ??; subst => /=.
++    split; last done.
++    rewrite /= ok_t /= ok_idx /= ok_r /=.
++    eexists; first reflexivity.
++    by rewrite /exec_sopn /= truncate_word_le.
++  t_xrbindP=> woff' voff hseme hoff wres hread ? hw; subst wsg.
++  move: hoff => /to_wordI [ws1 [woff [? /truncate_wordP [hws1 ?]]]];
++    subst woff' voff.
++  move: hw => [?]; subst wres.
++  split; last done.
++  rewrite /sem_pexprs /=.
++  rewrite hseme {hseme} /=.
++  rewrite truncate_word_le // {hws1} /=.
++  rewrite hread {hread} /=.
++  eexists; first reflexivity.
++  by rewrite /exec_sopn /= truncate_word_le.
++Qed.
++
++Lemma lower_vec_Papp1P op e : Plower_vec_pexpr (Papp1 op e).
++Proof.
++  move=> s ws' aop es w h hws hfve.
++  rewrite /sem_pexpr -/(sem_pexpr _ _ s e).
++  t_xrbindP=> v hseme hw.
++  move: h; rewrite /lower_vec_pexpr.
++  case: op hw hfve => [ ? | ? ? | ? ? | ? ? || ws0 | ? | ? ? ] // hw hfve.
++  case: ws0 hw hfve => // hw hfve [? ?]; subst aop es.
++  move: hw => /sem_sop1I /= [w' [w2] [hw' [<-] hw]].
++  move: hw => /Vword_inj [?]; subst ws' => /= ?; subst w.
++  split; last done.
++  rewrite /= hseme /=; eexists; first reflexivity.
++  by rewrite /exec_sopn /= hw' /= zero_extend_u.
++Qed.
++
++(* A 128-bit binary operator lowered to one instruction applied to both
++   operands. *)
++Lemma lower_vec_binopP s mn ve e0 e1 v0 v1 (w : word U128) :
++  sem_pexpr true (p_globs p) s e0 = ok v0
++  -> sem_pexpr true (p_globs p) s e1 = ok v1
++  -> disj_fvars (read_e e0)
++  -> disj_fvars (read_e e1)
++  -> exec_sopn (Oarmv8a (ARMv8A_op mn (opts_at ve))) [:: v0; v1 ] = ok [:: Vword w ]
++  -> sopn_tout (Oarmv8a (ARMv8A_op mn (opts_at ve))) = [:: aword U128 ]
++  -> ok_lower_pexpr_aux s U128 (Oarmv8a (ARMv8A_op mn (opts_at ve))) [:: e0; e1 ] w.
++Proof.
++  move=> hsem0 hsem1 hfve0 hfve1 hexec htout.
++  split; last by split => //; apply: disj_fvars_read_es2.
++  rewrite /= hsem0 hsem1 /=; eexists; first reflexivity.
++  by rewrite zero_extend_u.
++Qed.
++
++Lemma lower_vec_Papp2P op e0 e1 : Plower_vec_pexpr (Papp2 op e0 e1).
++Proof.
++  move=> s ws' aop es w h hws hfve.
++  have [hfve0 hfve1] := disj_fvars_read_e_Papp2 hfve; clear hfve.
++  move: h; rewrite /sem_pexpr -/(sem_pexpr _ _ s e0) -/(sem_pexpr _ _ s e1).
++  t_xrbindP=> h v0 hsem0 v1 hsem1 hop.
++  move: hop h; rewrite /lower_vec_pexpr /lower_vec_Papp2.
++  case: op => [ | | | ? | ? | ? | ? ? | ? ? | ws | ws | ws | ? | ? | ? | ? | ?
++              | ? | ? | ? | ? | ? | ? | ve ws | ve ws | ? ? | ve ws | ve ws
++              | ? ? | ? ? ? ] //.
++  1-5: case: ws => //.
++  1-5: move=> /sem_sop2I /= [w0 [w1 [w2 [hw0 hw1 [<-] /Vword_inj [?]]]]].
++  1-5: subst ws' => /= ?; subst w.
++
++  (* Bitwise AND, or AND NOT when the second operand is a negation (BIC). *)
++  - case hnot: is_lnot128 => [e1'|] [? ?]; subst aop es; last first.
++    + apply: (lower_vec_binopP hsem0 hsem1 hfve0 hfve1) => //.
++      by rewrite /exec_sopn /= hw0 hw1.
++    move: hnot hsem1 hfve1 hw1 => /is_lnot128P -> {e1}.
++    rewrite /sem_pexpr -/(sem_pexpr _ _ s e1').
++    t_xrbindP=> v1' hsem1' hop1 hfve1.
++    move: hop1 => /sem_sop1I /= [w1' [w3] [hw1' [<-] ->]] /=.
++    rewrite truncate_word_u => -[?]; subst w1.
++    apply: (lower_vec_binopP hsem0 hsem1' hfve0
++              (disj_fvars_read_e_Papp1 hfve1)) => //.
++    by rewrite /exec_sopn /= hw0 hw1'.
++
++  (* Bitwise OR and XOR. *)
++  1-2: move=> [? ?]; subst aop es.
++  1-2: apply: (lower_vec_binopP hsem0 hsem1 hfve0 hfve1) => //.
++  1-2: by rewrite /exec_sopn /= hw0 hw1.
++
++  (* Element-wise addition and subtraction. *)
++  1-2: move=> [? ?]; subst aop es.
++  1-2: apply: (lower_vec_binopP hsem0 hsem1 hfve0 hfve1) => //.
++  1-2: by case: ve; rewrite /exec_sopn /= hw0 hw1.
++
++  (* Element-wise shifts by a constant amount. *)
++  all: case: ws => //.
++  all: move=> /sem_sop2I /= [w0 [w1 [w2 [hw0 hw1 [<-] /Vword_inj [?]]]]].
++  all: subst ws' => /= ?; subst w.
++  all: case hn: is_wconst => [n|] //.
++  all: move=> /oassertP [] hrange [? ?]; subst aop es.
++  all: assert (hn1 := is_wconstP true (p_globs p) s hn).
++  all: move: hn1; rewrite hsem1 /= hw1 => -[?].
++  all: subst w1.
++  all: split; last by split => //; apply: disj_fvars_read_es2.
++  all: rewrite /= hsem0 /=; eexists; first reflexivity.
++  all: rewrite /exec_sopn /= hw0 /= truncate_word_u /= zero_extend_u.
++  (* USHR: the amount is in [1, esize]. *)
++  - have hn8 := @vshift_amount n ve (proj2 (andP hrange)).
++    by case: ve hrange hn8 => /= _ hn8; rewrite /armv8a_VUSHR_semi /sem_vshr hn8.
++  (* SHL: the amount is in [0, esize - 1]. *)
++  have hn8 : wunsigned (wrepr U8 (wunsigned n)) = wunsigned n.
++  - by apply: (vshift_amount (ve := ve)); move: hrange => /ZltP h; apply/ZleP; lia.
++  by case: ve hrange hn8 => /= _ hn8; rewrite /armv8a_VSHL_semi /sem_vshl hn8.
++Qed.
++
++Lemma lower_vec_pexprP e : Plower_vec_pexpr e.
++Proof.
++  case: e => [||| gx | al aa ws0 x e || al ws0 x e | op e | op e0 e1 ||].
++  all: try by move=> > /=.
++  - exact: lower_vec_PvarP.
++  - exact: (lower_vec_loadP (Pget _ _ _ _ _)).
++  - exact: (lower_vec_loadP (Pload _ _ _)).
++  - exact: lower_vec_Papp1P.
++  exact: lower_vec_Papp2P.
++Qed.
++
++Lemma lower_pexpr_wordP s ws ws' e aop es (w : word ws') :
++  lower_pexpr_word ws e = Some (aop, es)
++  -> (ws <= ws')%CMP
++  -> disj_fvars (read_e e)
++  -> sem_pexpr true (p_globs p) s e = ok (Vword w)
++  -> ok_lower_pexpr_aux s ws aop es w.
++Proof.
++  rewrite /lower_pexpr_word; case: eqP => [-> | _].
++  - exact: lower_vec_pexprP.
++  exact: lower_pexpr_auxP.
++Qed.
++
+ Lemma sem_i_lower_pexpr_aux s0 s1 s0' ws ws' ii e op es (w : word ws') lv tag :
+-  lower_pexpr_aux ws e = Some (op, es)
++  lower_pexpr_word ws e = Some (op, es)
+   -> eq_fv s0 s0'
+   -> (ws <= ws')%CMP
+   -> disj_fvars (read_e e)
+@@ -1479,7 +1663,7 @@ Proof.
+   have hseme' := eeq_exc_sem_pexpr hfve hs00 hseme.
+   clear hseme.
+ 
+-  have [[vs hsemes hexec] _] := lower_pexpr_auxP h hws hfve hseme'.
++  have [[vs hsemes hexec] _] := lower_pexpr_wordP h hws hfve hseme'.
+   clear h hws hfve hseme'.
+ 
+   have [s1' hwrite' hs11] := eeq_exc_write_lval hfvlv hs00 hwrite.
+@@ -1675,7 +1859,7 @@ Proof using atoI ev fv fv_correct p pT sCP sc_sem syscall_state warning wsw.
+      [lower_pexpr_aux]. *)
+   match goal with
+   | [ |- ?G ] =>
+-      have hnopre : no_pre (lower_pexpr_aux ws e) = Some (pre, op, es) -> G
++      have hnopre : no_pre (lower_pexpr_word ws e) = Some (pre, op, es) -> G
+   end.
+   {
+     move=> /no_preP [? h']; subst pre.
+@@ -1761,6 +1945,16 @@ Proof.
+ 
+   move: h.
+   rewrite /lower_store.
++  case: eqP => [? | _].
++  {
++    (* A 128-bit register is stored with STR <Qt>. *)
++    subst ws.
++    case: e hseme hfv => [||| gx |||||||] // hseme hfv [? ?]; subst aop es.
++    rewrite /= /sem_sopn /=.
++    have /= -> := eeq_exc_sem_pexpr hfv hs00 hseme.
++    rewrite /exec_sopn /= (truncate_word_le _ hws) /=.
++    by rewrite hwrite.
++  }
+   case hmn: store_mn_of_wsize => [mn|] //.
+ 
+   (* On armv8a only a register can be stored: [e] is a [Pvar]. *)
+diff --git a/proofs/compiler/armv8a_params.v b/proofs/compiler/armv8a_params.v
+index 9ae9a50dc..6824b9ae3 100644
+--- a/proofs/compiler/armv8a_params.v
++++ b/proofs/compiler/armv8a_params.v
+@@ -186,18 +186,22 @@ Definition armv8a_set_up_sp_register
+ Definition armv8a_tmp  : Ident.ident := vname (v_var vtmpi).
+ Definition armv8a_tmp2 : Ident.ident := vname (v_var vtmp2i).
+ 
+-Definition armv8a_lmove (_ : wsize) (xd xs : var_i) :=
+-  ([:: LLvar xd], Oarmv8a (ARMv8A_op MOV default_opts), [:: Rexpr (Fvar xs)]).
++(* Moves, stores and loads of saved registers: X registers (U64) and, for
++   the callee-saved SIMD&FP registers, whole Q registers (U128). The offset
++   of a slot is a pointer-sized constant whatever the size of the register. *)
++Definition armv8a_lmove (ws : wsize) (xd xs : var_i) :=
++  let op := if ws == U128 then ARMv8A_op VMOV (opts_at U8) else ARMv8A_op MOV default_opts in
++  ([:: LLvar xd], Oarmv8a op, [:: Rexpr (Fvar xs)]).
+ 
+-Definition armv8a_check_ws ws := ws == reg_size.
++Definition armv8a_check_ws ws := (ws == reg_size) || (ws == U128).
+ 
+ Definition armv8a_lstore (ws : wsize) (xd : var_i) (ofs : Z) (xs : var_i) :=
+-  let mn := STR in
+-  ([:: Store Aligned ws (faddv Uptr xd (fconst ws ofs))], Oarmv8a (ARMv8A_op mn default_opts), [:: Rexpr (Fvar xs)]).
++  let op := if ws == U128 then ARMv8A_op VSTR (opts_at U128) else ARMv8A_op STR default_opts in
++  ([:: Store Aligned ws (faddv Uptr xd (fconst Uptr ofs))], Oarmv8a op, [:: Rexpr (Fvar xs)]).
+ 
+ Definition armv8a_lload (ws : wsize) (xd : var_i) (xs : var_i) (ofs : Z) :=
+-  let mn := LDR in
+-  ([:: LLvar xd], Oarmv8a (ARMv8A_op mn default_opts), [:: Load Aligned ws (faddv Uptr xs (fconst ws ofs))]).
++  let op := if ws == U128 then ARMv8A_op VLDR (opts_at U128) else ARMv8A_op LDR default_opts in
++  ([:: LLvar xd], Oarmv8a op, [:: Load Aligned ws (faddv Uptr xs (fconst Uptr ofs))]).
+ 
+ (* Restore saved values from the stack. Unlike ARMv7 (where SP/R13 is an
+    ordinary register that LDR can target), an A64 load writes its result through
+@@ -224,7 +228,13 @@ Definition armv8a_lloads (rspi : var_i) (to_restore : seq (var * Z)) (spofs : Z)
+                to_restore
+   in
+   let restore_sp :=
+-    if is_arith_small spofs then
++    if vtype rspi != aword Uptr then
++      (* Not reached: the stack pointer is a pointer-sized register. This
++         case only keeps the specification of [lip_lloads] uniform in the
++         type of [rspi], which may be any type accepted by
++         [armv8a_check_ws]. *)
++      [:: armv8a_lload (wsize_of_atype (vtype rspi)) rspi rspi spofs ]
++    else if is_arith_small spofs then
+       [:: armv8a_lload Uptr vtmp2i rspi spofs; armv8a_lmove Uptr rspi vtmp2i ]
+     else
+       ARMv8AFopn_smart_addi vtmp2i rspi spofs
+@@ -420,7 +430,7 @@ Definition armv8a_szparams : stack_zeroization_params :=
+ 
+ Definition armv8a_is_load (o : asm_op_t) : bool :=
+   if o is BaseOp (None, ARMv8A_op mn _) then
+-    mn \in [:: LDR; LDRB; LDRH; LDRSB; LDRSH; LDRSW; LDRW; LDP ]
++    mn \in [:: VLDR; LDR; LDRB; LDRH; LDRSB; LDRSH; LDRSW; LDRW; LDP ]
+   else false.
+ 
+ Definition armv8a_laparams : lower_addressing_params :=
+@@ -435,7 +445,7 @@ Definition armv8a_laparams : lower_addressing_params :=
+ Definition armv8a_is_move_op (o : asm_op_t) : bool :=
+   match o with
+   | BaseOp (None, ARMv8A_op o opts) =>
+-    if o \in [:: MOV; LDR; STR; STRH; STRB ] then
++    if o \in [:: MOV; LDR; STR; STRH; STRB; VMOV; VLDR; VSTR ] then
+       ~~ has_shift opts
+     else false
+ 
+diff --git a/proofs/compiler/armv8a_params_proof.v b/proofs/compiler/armv8a_params_proof.v
+index a4a53609d..fdfc4cd2f 100644
+--- a/proofs/compiler/armv8a_params_proof.v
++++ b/proofs/compiler/armv8a_params_proof.v
+@@ -309,19 +309,22 @@ Qed.
+ 
+ Lemma armv8a_lmove_correct : lmove_correct armv8a_liparams.
+ Proof.
+-  move=> xd xs ws w s /eqP hws htxd; t_xrbindP => z hget htr; subst.
+-  rewrite /armv8a_liparams /lip_lmove /armv8a_lmove /= hget /=.
+-  rewrite /exec_sopn /= htr /= /set_var /=.
+-  by case: vtype htxd.
++  move=> xd xs ws w s hchk htxd; t_xrbindP => z hget htr.
++  case/orP: hchk => /eqP ?; subst ws.
++  all: rewrite /armv8a_liparams /lip_lmove /armv8a_lmove /= hget /=.
++  all: rewrite /exec_sopn /= htr /= /set_var /=.
++  all: by case: vtype htxd.
+ Qed.
+ 
+ Lemma armv8a_lstore_correct : lstore_correct_aux armv8a_check_ws armv8a_lstore.
+ Proof.
+-  move=> xd xs ofs ws w wp s m /eqP hchk; t_xrbindP; subst ws.
++  move=> xd xs ofs ws w wp s m hchk; t_xrbindP.
+   move=> vd hgetd htrd vs hgets htrs hwr.
+-  rewrite /armv8a_lstore /= hgets hgetd /= /exec_sopn /= htrs /=.
+-  rewrite /sem_sop2 /= htrd /= !truncate_word_u /= truncate_word_u /=.
+-  by rewrite zero_extend_u hwr.
++  have {}htrd : to_word armv8a_reg_size vd = ok wp := htrd.
++  case/orP: hchk => /eqP ?; subst ws.
++  all: rewrite /armv8a_lstore /= hgets hgetd /= /exec_sopn /= htrs /=.
++  all: rewrite /sem_sop2 /= htrd /= !truncate_word_u /= truncate_word_u /=.
++  all: by rewrite ?zero_extend_u hwr.
+ Qed.
+ 
+ Lemma armv8a_smart_addi_correct : ladd_imm_correct_aux ARMv8AFopn_smart_addi.
+@@ -342,10 +345,11 @@ Lemma armv8a_lload_correct :
+   lload_correct_aux (lip_check_ws armv8a_liparams) armv8a_lload.
+ Proof.
+   move=> xd xs ofs ws top s w vm hcheck; t_xrbindP => ? hgets hto hread hset.
+-  move/eqP: hcheck => ?; subst ws.
+-  rewrite /armv8a_lload /= hgets /= /sem_sop2 /= hto /= !truncate_word_u /=
++  have {}hto : to_word armv8a_reg_size _ = ok top := hto.
++  case/orP: hcheck => /eqP ?; subst ws.
++  all: rewrite /armv8a_lload /= hgets /= /sem_sop2 /= hto /= !truncate_word_u /=
+     truncate_word_u /= hread /=.
+-  by rewrite /exec_sopn /= truncate_word_u /= zero_extend_u hset.
++  all: by rewrite /exec_sopn /= truncate_word_u /= ?zero_extend_u hset.
+ Qed.
+ 
+ Lemma armv8a_tmp_correct : lip_tmp armv8a_liparams <> lip_tmp2 armv8a_liparams.
+@@ -392,7 +396,6 @@ Proof.
+   case heqt: (vtype rspi) => [|||ws] //=; t_xrbindP
+     => vm2' wsx hwsx hchk w_sp hread hset heqv.
+   subst wsx vm2.
+-  move/eqP: (hchk) => ?; subst ws.
+   move/set_varP: hset => [_ _ ?]; subst vm2'.
+ 
+   have hsetvar : forall (vm : Vm.t) (w : word Uptr),
+@@ -406,13 +409,28 @@ Proof.
+       get_var true vmr rspi >>= to_word Uptr = ok top ->
+       exists2 vm,
+         sem_fopns_args (with_vm s vmr)
+-          (if is_arith_small ofs
++          (if vtype rspi != aword Uptr
++           then [:: armv8a_lload (constant_prop.wsize_of_atype (vtype rspi)) rspi rspi ofs ]
++           else if is_arith_small ofs
+            then [:: armv8a_lload Uptr vtmp2i rspi ofs; armv8a_lmove Uptr rspi vtmp2i ]
+            else ARMv8AFopn_smart_addi vtmp2i rspi ofs
+                 ++ [:: armv8a_lload Uptr vtmp2i vtmp2i 0%Z; armv8a_lmove Uptr rspi vtmp2i ])
+           = ok (with_vm s vm)
+         & vm =[\ Sv.singleton (v_var vtmp2i) ] vmr.[v_var rspi <- Vword w_sp].
+   - move=> vmr hget_r.
++    rewrite heqt.
++    case/orP: (hchk) => /eqP ?; subst ws; last first.
++    + (* A 128-bit [rspi] (not produced by the compiler) is reloaded
++         directly. *)
++      have -> : (aword U128 != aword Uptr) = true by apply/eqP.
++      rewrite sem_fopns_args_1.
++      rewrite (armv8a_lload_correct (xd := rspi) (xs := rspi)
++                 (s := with_vm s vmr) (ws := U128) _ hget_r hread
++                 (vm := vmr.[v_var rspi <- Vword w_sp])); first last.
++      * by rewrite set_var_eq_type // heqt.
++      * by [].
++      by eexists.
++    rewrite eqxx /=.
+     case: ifP => _.
+     + (* Small offset: LDR from [rspi] directly. *)
+       rewrite -cat1s sem_fopns_args_cat !sem_fopns_args_1.
+diff --git a/proofs/compiler/armv8a_simd.v b/proofs/compiler/armv8a_simd.v
+new file mode 100644
+index 000000000..bcab78d36
+--- /dev/null
++++ b/proofs/compiler/armv8a_simd.v
+@@ -0,0 +1,34 @@
++(* ARMv8-A (AArch64) Advanced SIMD and cryptographic-extension semantics.
++
++   Word-level functions used by the instruction descriptions of
++   armv8a_instr_decl.v for the SIMD&FP register file. Each function is our
++   transcription of the operational pseudocode of the Arm A64 Instruction
++   Set Architecture (ARM DDI 0602, release 2026-03): of an instruction,
++   cited beside the description that uses the function, or of a shared
++   pseudocode function, cited here. Like the instruction semantics, they
++   are trusted: nothing here is proved against the architecture.
++
++   Conventions. A 128-bit register is a [u128]. Its elements of [ve] bits
++   are [split_vec ve w], element 0 first: element [e] is bits
++   [e*ve + ve - 1 .. e*ve]. Results are rebuilt with [make_vec U128]. *)
++
++From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq ssralg.
++From mathcomp Require Import word_ssrZ.
++Require Import utils word.
++Import Utf8 ZArith.
++
++#[local] Open Scope word_scope.
++
++(* -------------------------------------------------------------------- *)
++(* Element-wise shifts and inserts. *)
++
++(* One element of SRI: [n] shifted right by [sh], with the top [sh] bits
++   taken from [d]. *)
++Definition vsri_elem {ve : wsize} (sh : Z) (d n : word ve) : word ve :=
++  wor (wand d (wnot (wshr (-1)%R sh))) (wshr n sh).
++
++(* One element of SLI: [n] shifted left by [sh], with the low [sh] bits
++   taken from [d]. *)
++Definition vsli_elem {ve : wsize} (sh : Z) (d n : word ve) : word ve :=
++  wor (wand d (wnot (wshl (-1)%R sh))) (wshl n sh).
++

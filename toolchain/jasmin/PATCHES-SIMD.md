@@ -20,6 +20,7 @@ upstream.
 
 | Patch | Content | Proof status |
 |---|---|---|
+| 0001 | SIMD&FP registers V0-V31 as 128-bit vector registers; calling convention; MOV (vector), LDR/STR of a Q register, AND, BIC, ORR, EOR, NOT, ADD, SUB, SHL, USHR, SRI, SLI; lowering of u128 moves, loads, stores and operators; saving of callee-saved vector registers | lowering, linearization and assembly generation proved; instruction semantics trusted |
 
 Intrinsic names: the bitwise instructions, moves and Q-register loads and
 stores take no suffix (`#VEOR`, `#VLDR`); the element-wise instructions take
@@ -170,3 +171,9 @@ this repository:
   that the operator expression `jasmin2ec` extracts for it, applied to the
   case's inputs, equals the value the processor produced. For each
   instruction, the same statement with one result bit flipped is rejected.
+
+These runs used the same four patches on the previous pin, 2bf326d5,
+before their instruction descriptions were rewritten in the descriptor form
+of the current pin; they have not been repeated on the current pin. The
+tests in the Jasmin tree are run on the current pin by
+`toolchain/build.sh test`.
