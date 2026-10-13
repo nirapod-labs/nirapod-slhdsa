@@ -1,0 +1,260 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * xmss.jinc
+ * =========
+ *
+ * XMSS trees of height h' (FIPS 205 section 6).
+ *
+ * Tree
+ *
+ *     Leaf i (0 <= i < 2^h') is the public key of WOTS+ key pair i. Node j
+ *     at height z > 0 is
+ *
+ *         node(j, z) = H(PK.seed, ADRS[type TREE, height z, index j],
+ *                        node(2j, z - 1) || node(2j + 1, z - 1))
+ *
+ *     (Algorithm 9). The root is node(0, h').
+ *
+ * Signing by treehash
+ *
+ *     Algorithm 10 computes each authentication node with its own call to
+ *     xmss_node, which repeats work across heights. _xmss_treehash visits
+ *     every leaf once, left to right, and folds completed pairs on a stack
+ *     of one pending left node per height. One pass yields the root, the
+ *     authentication path of a target leaf, and that leaf's WOTS+
+ *     signature: the tree it evaluates is the tree of Algorithm 9, so each
+ *     output equals its FIPS 205 counterpart.
+ *
+ * Verification follows Algorithm 11 directly.
+ */
+
+/*
+ * Treehash with authentication path and WOTS+ signature
+ * ======================================================
+ *
+ * Computes, for the tree addressed by adrs (layer and tree address set):
+ *
+ *     root = xmss_node(SK.seed, 0, h', PK.seed, ADRS)
+ *
+ * and, when target < 2^h':
+ *
+ *     sig  = xmss_sign(M, SK.seed, target, PK.seed, ADRS)    (Algorithm 10)
+ *          = wots_sign(M, ..., kp = target) || AUTH
+ *
+ *     AUTH[z] = node((target >> z) xor 1, z),  0 <= z < h'
+ *
+ * steps holds the WOTS+ digits of M (read only for the target leaf). A
+ * target of 2^32 - 1 requests the root alone (key generation); sig is then
+ * not written. The leaves are folded as described in treehash.jinc.
+ *
+ * Security: SK.seed and every node are secret until released in the
+ * signature. target and the leaf indices are public; they drive every
+ * branch and address. ms is updated at each loop and branch test.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × public ×
+         { ptr: public, val: transient } × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf"]
+fn _xmss_treehash(
+  reg mut ptr u8[SLH_N] root,
+  reg mut ptr u8[SLH_XMSS_SIG_BYTES] sig,
+  reg const ptr u8[SLH_N] sk_seed,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u32 target,
+  reg const ptr u8[SLH_LEN] steps,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg ptr u8[SLH_XMSS_SIG_BYTES], reg u64
+{
+  stack u8[SLH_FOLD_SLOTS * SLH_N] nodes auth;
+  stack u8[SLH_WOTS_SIG_BYTES] wsig;
+  stack u8[4 * SLH_N] leaves;
+  stack u8[SLH_N] node;
+  stack u64[4] tree_adrs;
+  reg u32 i kp li ai tg d;
+  reg u64 lane four t;
+  reg bool more found;
+  inline int k w;
+
+  tree_adrs = __adrs_copy(tree_adrs, adrs);
+  tree_adrs = __adrs_set_type_and_clear(tree_adrs, ADRS_TREE);
+
+  /* Values needed after a call wait in spill slots. */
+  #spill(root, sig, sk_seed, ctx, adrs, target, steps);
+
+  /*
+   * Leaves i .. i + 3 are the WOTS+ public keys of key pairs i .. i + 3,
+   * computed together (2^h' >= 8 is a multiple of 4). If the target leaf
+   * is among them, lane is its position and the key pair also signs;
+   * otherwise lane = 4. The four leaves are then folded in order.
+   */
+
+  i = 0;
+  while { more = i < SLH_XMSS_LEAVES; } (more) {
+    ms = #update_msf(more, ms);
+    #spill(i);
+
+    #unspill(sk_seed, ctx, adrs, target, steps);
+    sk_seed = #protect_ptr(sk_seed, ms);
+    ctx = #protect_ptr(ctx, ms);
+    adrs = #protect_ptr(adrs, ms);
+    target = #protect_32(target, ms);
+    steps = #protect_ptr(steps, ms);
+    #spill(sk_seed, ctx, adrs, target, steps);
+
+    /* target - i, as an unsigned difference, is below 4 exactly when it is in the group. */
+    d = target;
+    d -= i;
+    lane = (64u) d;
+    four = 4;
+    lane = d < 4 ? lane : four;
+
+    kp = i;
+    leaves, wsig, ms = _wots_leaf_x4(leaves, wsig, sk_seed, ctx, adrs, kp, steps, lane, ms);
+
+    /* XMSS node indices are local to the tree: the ADRS index is the leaf index too. */
+
+    for k = 0 to 4 {
+      for w = 0 to SLH_N / 8 {
+        t = leaves[:u64 SLH_N / 8 * k + w];
+        node[:u64 w] = t;
+      }
+      #unspill(i, target, ctx);
+      i = #protect_32(i, ms);
+      target = #protect_32(target, ms);
+      ctx = #protect_ptr(ctx, ms);
+      #spill(i, target, ctx);
+      li = i;
+      li += k;
+      ai = li;
+      tg = target;
+      nodes, auth, node, tree_adrs, ms = _treehash_fold(nodes, auth, node, li, ai, tg, ctx, tree_adrs, ms);
+    }
+
+    #unspill(i);
+    i = #protect_32(i, ms);
+    #spill(i);
+    i += 4;
+  }
+  ms = #update_msf(!more, ms);
+
+  #unspill(root, sig, target);
+  root = #protect_ptr(root, ms);
+  sig = #protect_ptr(sig, ms);
+  target = #protect_32(target, ms);
+  root = __node_copy(root, nodes[SLH_HP * SLH_N : SLH_N]);
+
+  /*
+   * The WOTS+ signature collected in wsig and the authentication path go
+   * to sig only for a real target, so key generation writes nothing.
+   */
+  found = target < SLH_XMSS_LEAVES;
+  if (found) {
+    ms = #update_msf(found, ms);
+    for k = 0 to SLH_WOTS_SIG_BYTES / 8 {
+      t = wsig[:u64 k];
+      sig[:u64 k] = t;
+    }
+    for k = 0 to SLH_HP * SLH_N / 8 {
+      t = auth[:u64 k];
+      sig[:u64 SLH_WOTS_SIG_BYTES / 8 + k] = t;
+    }
+  } else {
+    ms = #update_msf(!found, ms);
+  }
+
+  return root, sig, ms;
+}
+
+/*
+ * root <- xmss_pkFromSig(idx, SIG_XMSS, M, PK.seed, ADRS) (Algorithm 11).
+ *
+ * Verification: idx < 2^h' is public by the caller's contract. sig and
+ * msg are public on the verification API and secret-derived on the C
+ * layer's fault check, so they are typed secret and decide no branch or
+ * address here (wots.jinc, _wots_pk_from_sig).
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _xmss_pk_from_sig(
+  reg mut ptr u8[SLH_N] root,
+  reg const ptr u8[SLH_XMSS_SIG_BYTES] sig,
+  reg const ptr u8[SLH_N] msg,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u32 idx,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg u64
+{
+  stack u8[2 * SLH_N] pair;
+  stack u8[SLH_N] node;
+  stack u64[4] tree_adrs;
+  reg u32 k kp bit;
+  reg u64 off;
+  reg bool more odd;
+
+  tree_adrs = __adrs_copy(tree_adrs, adrs);
+  tree_adrs = __adrs_set_type_and_clear(tree_adrs, ADRS_TREE);
+
+  #spill(root, sig, ctx, idx);
+  kp = idx;
+  node, ms = _wots_pk_from_sig(node, sig[0 : SLH_WOTS_SIG_BYTES], msg, ctx, adrs, kp, ms);
+  #unspill(sig, idx);
+  sig = #protect_ptr(sig, ms);
+  idx = #protect_32(idx, ms);
+  #spill(sig, idx);
+
+  /*
+   * Climb from leaf idx: at height k the current node has index idx >> k,
+   * and AUTH[k] is its sibling. Both FIPS 205 index updates, idx/2 for an
+   * even node and (idx - 1)/2 for an odd one, are idx >> 1.
+   */
+
+  k = 0;
+  while { more = k < SLH_HP; } (more) {
+    ms = #update_msf(more, ms);
+
+    off = __offset(k, SLH_N);
+    off += SLH_WOTS_SIG_BYTES;
+
+    bit = idx;
+    bit &= 1;
+    odd = bit == 1;
+    if (odd) {
+      ms = #update_msf(odd, ms);
+      pair[0 : SLH_N] = __node_copy(pair[0 : SLH_N], sig[off : SLH_N]);
+      pair[SLH_N : SLH_N] = __node_copy(pair[SLH_N : SLH_N], node);
+    } else {
+      ms = #update_msf(!odd, ms);
+      pair[0 : SLH_N] = __node_copy(pair[0 : SLH_N], node);
+      pair[SLH_N : SLH_N] = __node_copy(pair[SLH_N : SLH_N], sig[off : SLH_N]);
+    }
+
+    k += 1;
+    idx >>= 1;
+    tree_adrs = __adrs_set_tree_height(tree_adrs, k);
+    tree_adrs = __adrs_set_tree_index(tree_adrs, idx);
+    #spill(sig, idx, k);
+    #unspill(ctx);
+    ctx = #protect_ptr(ctx, ms);
+    #spill(ctx);
+    node, ms = _thash_h(node, pair, ctx, tree_adrs, ms);
+    #unspill(sig, idx, k);
+    sig = #protect_ptr(sig, ms);
+    idx = #protect_32(idx, ms);
+    k = #protect_32(k, ms);
+    #spill(sig, idx, k);
+  }
+  ms = #update_msf(!more, ms);
+
+  #unspill(root);
+  root = #protect_ptr(root, ms);
+  root = __node_copy(root, node);
+
+  return root, ms;
+}

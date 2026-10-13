@@ -1,0 +1,461 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * wots.jinc
+ * =========
+ *
+ * WOTS+ one-time signatures (FIPS 205 section 5), w = 16.
+ *
+ * Chains
+ *
+ *     chain(X, i, s) applies F s times at hash addresses i .. i + s - 1
+ *     (Algorithm 5). Chain i of key pair kp starts from
+ *
+ *         sk_i = PRF(PK.seed, SK.seed, ADRS[type WOTS_PRF, kp, chain i])
+ *
+ *     and steps with ADRS[type WOTS_HASH, kp, chain i, hash j]. The public
+ *     value is pk_i = chain(sk_i, 0, w - 1); the key pair's public key is
+ *     T_len(PK.seed, ADRS[type WOTS_PK, kp], pk_0 || ... || pk_{len-1}).
+ *
+ * Digits
+ *
+ *     An n-byte message becomes len1 = 2n base-16 digits, most significant
+ *     nibble first, then len2 = 3 checksum digits (Algorithm 7, lines 1-7).
+ *     The signature value of chain i is chain(sk_i, 0, d_i); verification
+ *     completes it with chain(sig_i, d_i, w - 1 - d_i).
+ *
+ * Classification
+ *
+ *     Chain starts and intermediate values are secret until they appear in
+ *     a signature. Digit vectors are public when they reach this file: in
+ *     signing, the signed message is a FORS public key or an XMSS root, which
+ *     every verifier recomputes from the signature, and hypertree.jinc
+ *     releases the digits before any chain length depends on them.
+ */
+
+/*
+ * d <- base_2b(msg, 4, len1) || checksum digits (Algorithm 7, lines 1-7).
+ *
+ *     csum = sum over i < len1 of (15 - d_i)  <=  2n * 15  <=  960 < 2^12
+ *
+ * Algorithm 7 shifts csum left by (8 - (len2 lg_w mod 8)) mod 8 = 4 bits,
+ * writes it as two bytes and takes their first three nibbles: these are the
+ * three low nibbles of the unshifted csum, most significant first.
+ */
+inline fn __wots_digits(reg mut ptr u8[SLH_LEN] d, reg const ptr u8[SLH_N] msg)
+  -> reg ptr u8[SLH_LEN]
+{
+  reg u32 b hi lo csum t;
+  inline int i;
+
+  csum = 0;
+  for i = 0 to SLH_N {
+    b = (32u) msg[i];
+    hi = b;
+    hi >>= 4;
+    lo = b;
+    lo &= 15;
+    d[2 * i] = (8u) hi;
+    d[2 * i + 1] = (8u) lo;
+    /* (15 - hi) + (15 - lo) */
+    csum += 30;
+    csum -= hi;
+    csum -= lo;
+  }
+
+  t = csum;
+  t >>= 8;
+  d[SLH_LEN1] = (8u) t;
+  t = csum;
+  t >>= 4;
+  t &= 15;
+  d[SLH_LEN1 + 1] = (8u) t;
+  t = csum;
+  t &= 15;
+  d[SLH_LEN1 + 2] = (8u) t;
+
+  return d;
+}
+
+/*
+ * x <- chain(x, start, steps) (Algorithm 5). adrs carries type WOTS_HASH,
+ * the key pair and the chain address; its hash address is overwritten.
+ * start + steps <= w - 1; both are public.
+ */
+#[sct = "{ ptr: public, val: secret } × public × public ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf"]
+fn _wots_chain(
+  reg mut ptr u8[SLH_N] x,
+  reg u32 start steps,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg mut ptr u64[4] adrs,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg ptr u64[4], reg u64
+{
+  reg u32 j end;
+  reg bool more;
+
+  j = start;
+  end = start;
+  end += steps;
+
+  while { more = j < end; } (more) {
+    ms = #update_msf(more, ms);
+    adrs = __adrs_set_hash(adrs, j);
+    #spill(ctx, adrs, j, end);
+    x, ms = _thash_f(x, ctx, adrs, ms);
+    #unspill(ctx, adrs, j, end);
+    ctx = #protect_ptr(ctx, ms);
+    adrs = #protect_ptr(adrs, ms);
+    j = #protect_32(j, ms);
+    end = #protect_32(end, ms);
+    j += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return x, adrs, ms;
+}
+
+/*
+ * Four WOTS+ key pairs: public keys, and optionally one signature
+ * ===============================================================
+ *
+ * For key pairs kp0 .. kp0 + 3 of the XMSS tree addressed by adrs (layer
+ * and tree address set, other fields ignored), computes
+ *
+ *     leaves[k] = wots_pkGen(SK.seed, PK.seed, ADRS[kp0 + k])   (Algorithm 6)
+ *
+ * and, when lane < 4, also the signature of key pair kp0 + lane
+ *
+ *     sig = wots_sign(M, SK.seed, PK.seed, ADRS[kp0 + lane])     (Algorithm 7)
+ *
+ * where steps holds the digits of M. The four key pairs advance in
+ * lockstep, chain by chain and step by step, through the four-way hash
+ * functions. The signature value of chain i is the signed lane's value
+ * after d_i steps: chain(sk_i, 0, d_i), read off the one evaluation that
+ * continues to pk_i, since Algorithms 6 and 7 start chain i from the same
+ * sk_i at the same addresses. With lane = 4 sig is not written.
+ *
+ * Security: SK.seed and every chain value are secret. kp0, steps and lane
+ * are public; they set loop bounds and decide whether and when sig is
+ * written. steps is public because hypertree.jinc releases the digits
+ * before the call (see the declassification in _ht_sign).
+ *
+ * Speculation: every loop and branch updates ms with its condition, so ms
+ * is exact at each call and load. Values needed after a hash call wait in
+ * spill slots and are protected when reloaded.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × public ×
+         { ptr: public, val: transient } × public × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf"]
+fn _wots_leaf_x4(
+  reg mut ptr u8[4 * SLH_N] leaves,
+  reg mut ptr u8[SLH_WOTS_SIG_BYTES] sig,
+  reg const ptr u8[SLH_N] sk_seed,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u32 kp0,
+  reg const ptr u8[SLH_LEN] steps,
+  reg u64 lane,
+  reg u64 ms
+) -> reg ptr u8[4 * SLH_N], reg ptr u8[SLH_WOTS_SIG_BYTES], reg u64
+{
+  stack u8[4 * SLH_LEN * SLH_N] pk;
+  stack u8[4 * SLH_N] cur;
+  stack u64[16] sk_adrs chain_adrs pk_adrs;
+  reg ptr u8[4 * SLH_LEN * SLH_N] dst;
+  reg ptr u8[4 * SLH_N] cp;
+  reg u32 i j kp split;
+  reg u64 off src t;
+  reg bool more step take hit fwd;
+  inline int k w;
+
+  /*
+   * Three addresses per key pair, one per role (Algorithms 6 and 7):
+   * WOTS_PRF derives the chain starts, WOTS_HASH addresses the F steps and
+   * WOTS_PK the final compression. Each starts from setTypeAndClear, so
+   * layer and tree carry over from adrs; key pair k gets kp0 + k.
+   */
+
+  for k = 0 to 4 {
+    kp = kp0;
+    kp += k;
+    sk_adrs[4 * k : 4] = __adrs_copy(sk_adrs[4 * k : 4], adrs);
+    sk_adrs[4 * k : 4] = __adrs_set_type_and_clear(sk_adrs[4 * k : 4], ADRS_WOTS_PRF);
+    sk_adrs[4 * k : 4] = __adrs_set_keypair(sk_adrs[4 * k : 4], kp);
+    chain_adrs[4 * k : 4] = __adrs_copy(chain_adrs[4 * k : 4], adrs);
+    chain_adrs[4 * k : 4] = __adrs_set_type_and_clear(chain_adrs[4 * k : 4], ADRS_WOTS_HASH);
+    chain_adrs[4 * k : 4] = __adrs_set_keypair(chain_adrs[4 * k : 4], kp);
+    pk_adrs[4 * k : 4] = __adrs_copy(pk_adrs[4 * k : 4], adrs);
+    pk_adrs[4 * k : 4] = __adrs_set_type_and_clear(pk_adrs[4 * k : 4], ADRS_WOTS_PK);
+    pk_adrs[4 * k : 4] = __adrs_set_keypair(pk_adrs[4 * k : 4], kp);
+  }
+
+  #spill(leaves, sig, sk_seed, ctx, steps, lane);
+
+  /*
+   * Invariant: pk holds, for each key pair k, the chain ends pk_0 ..
+   * pk_{i-1} at bytes k len n + 0 .. k len n + i n - 1, and, when lane < 4,
+   * sig[0 : i n] holds the signature values of chains 0 .. i-1. Chain i of
+   * the four key pairs runs in cur, which holds secret values until the
+   * chains complete.
+   */
+
+  i = 0;
+  while { more = i < SLH_LEN; } (more) {
+    ms = #update_msf(more, ms);
+    #spill(i);
+
+    /* Chain starts: sk_i of each key pair (PRF, chain address i). */
+
+    for k = 0 to 4 {
+      sk_adrs[4 * k : 4] = __adrs_set_chain(sk_adrs[4 * k : 4], i);
+      chain_adrs[4 * k : 4] = __adrs_set_chain(chain_adrs[4 * k : 4], i);
+    }
+    #unspill(sk_seed, ctx);
+    sk_seed = #protect_ptr(sk_seed, ms);
+    ctx = #protect_ptr(ctx, ms);
+    #spill(sk_seed, ctx);
+    cur, ms = _thash_prf_x4(cur, sk_seed, ctx, sk_adrs, ms);
+
+    /*
+     * Split point d_i of the signed lane, or w (never reached) when no
+     * lane signs. steps[i] is a load behind a branch, hence transient:
+     * protect it before it is compared with the step counter.
+     */
+
+    #unspill(i, steps, lane);
+    i = #protect_32(i, ms);
+    steps = #protect_ptr(steps, ms);
+    lane = #protect(lane, ms);
+    #spill(i, steps, lane);
+    split = SLH_W;
+    take = lane < 4;
+    if (take) {
+      ms = #update_msf(take, ms);
+      off = (64u) i;
+      split = (32u) steps[off];
+      split = #protect_32(split, ms);
+    } else {
+      ms = #update_msf(!take, ms);
+    }
+    #spill(split);
+
+    /*
+     * Steps j = 0 .. w - 2 of the four chains. Before step j, a chain at
+     * its split point holds chain(sk_i, 0, d_i): capture it then; a split
+     * point of w - 1 is captured after the last step.
+     */
+
+    j = 0;
+    while { step = j < SLH_W; } (step) {
+      ms = #update_msf(step, ms);
+
+      #unspill(split);
+      split = #protect_32(split, ms);
+      #spill(split);
+      hit = j == split;
+      if (hit) {
+        ms = #update_msf(hit, ms);
+        #unspill(i, lane, sig);
+        i = #protect_32(i, ms);
+        lane = #protect(lane, ms);
+        sig = #protect_ptr(sig, ms);
+        off = __offset(i, SLH_N);
+        src = __offset64(lane, SLH_N);
+        cp = cur;
+        for w = 0 to SLH_N / 8 {
+          t = cp.[:u64 src];
+          sig.[:u64 off] = t;
+          src += 8;
+          off += 8;
+        }
+        cur = cp;
+        #spill(i, lane, sig);
+      } else {
+        ms = #update_msf(!hit, ms);
+      }
+
+      fwd = j < SLH_W - 1;
+      if (fwd) {
+        ms = #update_msf(fwd, ms);
+        for k = 0 to 4 {
+          chain_adrs[4 * k : 4] = __adrs_set_hash(chain_adrs[4 * k : 4], j);
+        }
+        #spill(j);
+        #unspill(ctx);
+        ctx = #protect_ptr(ctx, ms);
+        #spill(ctx);
+        cur, ms = _thash_f_x4(cur, ctx, chain_adrs, ms);
+        #unspill(j);
+        j = #protect_32(j, ms);
+      } else {
+        ms = #update_msf(!fwd, ms);
+      }
+
+      j += 1;
+    }
+    ms = #update_msf(!step, ms);
+
+    /*
+     * Chain ends into pk, key pair k at k len n + i n. pk is reached
+     * through the pointer register dst because the armv8a backend of the
+     * pinned Jasmin revision cannot yet index a stack array with a register
+     * unless the array sits at frame offset 0; with dst the address is
+     * register + register on both targets.
+     */
+
+    #unspill(i);
+    i = #protect_32(i, ms);
+    #spill(i);
+    off = __offset(i, SLH_N);
+    dst = pk;
+    for k = 0 to 4 {
+      for w = 0 to SLH_N / 8 {
+        t = cur[:u64 SLH_N / 8 * k + w];
+        dst.[:u64 off] = t;
+        off += 8;
+      }
+      off += (SLH_LEN - 1) * SLH_N;
+    }
+    pk = dst;
+
+    i += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  #unspill(leaves, ctx);
+  leaves = #protect_ptr(leaves, ms);
+  ctx = #protect_ptr(ctx, ms);
+  leaves, ms = _thash_t_len_x4(leaves, pk, ctx, pk_adrs, ms);
+  #unspill(sig);
+  sig = #protect_ptr(sig, ms);
+
+  return leaves, sig, ms;
+}
+
+/*
+ * pk <- wots_pkFromSig(sig, msg, PK.seed, ADRS) (Algorithm 8), for key
+ * pair kp of the tree addressed by adrs.
+ *
+ * Verification. On the verification API every input is public by
+ * contract. The C layer's fault check also verifies each new signature
+ * before releasing it, and withholds one that fails; there sig and msg
+ * are functions of a signature that is never output. The arguments are
+ * therefore typed secret, and of all the values here only the digit
+ * vector decides a branch, so it alone is released (below).
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _wots_pk_from_sig(
+  reg mut ptr u8[SLH_N] pk,
+  reg const ptr u8[SLH_WOTS_SIG_BYTES] sig,
+  reg const ptr u8[SLH_N] msg,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u32 keypair,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg u64
+{
+  stack u8[SLH_WOTS_SIG_BYTES] tmp;
+  stack u8[SLH_N] cur;
+  stack u8[SLH_LEN] digits;
+  stack u64[4] chain_adrs pk_adrs;
+  reg ptr u8[SLH_WOTS_SIG_BYTES] dst;
+  reg ptr u8[SLH_LEN] dp;
+  reg u32 i start steps;
+  reg u64 off;
+  reg bool more;
+
+  digits = __wots_digits(digits, msg);
+
+  /*
+   * Declassification: verification digits
+   *
+   * Released: the len digits of msg, the FORS public key (layer 0) or
+   * the XMSS root (above) recomputed from the signature. The 2n message
+   * digits are msg in 4-bit pieces, so the release is of msg whole. The
+   * digits fix the start and length of each chain below.
+   *
+   * On the verification API msg is a function of the signature, message
+   * and public key, all public: the release lifts a type only.
+   *
+   * On the fault check of the C layer the signature is not yet released,
+   * and this is a release of a secret-derived value. msg is then either
+   * the correct FORS public key or XMSS root at its position, a value
+   * every verifier of a signature through that instance computes, or,
+   * after a fault at or below this layer, a fresh output of T_k or H over
+   * withheld values. Learning a withheld value from it needs a preimage,
+   * and it gives no chain value, which a forgery by tree grafting needs
+   * (docs/DECLASSIFICATION.md, "Withheld signatures").
+   */
+  #declassify(digits);
+
+  chain_adrs = __adrs_copy(chain_adrs, adrs);
+  chain_adrs = __adrs_set_type_and_clear(chain_adrs, ADRS_WOTS_HASH);
+  chain_adrs = __adrs_set_keypair(chain_adrs, keypair);
+
+  pk_adrs = __adrs_copy(pk_adrs, adrs);
+  pk_adrs = __adrs_set_type_and_clear(pk_adrs, ADRS_WOTS_PK);
+  pk_adrs = __adrs_set_keypair(pk_adrs, keypair);
+
+  /*
+   * Complete chain i from position d_i. The digit is a stack load, so it
+   * is transient until protected; it bounds the chain loop. sig is
+   * read-only, so each chain advances in cur and its end is stored in tmp.
+   */
+
+  #spill(pk, sig, ctx);
+
+  i = 0;
+  while { more = i < SLH_LEN; } (more) {
+    ms = #update_msf(more, ms);
+
+    chain_adrs = __adrs_set_chain(chain_adrs, i);
+    dp = digits;
+
+    off = (64u) i;
+    start = (32u) dp[off];
+    start = #protect_32(start, ms);
+    steps = SLH_W - 1;
+    steps -= start;
+
+    #unspill(sig);
+    sig = #protect_ptr(sig, ms);
+    #spill(sig);
+    off = __offset(i, SLH_N);
+    cur = __node_copy(cur, sig[off : SLH_N]);
+
+    #spill(i);
+    #unspill(ctx);
+    ctx = #protect_ptr(ctx, ms);
+    #spill(ctx);
+    cur, chain_adrs, ms = _wots_chain(cur, start, steps, ctx, chain_adrs, ms);
+    #unspill(i);
+    i = #protect_32(i, ms);
+    #spill(i);
+
+    /* tmp through dst, for the armv8a reason given in _wots_leaf_x4. */
+    off = __offset(i, SLH_N);
+    dst = tmp;
+    dst[off : SLH_N] = __node_copy(dst[off : SLH_N], cur);
+    tmp = dst;
+
+    i += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  #unspill(pk, ctx);
+  pk = #protect_ptr(pk, ms);
+  ctx = #protect_ptr(ctx, ms);
+
+  pk, ms = _thash_t_len(pk, tmp, ctx, pk_adrs, ms);
+
+  return pk, ms;
+}

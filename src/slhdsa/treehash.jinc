@@ -1,0 +1,132 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * treehash.jinc
+ * =============
+ *
+ * The fold step shared by XMSS and FORS signing.
+ *
+ * Both trees are binary hash trees over leaves 0 .. 2^t - 1 (t = h' for
+ * XMSS, t = a for a FORS tree), with
+ *
+ *     node(j, z) = H(PK.seed, ADRS[height z, index base_z + j],
+ *                    node(2j, z - 1) || node(2j + 1, z - 1))
+ *
+ * (Algorithms 9 and 15). XMSS indexes nodes within the tree (base_z = 0);
+ * FORS numbers them across all k trees (base_z = tree 2^(a - z)). Signing
+ * visits the leaves once, left to right, and feeds each to the fold below,
+ * which completes every subtree as soon as its last leaf arrives.
+ *
+ * Fold invariant
+ *
+ *     Before leaf i arrives, nodes[z] = node((i >> z) - 1, z) for every
+ *     height z at which bit z of i is set: the completed left subtrees
+ *     still waiting for their right siblings. A node arriving at height z
+ *     with an odd index is a right child; its sibling is nodes[z] and the
+ *     pair is hashed to the parent at height z + 1, which arrives in turn.
+ *     A node with an even index is parked in nodes[z]. After the last leaf,
+ *     i = 2^t - 1, nodes[t] holds the root.
+ *
+ *     A node at height z with index j is AUTH[z] of the target leaf exactly
+ *     when j = (target >> z) xor 1, and is recorded as it arrives. Index
+ *     t is never matched for a target below 2^t, since (target >> t) xor 1
+ *     = 1 and the root has index 0; auth[t] exists only so that the test is
+ *     safe at the root.
+ *
+ * Buffers hold max(a, h') + 1 = a + 1 nodes: a > h' in every parameter set
+ * of FIPS 205 Table 2.
+ */
+
+param int SLH_FOLD_SLOTS = SLH_A + 1;
+
+/*
+ * Fold node, a leaf with index idx in its tree, into nodes and auth.
+ *
+ * node_adrs carries the type and key-pair fields of the tree's node
+ * addresses; this function sets height and index. adrs_idx is the ADRS
+ * index of the leaf (idx for XMSS, the global FORS index for FORS); it is
+ * halved at each level with idx.
+ *
+ * Security: node, nodes and auth are secret. idx, adrs_idx and target are
+ * public and decide every branch and slot. ms is updated at each branch
+ * and loop test, so it is exact at every call.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × public × public × public ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf"]
+fn _treehash_fold(
+  reg mut ptr u8[SLH_FOLD_SLOTS * SLH_N] nodes,
+  reg mut ptr u8[SLH_FOLD_SLOTS * SLH_N] auth,
+  reg mut ptr u8[SLH_N] node,
+  reg u32 idx adrs_idx target,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg mut ptr u64[4] node_adrs,
+  reg u64 ms
+) -> reg ptr u8[SLH_FOLD_SLOTS * SLH_N], reg ptr u8[SLH_FOLD_SLOTS * SLH_N],
+     reg ptr u8[SLH_N], reg ptr u64[4], reg u64
+{
+  stack u8[2 * SLH_N] pair;
+  reg u32 z sib bit;
+  reg u64 off;
+  reg bool odd found;
+
+  z = 0;
+  sib = target;
+  sib ^= 1;
+
+  /*
+   * Loop: record node if it is AUTH[z]; if it is a right child, hash it
+   * with its parked sibling and climb. sib tracks (target >> z) xor 1.
+   */
+
+  while {
+    found = idx == sib;
+    if (found) {
+      ms = #update_msf(found, ms);
+      off = __offset(z, SLH_N);
+      auth[off : SLH_N] = __node_copy(auth[off : SLH_N], node);
+    } else {
+      ms = #update_msf(!found, ms);
+    }
+    bit = idx;
+    bit &= 1;
+    odd = bit == 1;
+  } (odd) {
+    ms = #update_msf(odd, ms);
+
+    off = __offset(z, SLH_N);
+    pair[0 : SLH_N] = __node_copy(pair[0 : SLH_N], nodes[off : SLH_N]);
+    pair[SLH_N : SLH_N] = __node_copy(pair[SLH_N : SLH_N], node);
+
+    z += 1;
+    idx >>= 1;
+    adrs_idx >>= 1;
+    sib >>= 1;
+    sib ^= 1;
+
+    node_adrs = __adrs_set_tree_height(node_adrs, z);
+    node_adrs = __adrs_set_tree_index(node_adrs, adrs_idx);
+    #spill(nodes, auth, ctx, node_adrs, idx, adrs_idx, z, sib);
+    node, ms = _thash_h(node, pair, ctx, node_adrs, ms);
+    #unspill(nodes, auth, ctx, node_adrs, idx, adrs_idx, z, sib);
+    nodes = #protect_ptr(nodes, ms);
+    auth = #protect_ptr(auth, ms);
+    ctx = #protect_ptr(ctx, ms);
+    node_adrs = #protect_ptr(node_adrs, ms);
+    idx = #protect_32(idx, ms);
+    adrs_idx = #protect_32(adrs_idx, ms);
+    z = #protect_32(z, ms);
+    sib = #protect_32(sib, ms);
+  }
+  ms = #update_msf(!odd, ms);
+
+  /* node has an even index at height z: park it. */
+
+  off = __offset(z, SLH_N);
+  nodes[off : SLH_N] = __node_copy(nodes[off : SLH_N], node);
+
+  return nodes, auth, node, node_adrs, ms;
+}

@@ -1,0 +1,238 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * hypertree.jinc
+ * ==============
+ *
+ * The hypertree of FIPS 205 section 7: d layers of XMSS trees. Layer j
+ * signs the root of the layer j - 1 tree below it; layer 0 signs the FORS
+ * public key. Tree and leaf indices advance between layers as
+ *
+ *     idx_leaf <- idx_tree mod 2^h'
+ *     idx_tree <- idx_tree >> h'
+ *
+ * (Algorithm 12, lines 9-10). Both indices are public: they come from the
+ * message digest, whose release is argued in internal.jinc.
+ */
+
+/*
+ * Hypertree signing (Algorithm 12)
+ * ================================
+ *
+ * SIG_HT <- ht_sign(M, SK.seed, PK.seed, idx_tree, idx_leaf), written into
+ * sig[SIG_HT_OFFSET : SIG_HT_OFFSET + d (len + h') n]: layer j's XMSS
+ * signature at SIG_HT_OFFSET + j (len + h') n.
+ *
+ * msg holds M on entry and is overwritten layer by layer with the root of
+ * the tree just signed, which is the next layer's message. Algorithm 12
+ * obtains that root with xmss_pkFromSig; the treehash computes the same
+ * node directly (xmss.jinc).
+ *
+ * Each layer is signed into the stack buffer layer and then copied into
+ * sig, so no view of sig is held across the treehash call. sig is whole
+ * (not a slice) because the caller passes the signature buffer down
+ * unchanged.
+ *
+ * The digits of each layer's message are released before signing: the
+ * message is a FORS public key or an XMSS root, and the verifier
+ * recomputes both from the signature (Algorithms 17 and 11), so the digits
+ * are a function of the signature and public data.
+ *
+ * Speculation: values reloaded from spill slots are transient and are
+ * protected with the exact ms before they address memory or bound a loop.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         public × public × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf"]
+fn _ht_sign(
+  reg mut ptr u8[SLH_SIG_BYTES] sig,
+  reg mut ptr u8[SLH_N] msg,
+  reg const ptr u8[SLH_N] sk_seed,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg u64 idx_tree,
+  reg u32 idx_leaf,
+  reg u64 ms
+) -> reg ptr u8[SLH_SIG_BYTES], reg ptr u8[SLH_N], reg u64
+{
+  stack u8[SLH_LEN] digits;
+  stack u8[SLH_XMSS_SIG_BYTES] layer;
+  stack u64[4] adrs;
+  reg ptr u8[SLH_XMSS_SIG_BYTES] src;
+  reg u32 j leaf;
+  reg u64 off k t;
+  reg bool more copy;
+
+  adrs = __adrs_zero(adrs);
+  #spill(sig, sk_seed, ctx);
+
+  j = 0;
+  while { more = j < SLH_D; } (more) {
+    ms = #update_msf(more, ms);
+
+    adrs = __adrs_set_layer(adrs, j);
+    adrs = __adrs_set_tree(adrs, idx_tree);
+
+    digits = __wots_digits(digits, msg);
+
+    /*
+     * Declassification: hypertree message digits
+     *
+     * Releases the 2n + 3 base-16 digits of this layer's message: the FORS
+     * public key at layer 0, otherwise the root of the tree signed at
+     * layer j - 1. They fix the WOTS+ chain lengths at which signature
+     * values are taken. The verifier recomputes the message from the
+     * signature, so the digits disclose nothing beyond the signature
+     * itself. SK.seed and the chain values not in the signature stay
+     * secret.
+     *
+     * When the C layer withholds the signature (its fault check fails),
+     * the digits are released anyway, those of a faulty root included.
+     * They name chain positions only; the chain values at them stay in
+     * the withheld signature, and a forgery by tree grafting needs those
+     * values (docs/DECLASSIFICATION.md, "Withheld signatures").
+     */
+    #declassify(digits);
+
+    leaf = idx_leaf;
+    #spill(idx_tree, j);
+    #unspill(sk_seed, ctx);
+    sk_seed = #protect_ptr(sk_seed, ms);
+    ctx = #protect_ptr(ctx, ms);
+    #spill(sk_seed, ctx);
+    msg, layer, ms = _xmss_treehash(msg, layer, sk_seed, ctx, adrs, leaf, digits, ms);
+
+    /* Copy layer j into the signature. */
+
+    #unspill(sig, idx_tree, j);
+    sig = #protect_ptr(sig, ms);
+    idx_tree = #protect(idx_tree, ms);
+    j = #protect_32(j, ms);
+
+    /* The identity outside the fault test build (hook/hook.jinc). */
+    msg = __hook_ht_root(msg, j);
+
+    off = __offset(j, SLH_XMSS_SIG_BYTES);
+    off += SLH_SIG_HT_OFFSET;
+    /* layer through src: stack slots at run-time offsets (see wots.jinc). */
+    src = layer;
+    k = 0;
+    while { copy = k < SLH_XMSS_SIG_BYTES; } (copy) {
+      ms = #update_msf(copy, ms);
+      t = src.[:u64 k];
+      sig.[:u64 off] = t;
+      off += 8;
+      k += 8;
+    }
+    ms = #update_msf(!copy, ms);
+    layer = src;
+    #spill(sig);
+
+    idx_leaf = (32u) idx_tree;
+    idx_leaf &= SLH_XMSS_LEAVES - 1;
+    idx_tree >>= SLH_HP;
+
+    j += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  #unspill(sig);
+  sig = #protect_ptr(sig, ms);
+
+  return sig, msg, ms;
+}
+
+/*
+ * Hypertree verification (Algorithm 13)
+ *
+ * Returns 0 when the climb from msg through the d XMSS signatures ends at
+ * pk_root, and all ones otherwise. The inputs are public on the
+ * verification API; on the C layer's fault check sig and msg come from a
+ * signature not yet released (wots.jinc, _wots_pk_from_sig). Only the
+ * verdict is released here: the comparison of the last root with pk_root
+ * stays secret until it has become the 0 or all-ones result.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         public × public × msf →
+         public × msf"]
+fn _ht_verify(
+  reg const ptr u8[SLH_HT_SIG_BYTES] sig,
+  reg const ptr u8[SLH_N] msg,
+  reg const ptr u8[SLH_N] pk_root,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg u64 idx_tree,
+  reg u32 idx_leaf,
+  reg u64 ms
+) -> reg u64, reg u64
+{
+  stack u8[SLH_N] node next;
+  stack u64[4] adrs;
+  reg u32 j leaf;
+  reg u64 off diff t u result;
+  reg bool more;
+  inline int k;
+
+  node = __node_copy(node, msg);
+  adrs = __adrs_zero(adrs);
+
+  #spill(sig, pk_root, ctx);
+
+  j = 0;
+  while { more = j < SLH_D; } (more) {
+    ms = #update_msf(more, ms);
+
+    adrs = __adrs_set_layer(adrs, j);
+    adrs = __adrs_set_tree(adrs, idx_tree);
+
+    #unspill(sig, ctx);
+    sig = #protect_ptr(sig, ms);
+    ctx = #protect_ptr(ctx, ms);
+    #spill(sig, ctx);
+    off = __offset(j, SLH_XMSS_SIG_BYTES);
+    leaf = idx_leaf;
+    #spill(j, idx_tree, idx_leaf);
+    next, ms = _xmss_pk_from_sig(next, sig[off : SLH_XMSS_SIG_BYTES], node, ctx, adrs, leaf, ms);
+    #unspill(j, idx_tree, idx_leaf);
+    j = #protect_32(j, ms);
+    idx_tree = #protect(idx_tree, ms);
+    idx_leaf = #protect_32(idx_leaf, ms);
+    #spill(j, idx_tree, idx_leaf);
+    node = __node_copy(node, next);
+
+    idx_leaf = (32u) idx_tree;
+    idx_leaf &= SLH_XMSS_LEAVES - 1;
+    idx_tree >>= SLH_HP;
+
+    j += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  #unspill(pk_root);
+  pk_root = #protect_ptr(pk_root, ms);
+  diff = 0;
+  for k = 0 to SLH_N / 8 {
+    t = node[:u64 k];
+    u = pk_root[:u64 k];
+    t ^= u;
+    diff |= t;
+  }
+
+  result = 0;
+  t = -1;
+  result = diff != 0 ? t : result;
+
+  /*
+   * Declassification: verification verdict
+   *
+   * Released: result, 0 when the recomputed root equals PK.root and all
+   * ones otherwise; nothing else of the root or of diff. It is the output
+   * of verification: the verification API returns it, and the C layer's
+   * fault check reports it as its status.
+   */
+  #declassify(result);
+  result = #protect(result, ms);
+
+  return result, ms;
+}
