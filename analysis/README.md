@@ -51,3 +51,18 @@ without a verdict before it was stopped. This tree therefore has no safety
 target, and CI reports the check as NOT RUN.
 Until it runs, program safety rests on review and on the tests, and the CT
 and SCT results above are conditional on it.
+
+## Assembly policy (`asm/`)
+
+```sh
+make asm-policy [JASMINC=...]
+```
+
+checks the assembly the library is built from (`asm/check-asm.sh`): every
+global symbol is one of the unit's five exports, no division instruction
+appears (its timing depends on its operands), and on AArch64 neither the
+platform register x18 nor the frame-pointer register x29 is used. Each rule has
+negative controls (`asm/check-controls.sh`), files with a single violation of
+that rule, and each must be rejected by that rule, or the target fails. These
+are textual checks of the emitted code; they complement, and do not replace,
+the constant-time checks above.
