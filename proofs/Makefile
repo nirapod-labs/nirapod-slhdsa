@@ -199,8 +199,8 @@ HASH_SRC := $(JASMIN_SRC)/hash
 
 # <arch>/<variant>:<jasmin arch>:<KeccakKernel>:<KeccakKernelX>:<Sha2Kernel>:<Sha2KernelX>
 EXTRACTIONS := \
-  x86_64/scalar:x86-64:keccak:keccak:sha2:sha2 \
-  aarch64/scalar:armv8a:keccak:keccak:sha2:sha2
+  x86_64/portable:x86-64:keccak:keccak:sha2:sha2 \
+  aarch64/portable:armv8a:keccak:keccak:sha2:sha2
 
 .PHONY: extract check-extraction
 extract:

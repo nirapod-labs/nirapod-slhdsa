@@ -6,7 +6,7 @@
  * ==================
  *
  * Functional correctness of the one-block entry point _sha512_compress of
- * the scalar SHA-512 compression kernel (src/hash/sha2/sha512_compress.jinc)
+ * the portable SHA-512 compression kernel (src/hash/sha2/sha512_compress.jinc)
  * against FIPS 180-4 section 6.4.2 as specified in
  * spec/hash/FIPS180_SHA2.ec. The kernel's entry points that read blocks
  * from memory, _sha512_compress_one and _sha512_compress_blocks, are not
@@ -15,7 +15,7 @@
  *
  * Model. HashExtracted is the jasmin2ec model of one (architecture,
  * variant) pair; this file is checked once against each pair whose
- * Sha2Kernel is the scalar kernel (proofs/Makefile). The kernel source is
+ * Sha2Kernel is the portable kernel (proofs/Makefile). The kernel source is
  * shared, so the two models differ only in the byte reversal __bswap64
  * (BSWAP on x86-64, REV on AArch64), which this file uses through the
  * lemma bswap64_spec of the per-architecture theory ArchWord.

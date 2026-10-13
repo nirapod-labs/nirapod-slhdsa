@@ -5,10 +5,10 @@
  * GENERATED FILE. DO NOT EDIT.
  *
  * Generator:
- *     jasmin2ec --arch=armv8a (array model: the jasmin2ec default)
+ *     jasmin2ec --arch=x86-64 (array model: the jasmin2ec default)
  *
  * Model:
- *     aarch64/scalar, kernels KeccakKernel=keccak KeccakKernelX=keccak Sha2Kernel=sha2 Sha2KernelX=sha2
+ *     x86_64/portable, kernels KeccakKernel=keccak KeccakKernelX=keccak Sha2Kernel=sha2 Sha2KernelX=sha2
  *
  * Regenerate:
  *     make -C proofs extract     (check: make -C proofs check-extraction)
@@ -18,4 +18,4 @@ require import Int.
 
 from Jasmin require import JByte_array.
 
-clone include ByteArray with op size <= 40.
+clone include ByteArray with op size <= 256.

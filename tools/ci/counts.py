@@ -70,9 +70,9 @@ RULES = {
         ("this project's theories",
          r"^check-own: PASS (\d+) files$", 6),
         ("x86-64 portable model and its proofs",
-         r"^check-pair x86_64/scalar: PASS (\d+) files$", 13),
+         r"^check-pair x86_64/portable: PASS (\d+) files$", 13),
         ("AArch64 portable model and its proofs",
-         r"^check-pair aarch64/scalar: PASS (\d+) files$", 13),
+         r"^check-pair aarch64/portable: PASS (\d+) files$", 13),
     ],
 }
 

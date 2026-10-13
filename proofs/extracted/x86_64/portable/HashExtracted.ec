@@ -5,10 +5,10 @@
  * GENERATED FILE. DO NOT EDIT.
  *
  * Generator:
- *     jasmin2ec --arch=armv8a (array model: the jasmin2ec default)
+ *     jasmin2ec --arch=x86-64 (array model: the jasmin2ec default)
  *
  * Model:
- *     aarch64/scalar, kernels KeccakKernel=keccak KeccakKernelX=keccak Sha2Kernel=sha2 Sha2KernelX=sha2
+ *     x86_64/portable, kernels KeccakKernel=keccak KeccakKernelX=keccak Sha2Kernel=sha2 Sha2KernelX=sha2
  *
  * Regenerate:
  *     make -C proofs extract     (check: make -C proofs check-extraction)
@@ -53,7 +53,7 @@
 
 require import AllCore IntDiv CoreMap List Distr.
 
-from Jasmin require import JModel_armv8a.
+from Jasmin require import JModel_x86.
 
 import SLH64.
 
@@ -189,12 +189,12 @@ abbrev sHA256_K =
 module M = {
   proc __bswap32 (x:W32.t) : W32.t = {
     
-    x <- (REV_32 x);
+    x <- (BSWAP_32 x);
     return x;
   }
   proc __bswap64 (x:W64.t) : W64.t = {
     
-    x <- (REV_64 x);
+    x <- (BSWAP_64 x);
     return x;
   }
   proc __Sigma0_256 (x:W32.t) : W32.t = {

@@ -81,8 +81,8 @@ portable code differ only in the instructions behind `__bswap32` and
 `__bswap64` (BSWAP against REV), and `ArchWord` proves both to be byte
 reversal.
 
-Theorems so far, each checked on `x86_64/scalar` and `aarch64/scalar`, the
-models of the portable kernels:
+Theorems so far, each checked on `x86_64/portable` and
+`aarch64/portable`, the models of the portable kernels:
 
 - `sha256_rounds_correct` (`correctness/hash/SHA256_Compress.ec`):
   `__sha256_rounds` turns the chaining value `h` and the 16 message words

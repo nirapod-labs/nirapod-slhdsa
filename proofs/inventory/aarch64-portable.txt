@@ -3,7 +3,7 @@
 #
 # GENERATED FILE. DO NOT EDIT.
 #
-# Axioms in scope of the aarch64/scalar proofs, the statements of the claimed
+# Axioms in scope of the aarch64/portable proofs, the statements of the claimed
 # theorems, and the definitions of the hand-written theories, as the
 # pinned EasyCrypt prints them after requiring every theory checked for
 # this pair. One axiom per line: theory, name, first 16 hex digits of the
