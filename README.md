@@ -42,12 +42,11 @@ and negative tests, run natively on that architecture. Per-interface detail is i
 ## How it fits together
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph code["Implementation"]
-    direction TB
     api["C API"]
     core["SLH-DSA core<br/>WOTS+ · XMSS · FORS · hypertree"]
-    hash["Hash<br/>SHA-2 · SHAKE<br/>scalar · NEON · AVX2"]
+    hash["Hash<br/>SHA-2 · SHAKE"]
     jc["Jasmin compiler<br/>verified in Rocq"]
     asm["Assembly<br/>AArch64 · x86-64"]
     api --> core --> hash
@@ -56,13 +55,17 @@ flowchart LR
     jc --> asm
   end
   subgraph proof["Proof"]
-    direction TB
     sec["SPHINCS+ security proof"]
     spec["FIPS 205 specification<br/>in EasyCrypt"]
-    sec --- spec
+    sec -. "open" .- spec
   end
-  spec -. "equivalence" .- core
+  spec -. "equivalence, open" .- core
+  classDef planned stroke-dasharray: 5 4
+  class api,core,hash,sec,spec planned
 ```
+
+Dashed boxes are not on this branch yet; dotted links are proofs still open. Only the
+pinned compiler is here today.
 
 ## What is proven, and what is not
 
@@ -73,10 +76,10 @@ flowchart LR
 | Hash primitives match FIPS 180-4 and FIPS 202 | open | — |
 | Constant time and speculative constant time on every secret-dependent path | not run on this branch | — |
 | Memory safety of every export | not run on this branch | — |
-| The compiler preserves the semantics of the program | proved in Rocq; `toolchain/build.sh` re-checks the proofs and prints the theorem's assumptions | each target's compiler theorem, for the pinned compiler and series |
+| The compiler preserves the semantics of safe programs | proved in Rocq; `toolchain/build.sh` re-checks the proofs | from the Jasmin AST to the assembly semantics, per target; the front end, assembly printer, assembler and linker are outside it; assumptions in [`toolchain/jasmin/ASSUMPTIONS`](toolchain/jasmin/ASSUMPTIONS) |
 
 A claim moves up only with its proof or check in the repository and a CI run that
-reproduces it. Assumptions of each proof are listed next to it.
+reproduces it. Each proof's assumptions are listed in the file its row links.
 
 ## Building
 
@@ -111,7 +114,7 @@ Every patch has its provenance, purpose, test and upstream status in
 toolchain/   pinned Jasmin and EasyCrypt, the patch series, build.sh
 tools/       CI checks and release tooling
 changes/     one entry per change, collected at release
-docs/        toolchain, status and design notes
+docs/        toolchain and status
 ```
 
 </details>
