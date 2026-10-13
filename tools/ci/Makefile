@@ -35,6 +35,8 @@
 #     ci-proofs       the EasyCrypt development and its admit scan, and the
 #                     identity of the committed extracted models
 #     ci-generated    regenerate gen/ and fail on any byte difference
+#     ci-verdict-key  the key under which the verdict of an expensive
+#                     check is recorded (CHECK=<check>, below)
 #
 # Besides these targets, the workflows run only the scripts beside this
 # file: installing and checking the toolchain, the lint of the repository's
@@ -164,6 +166,50 @@ ifneq ($(CI_UNKNOWN_DIRS),)
 $(error directories tools/ci/Makefile does not account for: $(CI_UNKNOWN_DIRS); add each to its component, or to CI_OTHER_ROOTS if it holds none)
 endif
 
+# Verdicts
+# --------
+#
+# On a pull request, an expensive check whose inputs are identical to those
+# of a recorded passing run reports that run instead of running again
+# (tools/ci/verdict.sh). Its inputs are every tracked file except the paths
+# listed here for it, so the lists name only what a check provably does
+# not read, and a path this file does not know is an input of every check.
+# Every *.mk file is an input wherever it sits (the top-level Makefile
+# includes them), and so are the checks' own scripts and the workflows.
+#
+# What each check reads:
+#
+#   test          the library, the hash, core, ABI and negative tests, ACVP
+#                 (which builds the adapters of tests/diff); not the proofs
+#                 or the benchmarks
+#   analysis      the Jasmin sources, the hash tests (their ct and sct
+#                 targets) and analysis/; not ACVP, the differential test,
+#                 the proofs or the benchmarks
+#   safety        the same as analysis
+#   generated     the same as analysis
+#   differential  the library, tests/diff, and bench/ for the pinned
+#                 independent implementation; not ACVP or the proofs
+#   proofs        proofs/, the imported theories of third_party, and the
+#                 Jasmin sources it extracts (src/jasmin); not the C layer,
+#                 the tests, the analyses, gen/ or the benchmarks
+#
+# CI_VERDICT_SKIP holds what no check reads: documentation, change entries,
+# licensing and repository metadata, and the scripts of the cheap jobs.
+CI_VERDICT_CHECKS := test analysis safety generated differential proofs
+
+CI_VERDICT_SKIP := docs changes LICENSES ':(glob)**/*.md' \
+                   AUTHORS NOTICE LICENSE CITATION.cff REUSE.toml \
+                   .github/CODEOWNERS .github/ISSUE_TEMPLATE .github/pull_request_template.md \
+                   tools/ci/lint.sh tools/ci/changelog.sh tools/ci/require-success.py \
+                   tools/changes.sh
+
+CI_VERDICT_SKIP_test         := bench $(CI_DIRS_proofs)
+CI_VERDICT_SKIP_analysis     := bench $(CI_DIRS_proofs) $(CI_DIRS_acvp) $(CI_DIRS_diff)
+CI_VERDICT_SKIP_safety       := $(CI_VERDICT_SKIP_analysis)
+CI_VERDICT_SKIP_generated    := $(CI_VERDICT_SKIP_analysis)
+CI_VERDICT_SKIP_differential := $(CI_DIRS_proofs) $(CI_DIRS_acvp)
+CI_VERDICT_SKIP_proofs       := bench tests include src/c analysis gen
+
 # Host. The names follow the top-level Makefile: <arch>-<format> is the
 # directory of its build, build/<arch>-<format>/.
 CI_MACHINE := $(shell uname -m)
@@ -227,7 +273,7 @@ CI_CORE_TRANSCRIPT := $(CI_BUILD)/$(CI_TARGET)/transcript-core.txt
 .PHONY: ci-source ci-components ci-hash-sets ci-vectors ci-vectors-key
 .PHONY: ci-test ci-test-hash ci-test-core ci-test-acvp ci-transcript ci-agree
 .PHONY: ci-analysis ci-analysis-core ci-analysis-hash ci-asm ci-safety ci-safety-scope ci-diff
-.PHONY: ci-proofs ci-generated
+.PHONY: ci-proofs ci-generated ci-verdict-key
 
 # ---------------------------------------------------------------------------
 # Source checks
@@ -529,3 +575,11 @@ ifneq ($(CI_GEN),)
 else
 	$(call not_applicable,ci-generated,gen)
 endif
+
+# ---------------------------------------------------------------------------
+# Verdict keys. CHECK names the check; PLATFORM and CI_TOOL_KEY (the
+# compiler's cache key) come from the workflow.
+
+ci-verdict-key:
+	@test "$(words $(CHECK))" = 1 -a -n "$(filter $(CHECK),$(CI_VERDICT_CHECKS))" || { echo "ci-verdict-key: CHECK must be one of $(CI_VERDICT_CHECKS), not '$(CHECK)'"; exit 1; }
+	@tools/ci/verdict.sh key "$(CHECK)" "$(PLATFORM)" "$(CI_TOOL_KEY)" $(CI_VERDICT_SKIP) $(CI_VERDICT_SKIP_$(CHECK))
