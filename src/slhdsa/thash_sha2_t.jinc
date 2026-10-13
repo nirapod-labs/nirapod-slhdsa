@@ -1,0 +1,172 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * thash_sha2_t.jinc
+ * =================
+ *
+ * T_l of the SHA2 instantiation (FIPS 205 section 11.2) for an input of
+ * T_INPUT_BYTES = l n bytes, set by the namespace that requires this file
+ * (thash_sha2.jinc instantiates it for l = len and l = k):
+ *
+ *     T_l(PK.seed, ADRS, M) = Trunc_n(X(PK.seed || pad_b || ADRS^c || M))
+ *
+ * Every length is a compile-time constant, so the message after the
+ * precomputed first block is laid out once, padding included (FIPS 180-4
+ * section 5.1):
+ *
+ *     ADRS^c (22) || M (l n) || 0x80 || 0 ... || L
+ *
+ * with L the bit length of the whole message, b + 22 + l n bytes, as a
+ * 64-bit (SHA-256) or 128-bit (SHA-512) big-endian field. L < 2^16 for
+ * every set (l n <= 67 * 32), so only its last two bytes are non-zero. The
+ * blocks are then compressed in order from the precomputed state.
+ *
+ * Only the compression functions of the hash layer are called: the
+ * blocks live in this function's stack and the loop counter in a spill
+ * slot, so nothing else is held in a register across a compression.
+ */
+
+param int T_DATA_BYTES   = SHA2_ADRSC_BYTES + T_INPUT_BYTES;
+param int T_BLOCKS_256   = (T_DATA_BYTES + 9 + 63) / 64;
+param int T_BLOCKS_512   = (T_DATA_BYTES + 17 + 127) / 128;
+param int T_BITS_256     = 8 * (64 + T_DATA_BYTES);
+param int T_BITS_512     = 8 * (128 + T_DATA_BYTES);
+
+/*
+ * The padded message, `padded` bytes, as laid out above. M is copied by a
+ * run-time loop rather than unrolled: it is up to 268 words (l n = 67 * 32
+ * bytes).
+ */
+inline fn __t_layout(
+  reg mut ptr u8[T_BLOCKS_512 * 128] buf,
+  reg const ptr u8[T_INPUT_BYTES] in,
+  reg const ptr u64[4] adrs,
+  inline int padded bits,
+  reg u64 ms
+) -> reg ptr u8[T_BLOCKS_512 * 128], reg u64
+{
+  reg u64 z t o k;
+  reg bool more;
+  inline int i;
+
+  z = 0;
+  for i = 0 to padded / 8 {
+    buf[:u64 i] = z;
+  }
+
+  /* ADRS^c, as __adrs_compress_into64 (thash_sha2.jinc) writes it. */
+  t = (64u) adrs[:u8 3];
+  buf[0] = (8u) t;
+  for i = 0 to 8 {
+    t = (64u) adrs[:u8 8 + i];
+    buf[1 + i] = (8u) t;
+  }
+  t = (64u) adrs[:u8 19];
+  buf[9] = (8u) t;
+  for i = 0 to 12 {
+    t = (64u) adrs[:u8 20 + i];
+    buf[10 + i] = (8u) t;
+  }
+
+  /* M at byte 22; a run-time offset keeps every address base + register. */
+
+  o = SHA2_ADRSC_BYTES;
+  k = 0;
+  while { more = k < T_INPUT_BYTES / 8; } (more) {
+    ms = #update_msf(more, ms);
+    t = in[:u64 k];
+    buf.[:u64 o] = t;
+    o += 8;
+    k += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  t = 0x80;
+  buf[T_DATA_BYTES] = (8u) t;
+  t = bits >> 8;
+  buf[padded - 2] = (8u) t;
+  t = bits & 0xff;
+  buf[padded - 1] = (8u) t;
+
+  return buf, ms;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_t(
+  reg mut ptr u8[SLH_N] out,
+  reg const ptr u8[T_INPUT_BYTES] in,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg u64
+{
+  stack u8[T_BLOCKS_512 * 128] buf;
+  stack u32[8] h;
+  stack u64[8] h512;
+  reg ptr u8[T_BLOCKS_512 * 128] p;
+  reg u64 t off;
+  reg bool more;
+  inline int i;
+
+  p = buf;
+
+  #[inline]
+  if (SHA2_WIDE == 0) {
+    p, ms = __t_layout(p, in, adrs, 64 * T_BLOCKS_256, T_BITS_256, ms);
+    for i = 0 to 4 {
+      t = ctx[i];
+      h[:u64 i] = t;
+    }
+  } else {
+    p, ms = __t_layout(p, in, adrs, 128 * T_BLOCKS_512, T_BITS_512, ms);
+    for i = 0 to 8 {
+      t = ctx[4 + i];
+      h512[i] = t;
+    }
+  }
+  buf = p;
+
+  #spill(out);
+
+  /* Compress the blocks in order; off is the byte offset of the next one. */
+
+  off = 0;
+
+  #[inline]
+  if (SHA2_WIDE == 0) {
+    while { more = off < 64 * T_BLOCKS_256; } (more) {
+      ms = #update_msf(more, ms);
+      p = buf;
+      #spill(off);
+      h, ms = _sha256_compress(h, p[off : 64], ms);
+      #unspill(off);
+      off = #protect(off, ms);
+      off += 64;
+    }
+    ms = #update_msf(!more, ms);
+
+    #unspill(out);
+    out = #protect_ptr(out, ms);
+    out = __sha256_trunc_n(out, h);
+  } else {
+    while { more = off < 128 * T_BLOCKS_512; } (more) {
+      ms = #update_msf(more, ms);
+      p = buf;
+      #spill(off);
+      h512, ms = _sha512_compress(h512, p[off : 128], ms);
+      #unspill(off);
+      off = #protect(off, ms);
+      off += 128;
+    }
+    ms = #update_msf(!more, ms);
+
+    #unspill(out);
+    out = #protect_ptr(out, ms);
+    out = __sha512_trunc_n(out, h512);
+  }
+
+  return out, ms;
+}

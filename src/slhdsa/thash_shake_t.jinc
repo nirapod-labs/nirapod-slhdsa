@@ -1,0 +1,88 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * thash_shake_t.jinc
+ * ==================
+ *
+ * T_l of the SHAKE instantiation (FIPS 205 section 11.1) for an input of
+ * T_INPUT_BYTES = l n bytes, set by the namespace that requires this file
+ * (thash_shake.jinc instantiates it for l = len and l = k):
+ *
+ *     T_l(PK.seed, ADRS, M) = SHAKE256(PK.seed || ADRS || M, 8n)
+ *
+ * PK.seed, ADRS and M are whole lanes, so the absorption works on lanes:
+ * pos counts the lanes of the current block, 0 <= pos < 17, and a full
+ * block is permuted at once. The padding then goes in at lane pos.
+ */
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_t(
+  reg mut ptr u8[SLH_N] out,
+  reg const ptr u8[T_INPUT_BYTES] in,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg u64
+{
+  stack u64[25] st_s;
+  reg ptr u64[25] st;
+  reg u64 pos i t v;
+  reg bool more full;
+
+  st = st_s;
+  st = __shake_seeded_head(st, ctx, adrs);
+  pos = SLH_NW + 4;
+
+  #spill(out);
+
+  /*
+   * Invariant: lanes 0 .. i - 1 of M have been absorbed. in and i wait in
+   * spill slots across each permutation and are protected when reloaded.
+   */
+
+  i = 0;
+  while { more = i < T_INPUT_BYTES / 8; } (more) {
+    ms = #update_msf(more, ms);
+
+    v = in[:u64 i];
+    t = st[pos];
+    t ^= v;
+    st[pos] = t;
+    pos += 1;
+
+    full = pos == SLH_SHAKE_RATE_LANES;
+    if (full) {
+      ms = #update_msf(full, ms);
+      #spill(in, i);
+      st, ms = _keccakf1600(st, ms);
+      #unspill(in, i);
+      in = #protect_ptr(in, ms);
+      i = #protect(i, ms);
+      pos = 0;
+    } else {
+      ms = #update_msf(!full, ms);
+    }
+
+    i += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  t = st[pos];
+  t ^= SLH_SHAKE_DS;
+  st[pos] = t;
+  t = st[SLH_SHAKE_RATE_LANES - 1];
+  v = SLH_SHAKE_PAD_END;
+  t ^= v;
+  st[SLH_SHAKE_RATE_LANES - 1] = t;
+
+  st, ms = _keccakf1600(st, ms);
+
+  #unspill(out);
+  out = #protect_ptr(out, ms);
+  out = __shake_extract_n(out, st);
+
+  return out, ms;
+}

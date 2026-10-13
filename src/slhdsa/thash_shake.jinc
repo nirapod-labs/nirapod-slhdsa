@@ -1,0 +1,683 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * thash_shake.jinc
+ * ================
+ *
+ * The SHAKE instantiation of FIPS 205 section 11.1:
+ *
+ *     PRF(PK.seed, SK.seed, ADRS) = SHAKE256(PK.seed || ADRS || SK.seed, 8n)
+ *     F(PK.seed, ADRS, M1)        = SHAKE256(PK.seed || ADRS || M1, 8n)
+ *     H(PK.seed, ADRS, M2)        = SHAKE256(PK.seed || ADRS || M2, 8n)
+ *     T_l(PK.seed, ADRS, M)       = SHAKE256(PK.seed || ADRS || M, 8n)
+ *     PRF_msg(SK.prf, opt_rand, M)
+ *                                 = SHAKE256(SK.prf || opt_rand || M, 8n)
+ *     H_msg(R, PK.seed, PK.root, M)
+ *                                 = SHAKE256(R || PK.seed || PK.root || M, 8m)
+ *
+ * Sponge layout
+ *
+ *     SHAKE256 has rate 136 bytes, 17 lanes of 64 bits (FIPS 202 section
+ *     6.2). Lane j holds state bytes 8j .. 8j + 7 little-endian (FIPS 202
+ *     appendix B.1). n is 16, 24 or 32 and ADRS is 32 bytes, so PK.seed,
+ *     ADRS and every n-byte input start on a lane boundary and the
+ *     tweakable hashes fill whole lanes.
+ *
+ *     PRF and F absorb 2n + 32 <= 96 bytes and H absorbs 3n + 32 <= 128
+ *     bytes: one block and one permutation each. SHAKE padding puts 0x1F at
+ *     the first free byte and 0x80 at byte 135 (domain suffix 1111 and
+ *     pad10*1, FIPS 202 section 6.2 and appendix B.2). For H with n = 32
+ *     both land in lane 16, and XOR places them correctly.
+ *
+ *     T_l and the message hashes absorb variable amounts through the
+ *     sponge. Every output (n <= 32 or m <= 49 bytes) is shorter than the
+ *     rate, so one permutation after padding gives the whole output.
+ *
+ * Context
+ *
+ *     ctx holds PK.seed as n/8 lanes. PK.seed is public; ctx is typed secret
+ *     only because signing copies it out of the secret key.
+ *
+ * Security
+ *
+ *     SK.seed, SK.prf, opt_rand, chain values and the message enter only as
+ *     XOR data. Branches and addresses depend on public lengths and sponge
+ *     positions. Each local Keccak state is left holding secret-derived
+ *     data in the stack; this file clears nothing (docs/API.md records
+ *     what the build clears).
+ */
+
+from Hash require "keccak/sponge.jinc"
+
+param int THASH_CTX_WORDS = SLH_N / 8;
+
+param int SLH_SHAKE_RATE       = 136;
+param int SLH_SHAKE_RATE_LANES = 17;
+param int SLH_NW              = SLH_N / 8;
+
+/* SHAKE domain byte and the final padding bit (FIPS 202 section 6.2). */
+param int SLH_SHAKE_DS  = 0x1F;
+param int SLH_SHAKE_PAD_END = 0x8000000000000000;
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_ctx_init(reg mut ptr u64[THASH_CTX_WORDS] ctx, reg const ptr u8[SLH_N] pk_seed, reg u64 ms)
+  -> reg ptr u64[THASH_CTX_WORDS], reg u64
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to SLH_NW {
+    t = pk_seed[:u64 i];
+    ctx[i] = t;
+  }
+
+  return ctx, ms;
+}
+
+/* State <- PK.seed || ADRS in lanes 0 .. n/8 + 3, zero elsewhere. */
+inline fn __shake_seeded_head(
+  reg mut ptr u64[25] st,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs
+) -> reg ptr u64[25]
+{
+  reg u64 t;
+  inline int i;
+
+  st = __keccak_init(st);
+
+  for i = 0 to SLH_NW {
+    t = ctx[i];
+    st[i] = t;
+  }
+  for i = 0 to 4 {
+    t = adrs[i];
+    st[SLH_NW + i] = t;
+  }
+
+  return st;
+}
+
+/* Pad a single block after `lanes` absorbed lanes. */
+inline fn __shake_pad_lanes(reg mut ptr u64[25] st, inline int lanes) -> reg ptr u64[25]
+{
+  reg u64 t u;
+
+  t = st[lanes];
+  t ^= SLH_SHAKE_DS;
+  st[lanes] = t;
+
+  t = st[SLH_SHAKE_RATE_LANES - 1];
+  u = SLH_SHAKE_PAD_END;
+  t ^= u;
+  st[SLH_SHAKE_RATE_LANES - 1] = t;
+
+  return st;
+}
+
+inline fn __shake_extract_n(reg mut ptr u8[SLH_N] out, reg const ptr u64[25] st) -> reg ptr u8[SLH_N]
+{
+  reg u64 t;
+  inline int i;
+
+  for i = 0 to SLH_NW {
+    t = st[i];
+    out[:u64 i] = t;
+  }
+
+  return out;
+}
+
+/* out <- PRF(PK.seed, SK.seed, ADRS) */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_prf(
+  reg mut ptr u8[SLH_N] out,
+  reg const ptr u8[SLH_N] sk_seed,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg u64
+{
+  stack u64[25] st;
+  reg u64 t;
+  inline int i;
+
+  st = __shake_seeded_head(st, ctx, adrs);
+  for i = 0 to SLH_NW {
+    t = sk_seed[:u64 i];
+    st[SLH_NW + 4 + i] = t;
+  }
+  st = __shake_pad_lanes(st, 2 * SLH_NW + 4);
+
+  #spill(out);
+  st, ms = _keccakf1600(st, ms);
+  #unspill(out);
+  out = #protect_ptr(out, ms);
+  out = __shake_extract_n(out, st);
+
+  return out, ms;
+}
+
+/* x <- F(PK.seed, ADRS, x), in place. */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_f(
+  reg mut ptr u8[SLH_N] x,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg u64
+{
+  stack u64[25] st;
+  reg u64 t;
+  inline int i;
+
+  st = __shake_seeded_head(st, ctx, adrs);
+  for i = 0 to SLH_NW {
+    t = x[:u64 i];
+    st[SLH_NW + 4 + i] = t;
+  }
+  st = __shake_pad_lanes(st, 2 * SLH_NW + 4);
+
+  #spill(x);
+  st, ms = _keccakf1600(st, ms);
+  #unspill(x);
+  x = #protect_ptr(x, ms);
+  x = __shake_extract_n(x, st);
+
+  return x, ms;
+}
+
+/* out <- H(PK.seed, ADRS, in), in = left || right. */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_h(
+  reg mut ptr u8[SLH_N] out,
+  reg const ptr u8[2 * SLH_N] in,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg u64
+{
+  stack u64[25] st;
+  reg u64 t;
+  inline int i;
+
+  st = __shake_seeded_head(st, ctx, adrs);
+  for i = 0 to 2 * SLH_NW {
+    t = in[:u64 i];
+    st[SLH_NW + 4 + i] = t;
+  }
+  st = __shake_pad_lanes(st, 3 * SLH_NW + 4);
+
+  #spill(out);
+  st, ms = _keccakf1600(st, ms);
+  #unspill(out);
+  out = #protect_ptr(out, ms);
+  out = __shake_extract_n(out, st);
+
+  return out, ms;
+}
+
+/* T_l at l = len (WOTS+ public keys) and l = k (FORS roots). */
+
+namespace TLen {
+  param int T_INPUT_BYTES = SLH_LEN * SLH_N;
+  from Slhdsa require "thash_shake_t.jinc"
+}
+
+namespace TK {
+  param int T_INPUT_BYTES = SLH_K * SLH_N;
+  from Slhdsa require "thash_shake_t.jinc"
+}
+
+/* out <- T_len(PK.seed, ADRS, in), the WOTS+ public-key compression. */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_t_len(
+  reg mut ptr u8[SLH_N] out,
+  reg const ptr u8[SLH_LEN * SLH_N] in,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg u64
+{
+  out, ms = TLen::_thash_t(out, in, ctx, adrs, ms);
+  return out, ms;
+}
+
+/* out <- T_k(PK.seed, ADRS, in), the FORS public-key compression. */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_t_k(
+  reg mut ptr u8[SLH_N] out,
+  reg const ptr u8[SLH_K * SLH_N] in,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg u64
+{
+  out, ms = TK::_thash_t(out, in, ctx, adrs, ms);
+  return out, ms;
+}
+
+/*
+ * Message hashing
+ * ---------------
+ *
+ * M' = prefix[0 : prefix_len] || msg[0 : msg_len]: the framing built by
+ * external.jinc in a stack buffer, then the caller's message in memory;
+ * mref = (prefix_len, msg, msg_len).
+ * The prefix is absorbed byte by byte at sponge byte position pos
+ * (0 <= pos < 136), the message by the sponge of the hash layer.
+ */
+
+#[sct = "{ ptr: public, val: secret } × public ×
+         { ptr: public, val: secret } × public × msf →
+         { ptr: public, val: secret } × public × msf"]
+fn _shake_absorb_prefix(
+  reg mut ptr u64[25] st,
+  reg u64 pos,
+  reg const ptr u8[SLH_PREFIX_MAX] prefix,
+  reg u64 len,
+  reg u64 ms
+) -> reg ptr u64[25], reg u64, reg u64
+{
+  reg u64 i t b;
+  reg bool more full;
+
+  i = 0;
+  while { more = i < len; } (more) {
+    ms = #update_msf(more, ms);
+
+    t = (64u) st[:u8 pos];
+    b = (64u) prefix[i];
+    t ^= b;
+    st[:u8 pos] = (8u) t;
+    pos += 1;
+
+    full = pos == SLH_SHAKE_RATE;
+    if (full) {
+      ms = #update_msf(full, ms);
+      #spill(prefix, len, i);
+      st, ms = _keccakf1600(st, ms);
+      #unspill(prefix, len, i);
+      prefix = #protect_ptr(prefix, ms);
+      len = #protect(len, ms);
+      i = #protect(i, ms);
+      pos = 0;
+    } else {
+      ms = #update_msf(!full, ms);
+    }
+
+    i += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return st, pos, ms;
+}
+
+/*
+ * Absorb M' after a fixed head of `head` bytes already in st, pad, permute.
+ *
+ * mref describes M' (internal.jinc): mref[0] = prefix length, mref[1] =
+ * message pointer, mref[2] = message length. Each is reloaded and
+ * protected where it bounds a loop or addresses memory.
+ */
+inline fn __shake_absorb_message(
+  reg mut ptr u64[25] st,
+  inline int head,
+  reg const ptr u8[SLH_PREFIX_MAX] prefix,
+  reg const ptr u64[3] mref,
+  reg u64 ms
+) -> reg ptr u64[25], reg u64
+{
+  reg u64 pos rate ds m l;
+
+  pos = head;
+  l = mref[0];
+  l = #protect(l, ms);
+  #spill(mref);
+  st, pos, ms = _shake_absorb_prefix(st, pos, prefix, l, ms);
+  #unspill(mref);
+  mref = #protect_ptr(mref, ms);
+
+  m = mref[1];
+  m = #protect(m, ms);
+  l = mref[2];
+  l = #protect(l, ms);
+  rate = SLH_SHAKE_RATE;
+  st, pos, ms = _keccak_absorb_mem(st, pos, rate, m, l, ms);
+
+  rate = SLH_SHAKE_RATE;
+  ds = SLH_SHAKE_DS;
+  st, ms = _keccak_finalize(st, pos, rate, ds, ms);
+
+  return st, ms;
+}
+
+/*
+ * R <- PRF_msg(SK.prf, opt_rand, M').
+ *
+ * In signing, SK.prf and opt_rand are secret; R is released as the first
+ * n bytes of the signature.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: transient } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _prf_msg(
+  reg mut ptr u8[SLH_N] r,
+  reg const ptr u8[SLH_N] sk_prf,
+  reg const ptr u8[SLH_N] opt_rand,
+  reg const ptr u8[SLH_PREFIX_MAX] prefix,
+  reg const ptr u64[3] mref,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg u64
+{
+  stack u64[25] st;
+  reg u64 t;
+  inline int i;
+
+  st = __keccak_init(st);
+  for i = 0 to SLH_NW {
+    t = sk_prf[:u64 i];
+    st[i] = t;
+    t = opt_rand[:u64 i];
+    st[SLH_NW + i] = t;
+  }
+
+  #spill(r);
+  st, ms = __shake_absorb_message(st, 2 * SLH_N, prefix, mref, ms);
+  #unspill(r);
+  r = #protect_ptr(r, ms);
+  r = __shake_extract_n(r, st);
+
+  return r, ms;
+}
+
+/*
+ * digest <- H_msg(R, PK.seed, PK.root, M'), pk = PK.seed || PK.root.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: transient } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _h_msg(
+  reg mut ptr u8[SLH_M] digest,
+  reg const ptr u8[SLH_N] r,
+  reg const ptr u8[2 * SLH_N] pk,
+  reg const ptr u8[SLH_PREFIX_MAX] prefix,
+  reg const ptr u64[3] mref,
+  reg u64 ms
+) -> reg ptr u8[SLH_M], reg u64
+{
+  stack u64[25] st;
+  reg u64 t;
+  inline int i;
+
+  st = __keccak_init(st);
+  for i = 0 to SLH_NW {
+    t = r[:u64 i];
+    st[i] = t;
+  }
+  for i = 0 to 2 * SLH_NW {
+    t = pk[:u64 i];
+    st[SLH_NW + i] = t;
+  }
+
+  #spill(digest);
+  st, ms = __shake_absorb_message(st, 3 * SLH_N, prefix, mref, ms);
+  #unspill(digest);
+  digest = #protect_ptr(digest, ms);
+
+  for i = 0 to SLH_M {
+    t = (64u) st[:u8 i];
+    digest[i] = (8u) t;
+  }
+
+  return digest, ms;
+}
+
+/*
+ * Four-way forms
+ * --------------
+ *
+ * The tree code computes key pairs and FORS leaves four at a time. These
+ * functions compute F, PRF and T_len for four independent instances k =
+ * 0 .. 3, each exactly as the one-way function would:
+ *
+ *     adrs  u64[16]   ADRS of instance k at words 4k .. 4k + 3
+ *     x     u8[4n]    instance k at bytes kn .. kn + n - 1
+ *     in    u8[4 len n], instance k at bytes k len n ..
+ *
+ * The state is the four-way Keccak layout of the hash layer: lane j of
+ * instance k at word 4j + k. The kernel behind _keccakf1600_x4 is the
+ * build's choice (KeccakKernelX): four scalar permutations, or a vector
+ * kernel.
+ */
+
+from Hash require "keccak/sponge_x4.jinc"
+
+param int THASH_WAYS = 4;
+
+inline fn __shake_x4_seeded_head(
+  reg mut ptr u64[100] st,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[16] adrs
+) -> reg ptr u64[100]
+{
+  reg u64 t;
+  inline int i k;
+
+  st = __keccak_x4_init(st);
+
+  for i = 0 to SLH_NW {
+    t = ctx[i];
+    for k = 0 to 4 {
+      st[4 * i + k] = t;
+    }
+  }
+  for k = 0 to 4 {
+    for i = 0 to 4 {
+      t = adrs[4 * k + i];
+      st[4 * (SLH_NW + i) + k] = t;
+    }
+  }
+
+  return st;
+}
+
+inline fn __shake_x4_pad_lanes(reg mut ptr u64[100] st, inline int lanes) -> reg ptr u64[100]
+{
+  reg u64 t u;
+  inline int k;
+
+  u = SLH_SHAKE_PAD_END;
+  for k = 0 to 4 {
+    t = st[4 * lanes + k];
+    t ^= SLH_SHAKE_DS;
+    st[4 * lanes + k] = t;
+    t = st[4 * (SLH_SHAKE_RATE_LANES - 1) + k];
+    t ^= u;
+    st[4 * (SLH_SHAKE_RATE_LANES - 1) + k] = t;
+  }
+
+  return st;
+}
+
+inline fn __shake_x4_extract_n(reg mut ptr u8[4 * SLH_N] out, reg const ptr u64[100] st)
+  -> reg ptr u8[4 * SLH_N]
+{
+  reg u64 t;
+  inline int i k;
+
+  for k = 0 to 4 {
+    for i = 0 to SLH_NW {
+      t = st[4 * i + k];
+      out[:u64 SLH_NW * k + i] = t;
+    }
+  }
+
+  return out;
+}
+
+/* out[k] <- PRF(PK.seed, SK.seed, adrs[k]), k = 0 .. 3 */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_prf_x4(
+  reg mut ptr u8[4 * SLH_N] out,
+  reg const ptr u8[SLH_N] sk_seed,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[16] adrs,
+  reg u64 ms
+) -> reg ptr u8[4 * SLH_N], reg u64
+{
+  stack u64[100] st;
+  reg u64 t;
+  inline int i k;
+
+  st = __shake_x4_seeded_head(st, ctx, adrs);
+  for i = 0 to SLH_NW {
+    t = sk_seed[:u64 i];
+    for k = 0 to 4 {
+      st[4 * (SLH_NW + 4 + i) + k] = t;
+    }
+  }
+  st = __shake_x4_pad_lanes(st, 2 * SLH_NW + 4);
+
+  #spill(out);
+  st, ms = _keccakf1600_x4(st, ms);
+  #unspill(out);
+  out = #protect_ptr(out, ms);
+  out = __shake_x4_extract_n(out, st);
+
+  return out, ms;
+}
+
+/* x[k] <- F(PK.seed, adrs[k], x[k]), k = 0 .. 3, in place */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_f_x4(
+  reg mut ptr u8[4 * SLH_N] x,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[16] adrs,
+  reg u64 ms
+) -> reg ptr u8[4 * SLH_N], reg u64
+{
+  stack u64[100] st;
+  reg u64 t;
+  inline int i k;
+
+  st = __shake_x4_seeded_head(st, ctx, adrs);
+  for k = 0 to 4 {
+    for i = 0 to SLH_NW {
+      t = x[:u64 SLH_NW * k + i];
+      st[4 * (SLH_NW + 4 + i) + k] = t;
+    }
+  }
+  st = __shake_x4_pad_lanes(st, 2 * SLH_NW + 4);
+
+  #spill(x);
+  st, ms = _keccakf1600_x4(st, ms);
+  #unspill(x);
+  x = #protect_ptr(x, ms);
+  x = __shake_x4_extract_n(x, st);
+
+  return x, ms;
+}
+
+/*
+ * out[k] <- T_len(PK.seed, adrs[k], in[k]), k = 0 .. 3: the lane-aligned
+ * absorption of thash_shake_t.jinc on four instances at once.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_t_len_x4(
+  reg mut ptr u8[4 * SLH_N] out,
+  reg const ptr u8[4 * SLH_LEN * SLH_N] in,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[16] adrs,
+  reg u64 ms
+) -> reg ptr u8[4 * SLH_N], reg u64
+{
+  stack u64[100] st_s;
+  reg ptr u64[100] st;
+  reg u64 pos i t v lane o;
+  reg bool more full;
+  inline int k;
+
+  st = st_s;
+  st = __shake_x4_seeded_head(st, ctx, adrs);
+  pos = SLH_NW + 4;
+
+  #spill(out);
+
+  /* Invariant: lanes 0 .. i - 1 of every instance's input are absorbed. */
+
+  i = 0;
+  while { more = i < SLH_LEN * SLH_NW; } (more) {
+    ms = #update_msf(more, ms);
+
+    lane = pos;
+    lane <<= 2;
+    o = i;
+    for k = 0 to 4 {
+      v = in[:u64 o];
+      t = st[lane];
+      t ^= v;
+      st[lane] = t;
+      o += SLH_LEN * SLH_NW;
+      lane += 1;
+    }
+    pos += 1;
+
+    full = pos == SLH_SHAKE_RATE_LANES;
+    if (full) {
+      ms = #update_msf(full, ms);
+      #spill(in, i);
+      st, ms = _keccakf1600_x4(st, ms);
+      #unspill(in, i);
+      in = #protect_ptr(in, ms);
+      i = #protect(i, ms);
+      pos = 0;
+    } else {
+      ms = #update_msf(!full, ms);
+    }
+
+    i += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  lane = pos;
+  lane <<= 2;
+  v = SLH_SHAKE_PAD_END;
+  for k = 0 to 4 {
+    t = st[lane];
+    t ^= SLH_SHAKE_DS;
+    st[lane] = t;
+    lane += 1;
+    t = st[4 * (SLH_SHAKE_RATE_LANES - 1) + k];
+    t ^= v;
+    st[4 * (SLH_SHAKE_RATE_LANES - 1) + k] = t;
+  }
+
+  st, ms = _keccakf1600_x4(st, ms);
+
+  #unspill(out);
+  out = #protect_ptr(out, ms);
+  out = __shake_x4_extract_n(out, st);
+
+  return out, ms;
+}
