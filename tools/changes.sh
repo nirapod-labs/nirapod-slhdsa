@@ -15,15 +15,23 @@
 # the subsections in a release. <slug> is lower-case letters, digits and
 # hyphens. A file holds one or more Markdown list items ("- ...").
 #
+# The link to the pull request is not written in the entry: the release
+# adds it to each list item, from the number in the file name, so the
+# link and the name cannot disagree. It goes on a line of its own,
+# "  ([PR #N](https://github.com/nirapod-labs/nirapod-slhdsa/pull/N))",
+# before the full stop that ends the item, if there is one. An entry
+# that already links to a pull request of this repository is rejected.
+#
 # Usage, from the repository root:
 #
 #   tools/changes.sh check
 #       Fail unless every file under changes/ is changes/README.md or a
-#       well-formed entry as above.
+#       well-formed entry as above, without a pull request link.
 #   tools/changes.sh section VERSION DATE
 #       Print the release section for VERSION (vMAJOR.MINOR.PATCH) dated
 #       DATE (YYYY-MM-DD): "## VERSION - DATE", then one "### <Category>"
-#       per category that has entries, its entries in pull request order.
+#       per category that has entries, its entries in pull request order,
+#       each list item closed by the link to its pull request.
 #   tools/changes.sh release VERSION DATE
 #       Put that section into CHANGELOG.md, above the newest release, and
 #       remove the entries it holds with `git rm`. The result is reviewed
@@ -37,6 +45,7 @@ set -euo pipefail
 CATEGORIES="added changed fixed security"
 DIR=changes
 LOG=CHANGELOG.md
+PULL=https://github.com/nirapod-labs/nirapod-slhdsa/pull
 
 die() { echo "changes.sh: $*" >&2; exit 1; }
 
@@ -72,6 +81,10 @@ cmd_check() {
     if ! head -n 1 "$f" | grep -q '^- [^ ]'; then
       echo "$f: does not start with a list item (\"- ...\")" >&2; bad=1; continue
     fi
+    if grep -Eiq 'github\.com/nirapod-labs/nirapod-slhdsa/pull/|\[PR #[0-9]' "$f"; then
+      echo "$f: links to a pull request; the release adds the link from the name" >&2
+      bad=1; continue
+    fi
     n=$((n + 1))
   done < <(find "$DIR" -mindepth 1 \( -type f -o -type l \) | LC_ALL=C sort)
   [ "$bad" = 0 ] || die "malformed entries in $DIR/ (listed above)"
@@ -85,6 +98,30 @@ check_release_args() {
   [[ $2 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "$2: not a date YYYY-MM-DD"
 }
 
+# linked FILE: the list items of the entry FILE, each closed by the link
+# to the pull request in the name of FILE. An item runs from its "- " line
+# to the next one; its lines are kept as written, without trailing blank
+# lines, and the link is indented as a continuation of the item.
+linked() {
+  local n=${1##*/}
+  n=${n%%-*}
+  awk -v link="([PR #$n]($PULL/$n))" '
+    function flush(   i, tail) {
+      while (k > 0 && buf[k] ~ /^[ \t]*$/) k--
+      if (k == 0) return
+      sub(/[ \t]+$/, "", buf[k])
+      tail = link
+      if (sub(/\.$/, "", buf[k])) tail = tail "."
+      for (i = 1; i <= k; i++) print buf[i]
+      print "  " tail
+      k = 0
+    }
+    /^- / { flush() }
+    { buf[++k] = $0 }
+    END { flush() }
+  ' "$1"
+}
+
 # section VERSION DATE: the release section on stdout.
 section() {
   local c f first
@@ -93,7 +130,7 @@ section() {
     first=1
     while IFS= read -r f; do
       if [ "$first" = 1 ]; then printf '\n### %s\n\n' "$(title "$c")"; first=0; fi
-      cat "$f"
+      linked "$f"
     done < <(entries "$c")
   done
 }

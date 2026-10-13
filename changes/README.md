@@ -20,6 +20,18 @@ so that pull requests merged in parallel never edit the same lines of
      `SLHDSA_ERR_CONTEXT` instead of truncating it.
    ```
 
+   Leave out the link to the pull request. The release adds it to each
+   item from the number in the file name, before the final full stop:
+
+   ```markdown
+   - `slhdsa_sign` rejects a context string longer than 255 bytes with
+     `SLHDSA_ERR_CONTEXT` instead of truncating it
+     ([PR #42](https://github.com/nirapod-labs/nirapod-slhdsa/pull/42)).
+   ```
+
+   An entry that already links to a pull request of this repository fails
+   the check.
+
 CI asks for an entry when a pull request changes `src/`, `toolchain/`,
 `proofs/`, `third_party/`, `analysis/`, `include/`, the top-level
 `Makefile` or a `*.mk` file. A change with nothing to tell users, such as
