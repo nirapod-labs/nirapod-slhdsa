@@ -1,0 +1,31 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * hook.jinc
+ * =========
+ *
+ * Two values of the signing computation that a test build may perturb, to
+ * show that the C layer withholds a signature computed with a fault
+ * (capi/api.c, "Fault check"):
+ *
+ *     __hook_fors_pk   the FORS public key, before layer 0 signs it
+ *     __hook_ht_root   the root of the XMSS tree of layer j, before
+ *                      layer j + 1 signs it (the last root is unused)
+ *
+ * They are the points the published fault attacks on SPHINCS+ target. The
+ * build selects this file through the include root SlhdsaHook. Every
+ * library unit is compiled with this version, in which both hooks are the
+ * identity and inline to no code; the test version lives under
+ * tests/negative/fault/.
+ */
+
+inline fn __hook_fors_pk(reg mut ptr u8[SLH_N] pk) -> reg ptr u8[SLH_N]
+{
+  return pk;
+}
+
+inline fn __hook_ht_root(reg mut ptr u8[SLH_N] root, reg u32 layer) -> reg ptr u8[SLH_N]
+{
+  return root;
+}

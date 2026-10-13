@@ -1,0 +1,304 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * api.jinc
+ * ========
+ *
+ * The exports of one parameter set: the boundary between the C wrapper
+ * (capi) and the Jasmin implementation. The build wraps a set's unit in
+ * the namespace nirapod_slhdsa_jz_<set>_<variant>, so the symbol of
+ * export `op` is nirapod_slhdsa_jz_<set>_<variant>__op (capi/jasmin.h).
+ *
+ *     keygen           FIPS 205 Algorithm 18, on caller-supplied seeds
+ *     sign             Algorithms 22 / 23 framing, then Algorithm 19
+ *     verify           Algorithms 24 / 25 framing, then Algorithm 20
+ *     sign_internal    Algorithm 19 on M as given            (testing only)
+ *     verify_internal  Algorithm 20 on M as given            (testing only)
+ *
+ * Division of work with the C layer
+ *
+ *     C checks what needs the caller's lengths (NULL pointers, buffer
+ *     sizes, |ctx| <= 255), draws the seeds and the hedged opt_rand from the
+ *     operating system, chooses PK.seed as opt_rand for deterministic
+ *     signing, and fills the domain block. Everything cryptographic is
+ *     here, including the M' framing and the pre-hash.
+ *
+ * Calling convention (all exports)
+ *
+ *     An array argument is a pointer to exactly the stated number of bytes,
+ *     with no alignment requirement. msg is a pointer to msg_len bytes; any
+ *     pointer when msg_len = 0. Output arrays must not overlap any input;
+ *     the C layer refuses overlapping buffers before it calls an export.
+ *     Results are 0 for success and all ones for failure.
+ *
+ * Speculation (all exports)
+ *
+ *     The caller's state at entry is unknown: a mispredicted branch may
+ *     have brought execution here with arbitrary register values. Each
+ *     export therefore starts with #init_msf, a fence that establishes an
+ *     exact misspeculation flag, and protects every pointer and length
+ *     argument with it before first use. The SCT annotations type every
+ *     pointer and length argument as transient (public in correct
+ *     execution, possibly secret under misspeculation) for the same
+ *     reason; the contents of seeds, sk and opt_rand are typed secret.
+ *
+ * Message reference
+ *
+ *     sign and verify describe M' to internal.jinc by mref = (prefix_len,
+ *     msg, msg_len), a stack array of public values. A stack array starts
+ *     with the secret type in the checker whatever is stored in it, so
+ *     each export releases mref after filling it; the release lifts a
+ *     type only, as the three words are public arguments and lengths.
+ *
+ * Testing-only exports
+ *
+ *     FIPS 205 section 9 says the internal functions should not be made
+ *     available to applications. sign_internal and verify_internal are
+ *     referred to only by the testing build of the C layer, which goes
+ *     into libnirapod_slhdsa_testing.a with an uninstalled header
+ *     (capi/internal.h, "Two builds"). Every unit still contains them.
+ *     In libnirapod_slhdsa.a the build keeps only the functions of
+ *     nirapod_slhdsa.h global and makes every other symbol local, these
+ *     exports and the three above included, so no application can link to
+ *     them; `make check` fails if any other global symbol appears there.
+ *     Their code stays in the archive, unreferenced.
+ */
+
+/*
+ * keygen: slh_keygen_internal (Algorithm 18)
+ *
+ *     seeds  in   3n bytes, SK.seed || SK.prf || PK.seed       secret
+ *     pk     out  2n bytes, PK.seed || PK.root                  output
+ *     sk     out  4n bytes, SK.seed || SK.prf || PK.seed || PK.root
+ *
+ * Total: pk and sk are always fully written. sk is secret; pk is public
+ * once returned. seeds is only read.
+ */
+#[sct = "{ ptr: transient, val: transient } × { ptr: transient, val: transient } ×
+         { ptr: transient, val: secret } →
+         { ptr: transient, val: secret } × { ptr: transient, val: secret }"]
+export fn keygen(
+  reg mut ptr u8[SLH_PK_BYTES] pk,
+  reg mut ptr u8[SLH_SK_BYTES] sk,
+  reg const ptr u8[3 * SLH_N] seeds
+) -> reg ptr u8[SLH_PK_BYTES], reg ptr u8[SLH_SK_BYTES]
+{
+  reg u64 ms;
+
+  ms = #init_msf();
+  pk = #protect_ptr(pk, ms);
+  sk = #protect_ptr(sk, ms);
+  seeds = #protect_ptr(seeds, ms);
+
+  pk, sk, ms = _slh_keygen(pk, sk, seeds, ms);
+
+  return pk, sk;
+}
+
+/*
+ * sign: slh_sign / hash_slh_sign (Algorithms 22, 23) with given opt_rand
+ *
+ *     sig       out  SIG bytes                                 output
+ *     msg       in   msg_len bytes of M                        public
+ *     domain    in   257 bytes: selector, |ctx|, ctx           public
+ *     sk        in   4n bytes, the secret key                  secret
+ *     opt_rand  in   n bytes: hedged randomness, or PK.seed    secret
+ *
+ * The selector byte domain[0] is 0 for pure SLH-DSA or the OID arc 1..12
+ * of the pre-hash function (external.jinc).
+ *
+ * Result 0: sig holds the signature. Result all ones: the selector is
+ * above 12 and sig is not written; the C layer, which checks the selector
+ * first, zero-fills sig on every failure.
+ *
+ * The framing status is branched on before signing so that an unknown
+ * selector never reaches Algorithm 19: there is no M' to sign.
+ */
+#[sct = "{ ptr: transient, val: transient } × transient × transient ×
+         { ptr: transient, val: transient } × { ptr: transient, val: secret } ×
+         { ptr: transient, val: secret } →
+         { ptr: transient, val: secret } × public"]
+export fn sign(
+  reg mut ptr u8[SLH_SIG_BYTES] sig,
+  reg u64 msg msg_len,
+  reg const ptr u8[SLH_DOMAIN_BYTES] domain,
+  reg const ptr u8[SLH_SK_BYTES] sk,
+  reg const ptr u8[SLH_N] opt_rand
+) -> reg ptr u8[SLH_SIG_BYTES], reg u64
+{
+  stack u8[SLH_PREFIX_MAX] prefix;
+  stack u64[3] mref;
+  reg u64 ms prefix_len status;
+  reg bool ok;
+
+  ms = #init_msf();
+  sig = #protect_ptr(sig, ms);
+  msg = #protect(msg, ms);
+  msg_len = #protect(msg_len, ms);
+  domain = #protect_ptr(domain, ms);
+  sk = #protect_ptr(sk, ms);
+  opt_rand = #protect_ptr(opt_rand, ms);
+
+  #spill(sig, msg, sk, opt_rand);
+  prefix, prefix_len, msg_len, status, ms = _slh_frame(prefix, domain, msg, msg_len, ms);
+  #unspill(sig, msg, sk, opt_rand);
+  sig = #protect_ptr(sig, ms);
+  msg = #protect(msg, ms);
+  sk = #protect_ptr(sk, ms);
+  opt_rand = #protect_ptr(opt_rand, ms);
+
+  ok = status == 0;
+  if (ok) {
+    ms = #update_msf(ok, ms);
+    mref[0] = prefix_len;
+    mref[1] = msg;
+    mref[2] = msg_len;
+    #declassify(mref);
+    #spill(status);
+    sig, ms = _slh_sign(sig, prefix, mref, sk, opt_rand, ms);
+    #unspill(status);
+    status = #protect(status, ms);
+    #spill(status);
+  } else {
+    ms = #update_msf(!ok, ms);
+  }
+
+  return sig, status;
+}
+
+/*
+ * verify: slh_verify / hash_slh_verify (Algorithms 24, 25)
+ *
+ *     sig     in  SIG bytes                                    public
+ *     msg     in  msg_len bytes of M                           public
+ *     domain  in  257 bytes, as for sign                       public
+ *     pk      in  2n bytes, PK.seed || PK.root                 public
+ *
+ * The C layer's fault check also calls verify, on a signature it has not
+ * yet released; for that caller sig is not public. Below the export the
+ * signature is typed secret, and what verification releases of it is
+ * argued in docs/DECLASSIFICATION.md, "Withheld signatures".
+ *
+ * Result 0 when sig is valid for M, the context and the pre-hash choice
+ * under pk; all ones when it is not, or when the selector is above 12.
+ * The signature length of Algorithm 20, line 1, is fixed by the type; the
+ * C layer rejects other lengths. Nothing is written.
+ */
+#[sct = "{ ptr: transient, val: transient } × transient × transient ×
+         { ptr: transient, val: transient } × { ptr: transient, val: transient } →
+         public"]
+export fn verify(
+  reg const ptr u8[SLH_SIG_BYTES] sig,
+  reg u64 msg msg_len,
+  reg const ptr u8[SLH_DOMAIN_BYTES] domain,
+  reg const ptr u8[SLH_PK_BYTES] pk
+) -> reg u64
+{
+  stack u8[SLH_PREFIX_MAX] prefix;
+  stack u64[3] mref;
+  reg u64 ms prefix_len status result;
+  reg bool ok;
+
+  ms = #init_msf();
+  sig = #protect_ptr(sig, ms);
+  msg = #protect(msg, ms);
+  msg_len = #protect(msg_len, ms);
+  domain = #protect_ptr(domain, ms);
+  pk = #protect_ptr(pk, ms);
+
+  #spill(sig, msg, pk);
+  prefix, prefix_len, msg_len, status, ms = _slh_frame(prefix, domain, msg, msg_len, ms);
+  #unspill(sig, msg, pk);
+  sig = #protect_ptr(sig, ms);
+  msg = #protect(msg, ms);
+  pk = #protect_ptr(pk, ms);
+
+  result = status;
+  ok = status == 0;
+  if (ok) {
+    ms = #update_msf(ok, ms);
+    mref[0] = prefix_len;
+    mref[1] = msg;
+    mref[2] = msg_len;
+    #declassify(mref);
+    result, ms = _slh_verify(sig, prefix, mref, pk, ms);
+  } else {
+    ms = #update_msf(!ok, ms);
+  }
+
+  return result;
+}
+
+/*
+ * sign_internal: slh_sign_internal (Algorithm 19) on M = msg as given.
+ * Testing only (see the file header). Arguments as for sign, without the
+ * domain block. Total: sig is always fully written.
+ *
+ * The prefix buffer is passed with length 0 and never read.
+ */
+#[sct = "{ ptr: transient, val: transient } × transient × transient ×
+         { ptr: transient, val: secret } × { ptr: transient, val: secret } →
+         { ptr: transient, val: secret }"]
+export fn sign_internal(
+  reg mut ptr u8[SLH_SIG_BYTES] sig,
+  reg u64 msg msg_len,
+  reg const ptr u8[SLH_SK_BYTES] sk,
+  reg const ptr u8[SLH_N] opt_rand
+) -> reg ptr u8[SLH_SIG_BYTES]
+{
+  stack u8[SLH_PREFIX_MAX] prefix;
+  stack u64[3] mref;
+  reg u64 ms prefix_len;
+
+  ms = #init_msf();
+  sig = #protect_ptr(sig, ms);
+  msg = #protect(msg, ms);
+  msg_len = #protect(msg_len, ms);
+  sk = #protect_ptr(sk, ms);
+  opt_rand = #protect_ptr(opt_rand, ms);
+
+  prefix_len = 0;
+  mref[0] = prefix_len;
+  mref[1] = msg;
+  mref[2] = msg_len;
+  #declassify(mref);
+  sig, ms = _slh_sign(sig, prefix, mref, sk, opt_rand, ms);
+
+  return sig;
+}
+
+/*
+ * verify_internal: slh_verify_internal (Algorithm 20) on M = msg as given.
+ * Testing only. Arguments and result as for verify, without the domain
+ * block. Like verify, it is also called by a fault check: the testing
+ * build's, after sign_internal.
+ */
+#[sct = "{ ptr: transient, val: transient } × transient × transient ×
+         { ptr: transient, val: transient } →
+         public"]
+export fn verify_internal(
+  reg const ptr u8[SLH_SIG_BYTES] sig,
+  reg u64 msg msg_len,
+  reg const ptr u8[SLH_PK_BYTES] pk
+) -> reg u64
+{
+  stack u8[SLH_PREFIX_MAX] prefix;
+  stack u64[3] mref;
+  reg u64 ms prefix_len result;
+
+  ms = #init_msf();
+  sig = #protect_ptr(sig, ms);
+  msg = #protect(msg, ms);
+  msg_len = #protect(msg_len, ms);
+  pk = #protect_ptr(pk, ms);
+
+  prefix_len = 0;
+  mref[0] = prefix_len;
+  mref[1] = msg;
+  mref[2] = msg_len;
+  #declassify(mref);
+  result, ms = _slh_verify(sig, prefix, mref, pk, ms);
+
+  return result;
+}

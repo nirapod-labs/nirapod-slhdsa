@@ -1,0 +1,427 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * external.jinc
+ * =============
+ *
+ * The message framing of the external interfaces, FIPS 205 section 10:
+ *
+ *     pure (Algorithms 22, 24)
+ *         M' = toByte(0, 1) || toByte(|ctx|, 1) || ctx || M
+ *
+ *     pre-hash (Algorithms 23, 25)
+ *         M' = toByte(1, 1) || toByte(|ctx|, 1) || ctx || OID || PH(M)
+ *
+ * Domain block
+ *
+ *     The C layer passes the caller's choices as a fixed 257-byte block:
+ *
+ *         byte 0         pre-hash selector: 0 for pure, otherwise the final
+ *                        arc of the hash function's OID (1 .. 12)
+ *         byte 1         |ctx| (0 .. 255)
+ *         bytes 2 ..     ctx, then zeros
+ *
+ *     The block is public. Its fields bound loops and select branches.
+ *
+ * Pre-hash functions and OIDs
+ *
+ *     The twelve functions of the NIST hash algorithm arc with a fixed
+ *     output length, at every parameter set. FIPS 205 section 10.2.2
+ *     allows any approved hash function or XOF; it asks for one with at
+ *     least 8n bits of collision and second-preimage strength, and calls
+ *     SHA-256 and SHAKE128 appropriate for category 1 only. Nothing here
+ *     checks that strength: choosing a function strong enough for the set
+ *     is the caller's.
+ *
+ *     Every function is identified by 2.16.840.1.101.3.4.2.x (NIST hash
+ *     algorithms), DER-encoded as 06 09 60 86 48 01 65 03 04 02 x. The
+ *     digest lengths are those of FIPS 180-4 and FIPS 202, with SHAKE128
+ *     and SHAKE256 at 256 and 512 bits as FIPS 205 Algorithm 23 specifies:
+ *
+ *         x   function       |PH(M)|        x   function       |PH(M)|
+ *         1   SHA2-256       32             7   SHA3-224       28
+ *         2   SHA2-384       48             8   SHA3-256       32
+ *         3   SHA2-512       64             9   SHA3-384       48
+ *         4   SHA2-224       28            10   SHA3-512       64
+ *         5   SHA2-512/224   28            11   SHAKE128       32
+ *         6   SHA2-512/256   32            12   SHAKE256       64
+ *
+ * Result
+ *
+ *     The framing becomes the prefix of M for internal.jinc. In pre-hash
+ *     mode the whole of M' is in the prefix and the message length passed
+ *     on is zero.
+ */
+
+from Hash require "keccak/sponge.jinc"
+from Hash require "sha2/sha256.jinc"
+from Hash require "sha2/sha512.jinc"
+
+param int PH_NONE      = 0;
+param int PH_SHA2_256  = 1;
+param int PH_SHA2_384  = 2;
+param int PH_SHA2_512  = 3;
+param int PH_SHA2_224  = 4;
+param int PH_SHA2_512_224 = 5;
+param int PH_SHA2_512_256 = 6;
+param int PH_SHA3_224  = 7;
+param int PH_SHA3_256  = 8;
+param int PH_SHA3_384  = 9;
+param int PH_SHA3_512  = 10;
+param int PH_SHAKE128  = 11;
+param int PH_SHAKE256  = 12;
+param int PH_LAST      = 12;
+
+/*
+ * Keccak rates in bytes, (1600 - 2d) / 8 for SHA3-d and (1600 - 2c) / 8
+ * with c = 256, 512 for SHAKE128 and SHAKE256, and the domain bytes: the
+ * suffix 01 (SHA-3) or 1111 (SHAKE) followed by the first padding bit
+ * (FIPS 202 sections 6.1, 6.2 and appendix B.2).
+ */
+param int PH_SHA3_224_RATE = 144;
+param int PH_SHA3_256_RATE = 136;
+param int PH_SHA3_384_RATE = 104;
+param int PH_SHA3_512_RATE = 72;
+param int PH_SHAKE128_RATE = 168;
+param int PH_SHAKE256_RATE = 136;
+param int PH_SHA3_DS       = 0x06;
+param int PH_SHAKE_DS      = 0x1F;
+
+/* DER prefix of the NIST hash algorithm arc 2.16.840.1.101.3.4.2 (10 bytes). */
+u8[10] NIST_HASH_OID_PREFIX = { 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02 };
+
+/*
+ * Keccak pre-hash: the sponge with the given rate and domain byte over M,
+ * then outlen bytes of output. SHA3-224/256/384/512 and SHAKE128 (256-bit
+ * output) and SHAKE256 (512-bit output) all have outlen <= 64 < rate, so
+ * one permutation after padding yields the whole digest (FIPS 202
+ * sections 6.1, 6.2).
+ *
+ * Built here on the sponge rather than with the one-shot functions of the
+ * hash layer so that this file controls what stays in registers across
+ * the sponge calls; see _prehash.
+ */
+#[sct = "{ ptr: public, val: secret } × public × public × public × public × public × msf →
+         { ptr: public, val: secret } × msf"]
+fn _ph_keccak(
+  reg mut ptr u8[SLH_PH_MAX_BYTES] out,
+  reg u64 rate ds_byte msg msg_len outlen,
+  reg u64 ms
+) -> reg ptr u8[SLH_PH_MAX_BYTES], reg u64
+{
+  stack u64[25] st_s;
+  reg ptr u64[25] st;
+  reg u64 pos ds i t r m l;
+  reg bool more;
+
+  st = st_s;
+  st = __keccak_init(st);
+  pos = 0;
+  r = rate;
+  m = msg;
+  l = msg_len;
+  #spill(out, rate, ds_byte, outlen);
+  st, pos, ms = _keccak_absorb_mem(st, pos, r, m, l, ms);
+  #unspill(rate, ds_byte);
+  rate = #protect(rate, ms);
+  ds_byte = #protect(ds_byte, ms);
+  ds = ds_byte;
+  r = rate;
+  st, ms = _keccak_finalize(st, pos, r, ds, ms);
+  #unspill(out, outlen);
+  out = #protect_ptr(out, ms);
+  outlen = #protect(outlen, ms);
+
+  i = 0;
+  while { more = i < outlen; } (more) {
+    ms = #update_msf(more, ms);
+    t = (64u) st[:u8 i];
+    out[i] = (8u) t;
+    i += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  return out, ms;
+}
+
+/*
+ * ph <- PH(M) for selector 1 .. 12, and its length. The selector has been
+ * checked by the caller.
+ *
+ * Each hash writes into the local buffer d, a stack array addressed from
+ * the stack pointer, and d is copied to ph at the end: ph itself waits in
+ * a spill slot across the hash call, and len is set after it, because the
+ * hash kernels leave no register free (the AArch64 Keccak kernel holds the
+ * whole state in registers).
+ */
+#[sct = "{ ptr: public, val: secret } × public × public × public × msf →
+         { ptr: public, val: secret } × public × msf"]
+fn _prehash(
+  reg mut ptr u8[SLH_PH_MAX_BYTES] ph,
+  reg u64 sel msg msg_len,
+  reg u64 ms
+) -> reg ptr u8[SLH_PH_MAX_BYTES], reg u64, reg u64
+{
+  stack u8[SLH_PH_MAX_BYTES] d;
+  reg u64 len rate ds m l o t;
+  reg bool b;
+  inline int i;
+
+  #spill(ph);
+
+  b = sel == PH_SHA2_256;
+  if (b) {
+    ms = #update_msf(b, ms);
+    m = msg;
+    l = msg_len;
+    d[0 : 32], ms = _sha256_mem(d[0 : 32], m, l, ms);
+    len = 32;
+  } else {
+    ms = #update_msf(!b, ms);
+    b = sel == PH_SHA2_384;
+    if (b) {
+      ms = #update_msf(b, ms);
+      m = msg;
+      l = msg_len;
+      d, ms = _sha384_mem(d, m, l, ms);
+      len = 48;
+    } else {
+      ms = #update_msf(!b, ms);
+      b = sel == PH_SHA2_512;
+      if (b) {
+        ms = #update_msf(b, ms);
+        m = msg;
+        l = msg_len;
+        d, ms = _sha512_mem(d, m, l, ms);
+        len = 64;
+      } else {
+        ms = #update_msf(!b, ms);
+        b = sel == PH_SHA2_224;
+        if (b) {
+          ms = #update_msf(b, ms);
+          m = msg;
+          l = msg_len;
+          d[0 : 32], ms = _sha224_mem(d[0 : 32], m, l, ms);
+          len = 28;
+        } else {
+          ms = #update_msf(!b, ms);
+          b = sel == PH_SHA2_512_224;
+          if (b) {
+            ms = #update_msf(b, ms);
+            m = msg;
+            l = msg_len;
+            d, ms = _sha512_224_mem(d, m, l, ms);
+            len = 28;
+          } else {
+            ms = #update_msf(!b, ms);
+            b = sel == PH_SHA2_512_256;
+            if (b) {
+              ms = #update_msf(b, ms);
+              m = msg;
+              l = msg_len;
+              d, ms = _sha512_256_mem(d, m, l, ms);
+              len = 32;
+            } else {
+              ms = #update_msf(!b, ms);
+              b = sel == PH_SHA3_224;
+              if (b) {
+                ms = #update_msf(b, ms);
+                m = msg;
+                l = msg_len;
+                rate = PH_SHA3_224_RATE;
+                ds = PH_SHA3_DS;
+                o = 28;
+                d, ms = _ph_keccak(d, rate, ds, m, l, o, ms);
+                len = 28;
+              } else {
+                ms = #update_msf(!b, ms);
+                b = sel == PH_SHA3_256;
+                if (b) {
+                  ms = #update_msf(b, ms);
+                  m = msg;
+                  l = msg_len;
+                  rate = PH_SHA3_256_RATE;
+                  ds = PH_SHA3_DS;
+                  o = 32;
+                  d, ms = _ph_keccak(d, rate, ds, m, l, o, ms);
+                  len = 32;
+                } else {
+                  ms = #update_msf(!b, ms);
+                  b = sel == PH_SHA3_384;
+                  if (b) {
+                    ms = #update_msf(b, ms);
+                    m = msg;
+                    l = msg_len;
+                    rate = PH_SHA3_384_RATE;
+                    ds = PH_SHA3_DS;
+                    o = 48;
+                    d, ms = _ph_keccak(d, rate, ds, m, l, o, ms);
+                    len = 48;
+                  } else {
+                    ms = #update_msf(!b, ms);
+                    b = sel == PH_SHA3_512;
+                    if (b) {
+                      ms = #update_msf(b, ms);
+                      m = msg;
+                      l = msg_len;
+                      rate = PH_SHA3_512_RATE;
+                      ds = PH_SHA3_DS;
+                      o = 64;
+                      d, ms = _ph_keccak(d, rate, ds, m, l, o, ms);
+                      len = 64;
+                    } else {
+                      ms = #update_msf(!b, ms);
+                      b = sel == PH_SHAKE128;
+                      if (b) {
+                        ms = #update_msf(b, ms);
+                        rate = PH_SHAKE128_RATE;
+                        o = 32;
+                        m = msg;
+                        l = msg_len;
+                        ds = PH_SHAKE_DS;
+                        d, ms = _ph_keccak(d, rate, ds, m, l, o, ms);
+                        len = 32;
+                      } else {
+                        ms = #update_msf(!b, ms);
+                        rate = PH_SHAKE256_RATE;
+                        o = 64;
+                        m = msg;
+                        l = msg_len;
+                        ds = PH_SHAKE_DS;
+                        d, ms = _ph_keccak(d, rate, ds, m, l, o, ms);
+                        len = 64;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  #unspill(ph);
+  ph = #protect_ptr(ph, ms);
+  for i = 0 to SLH_PH_MAX_BYTES / 8 {
+    t = d[:u64 i];
+    ph[:u64 i] = t;
+  }
+
+  return ph, len, ms;
+}
+
+/*
+ * M' framing
+ * ==========
+ *
+ * Writes the prefix of M' for the domain block and returns
+ *
+ *     (prefix, prefix_len, msg_len', status)
+ *
+ * status is 0, or all ones for a selector above 12, in which case
+ * prefix_len and msg_len' are 0 and the caller must not sign or accept.
+ *
+ *     pure:      prefix = 0x00 || |ctx| || ctx,  msg_len' = msg_len
+ *     pre-hash:  prefix = 0x01 || |ctx| || ctx || OID || PH(M),  msg_len' = 0
+ *
+ * prefix_len <= 2 + 255 + 11 + 64 = SLH_PREFIX_MAX.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: transient } ×
+         public × public × msf →
+         { ptr: public, val: secret } × public × public × public × msf"]
+fn _slh_frame(
+  reg mut ptr u8[SLH_PREFIX_MAX] prefix,
+  reg const ptr u8[SLH_DOMAIN_BYTES] domain,
+  reg u64 msg msg_len,
+  reg u64 ms
+) -> reg ptr u8[SLH_PREFIX_MAX], reg u64, reg u64, reg u64, reg u64
+{
+  stack u8[SLH_PH_MAX_BYTES] ph;
+  reg ptr u8[SLH_PH_MAX_BYTES] php;
+  reg ptr u8[10] oid;
+  reg u64 sel ctx_len i end t pos len status prefix_len;
+  reg bool pure valid more;
+  inline int k;
+
+  sel = (64u) domain[0];
+  sel = #protect(sel, ms);
+  ctx_len = (64u) domain[1];
+  ctx_len = #protect(ctx_len, ms);
+
+  valid = sel <= PH_LAST;
+  if (valid) {
+    ms = #update_msf(valid, ms);
+
+    /* 0x00 or 0x01, |ctx|, ctx */
+
+    t = 1;
+    t = sel == PH_NONE ? sel : t;
+    prefix[0] = (8u) t;
+    prefix[1] = (8u) ctx_len;
+
+    /* ctx sits at offset 2 in both the domain block and the prefix. */
+
+    i = 2;
+    end = ctx_len;
+    end += 2;
+    while { more = i < end; } (more) {
+      ms = #update_msf(more, ms);
+      t = (64u) domain[i];
+      prefix[i] = (8u) t;
+      i += 1;
+    }
+    ms = #update_msf(!more, ms);
+
+    pos = end;
+
+    pure = sel == PH_NONE;
+    if (pure) {
+      ms = #update_msf(pure, ms);
+      prefix_len = pos;
+    } else {
+      ms = #update_msf(!pure, ms);
+
+      /* OID = 06 09 60 86 48 01 65 03 04 02 || sel */
+
+      oid = NIST_HASH_OID_PREFIX;
+      for k = 0 to 10 {
+        t = (64u) oid[k];
+        prefix[pos] = (8u) t;
+        pos += 1;
+      }
+      prefix[pos] = (8u) sel;
+      pos += 1;
+
+      #spill(prefix, pos);
+      ph, len, ms = _prehash(ph, sel, msg, msg_len, ms);
+      #unspill(prefix, pos);
+      prefix = #protect_ptr(prefix, ms);
+      pos = #protect(pos, ms);
+
+      php = ph;
+      i = 0;
+      while { more = i < len; } (more) {
+        ms = #update_msf(more, ms);
+        t = (64u) php[i];
+        prefix[pos] = (8u) t;
+        pos += 1;
+        i += 1;
+      }
+      ms = #update_msf(!more, ms);
+
+      prefix_len = pos;
+      msg_len = 0;
+    }
+    status = 0;
+  } else {
+    ms = #update_msf(!valid, ms);
+    status = -1;
+    prefix_len = 0;
+    msg_len = 0;
+  }
+
+  return prefix, prefix_len, msg_len, status, ms;
+}

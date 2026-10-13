@@ -1,0 +1,350 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * internal.jinc
+ * =============
+ *
+ * The internal functions of FIPS 205 section 9: slh_keygen_internal,
+ * slh_sign_internal and slh_verify_internal (Algorithms 18-20).
+ *
+ * The message M of these algorithms arrives in two pieces, a prefix in a
+ * stack buffer and the caller's bytes in memory:
+ *
+ *     M = prefix[0 : prefix_len] || msg[0 : msg_len]
+ *
+ * described by mref = (prefix_len, msg, msg_len), three u64 words in the
+ * caller's stack: one argument instead of three keeps the call within the
+ * registers left free by the hash code.
+ *
+ * The external interfaces of section 10 put their framing (and for
+ * HashSLH-DSA the pre-hash) in the prefix; the internal test entry points
+ * pass an empty prefix.
+ *
+ * Data classification
+ * ===================
+ *
+ *     SK.seed, SK.prf     secret
+ *     opt_rand            secret when hedged; PK.seed, public, in the
+ *                         deterministic variant
+ *     PK.seed, PK.root    public by contract
+ *     M (prefix, msg)     public by contract; enters only hashes
+ *     R                   released as the first n bytes of the signature
+ *     digest indices      released at the declassification sites below
+ *     signature           released output
+ *
+ * Contract versus checker typing. The security contract above is what the
+ * implementation must protect. The constant-time checker sees less: memory
+ * loads and every hash output carry the secret type whatever their
+ * contract, so public-by-contract values computed by hashing (the digest,
+ * recomputed roots) need an explicit release before they may decide a
+ * branch or address. Every input above is typed secret for the same
+ * reason, whatever its contract. Each release states which case it is: a
+ * public-by-contract value, or a deliberate release of a secret-derived
+ * one.
+ *
+ * Register use. Values needed after a call into the tree code wait in
+ * spill slots (#spill / #unspill): the call chain beneath them leaves too
+ * few registers. A value reloaded from a spill slot is transient under the
+ * speculative model, so it is protected with the exact ms before it
+ * addresses memory or bounds a loop.
+ */
+
+/*
+ * Key generation (Algorithm 18)
+ *
+ *     sk = SK.seed || SK.prf || PK.seed || PK.root
+ *     pk = PK.seed || PK.root,  PK.root = xmss_node(SK.seed, 0, h', ...) at
+ *     layer d - 1, tree 0.
+ *
+ * seeds = SK.seed || SK.prf || PK.seed, 3n bytes from the caller.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf"]
+fn _slh_keygen(
+  reg mut ptr u8[SLH_PK_BYTES] pk,
+  reg mut ptr u8[SLH_SK_BYTES] sk,
+  reg const ptr u8[3 * SLH_N] seeds,
+  reg u64 ms
+) -> reg ptr u8[SLH_PK_BYTES], reg ptr u8[SLH_SK_BYTES], reg u64
+{
+  stack u64[THASH_CTX_WORDS] ctx;
+  stack u64[4] adrs;
+  stack u8[SLH_XMSS_SIG_BYTES] no_sig;
+  stack u8[SLH_LEN] no_steps;
+  stack u8[SLH_N] root;
+  reg u64 t;
+  reg u32 layer target;
+  inline int i;
+
+  for i = 0 to 3 * SLH_N / 8 {
+    t = seeds[:u64 i];
+    sk[:u64 i] = t;
+  }
+
+  /*
+   * The treehash signs a target leaf with WOTS+ digits from steps and
+   * writes the signature into its sig argument. Key generation has no
+   * target, so steps is never read and no_sig (one XMSS signature of
+   * stack) is never written; they exist to satisfy the signature of
+   * _xmss_treehash. steps is zeroed so that no uninitialised stack is
+   * passed.
+   */
+  t = 0;
+  for i = 0 to SLH_LEN {
+    no_steps[i] = (8u) t;
+  }
+
+  /* Release of constant zeros: lifts the default secret type of a stack array. */
+  #declassify(no_steps);
+
+  #spill(pk, sk);
+  ctx, ms = _thash_ctx_init(ctx, sk[SLH_SK_PK_OFFSET : SLH_N], ms);
+  #unspill(sk);
+  sk = #protect_ptr(sk, ms);
+
+  adrs = __adrs_zero(adrs);
+  layer = SLH_D - 1;
+  adrs = __adrs_set_layer(adrs, layer);
+
+  /*
+   * No target leaf: 2^32 - 1 is above every leaf index (< 2^h' <= 2^9),
+   * so the treehash returns the root and writes no signature.
+   */
+
+  target = -1;
+  #spill(sk);
+  root, no_sig, ms = _xmss_treehash(root, no_sig, sk[SLH_SK_SEED_OFFSET : SLH_N], ctx, adrs,
+                                    target, no_steps, ms);
+  #unspill(pk, sk);
+  pk = #protect_ptr(pk, ms);
+  sk = #protect_ptr(sk, ms);
+
+  sk[3 * SLH_N : SLH_N] = __node_copy(sk[3 * SLH_N : SLH_N], root);
+  pk[0 : SLH_N] = __node_copy(pk[0 : SLH_N], sk[SLH_SK_PK_OFFSET : SLH_N]);
+  pk[SLH_N : SLH_N] = __node_copy(pk[SLH_N : SLH_N], root);
+
+  return pk, sk, ms;
+}
+
+/*
+ * Signing (Algorithm 19)
+ * ======================
+ *
+ *     R        = PRF_msg(SK.prf, opt_rand, M)                    lines 4-5
+ *     digest   = H_msg(R, PK.seed, PK.root, M)                   line 6
+ *     md, idx_tree, idx_leaf from digest                         lines 7-12
+ *     SIG_FORS = fors_sign(md, SK.seed, PK.seed, ADRS)           lines 13-16
+ *     PK_FORS  = T_k of the FORS roots                           line 17
+ *     SIG_HT   = ht_sign(PK_FORS, SK.seed, PK.seed, idx_tree, idx_leaf)
+ *
+ *     SIG = R || SIG_FORS || SIG_HT, written in place into sig.
+ *
+ * sk = SK.seed || SK.prf || PK.seed || PK.root. opt_rand is the hedged
+ * randomness or PK.seed (deterministic variant), chosen by the caller.
+ * sig must not overlap sk, opt_rand, prefix or the message.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: transient } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _slh_sign(
+  reg mut ptr u8[SLH_SIG_BYTES] sig,
+  reg const ptr u8[SLH_PREFIX_MAX] prefix,
+  reg const ptr u64[3] mref,
+  reg const ptr u8[SLH_SK_BYTES] sk,
+  reg const ptr u8[SLH_N] opt_rand,
+  reg u64 ms
+) -> reg ptr u8[SLH_SIG_BYTES], reg u64
+{
+  stack u64[THASH_CTX_WORDS] ctx;
+  stack u8[SLH_M] digest;
+  stack u32[SLH_K] indices;
+  stack u64[4] adrs;
+  stack u8[SLH_N] r pk_fors;
+  reg u64 idx_tree t;
+  reg u32 idx_leaf;
+  inline int i;
+
+  #spill(sig, prefix, mref, sk, opt_rand);
+  ctx, ms = _thash_ctx_init(ctx, sk[SLH_SK_PK_OFFSET : SLH_N], ms);
+  #unspill(sig, prefix, mref, sk, opt_rand);
+  sig = #protect_ptr(sig, ms);
+  prefix = #protect_ptr(prefix, ms);
+  mref = #protect_ptr(mref, ms);
+  sk = #protect_ptr(sk, ms);
+  opt_rand = #protect_ptr(opt_rand, ms);
+
+  /* R = PRF_msg(SK.prf, opt_rand, M), the first n bytes of the signature. */
+
+  #spill(sig, prefix, mref, sk);
+  r, ms = _prf_msg(r, sk[SLH_SK_PRF_OFFSET : SLH_N], opt_rand, prefix, mref, ms);
+
+  #unspill(sig, prefix, mref, sk);
+  sig = #protect_ptr(sig, ms);
+  prefix = #protect_ptr(prefix, ms);
+  mref = #protect_ptr(mref, ms);
+  sk = #protect_ptr(sk, ms);
+
+  for i = 0 to SLH_N / 8 {
+    t = r[:u64 i];
+    sig[:u64 i] = t;
+  }
+
+  /* digest = H_msg(R, PK.seed, PK.root, M) */
+
+  #spill(sig, sk);
+  digest, ms = _h_msg(digest, r, sk[SLH_SK_PK_OFFSET : 2 * SLH_N], prefix, mref, ms);
+  #unspill(sig, sk);
+  sig = #protect_ptr(sig, ms);
+  sk = #protect_ptr(sk, ms);
+
+  indices = __fors_indices(indices, digest);
+  idx_tree, idx_leaf = __digest_tree_leaf(digest);
+
+  /*
+   * Declassification: signing digest indices
+   * ----------------------------------------
+   *
+   * Released: the k FORS indices (base_2b(md, a, k)), idx_tree and
+   * idx_leaf. Nothing else of the digest is used.
+   *
+   * Why: they are the addresses of FIPS 205 signing. They choose the FORS
+   * leaves whose secrets go into the signature, the authentication nodes
+   * recorded, the tree and key-pair fields of every ADRS, and the leaf
+   * signed in each hypertree layer. From here on every loop bound, branch
+   * and slot of signing may depend on them.
+   *
+   * Why it is safe: the digest is H_msg(R, PK.seed, PK.root, M). R becomes
+   * the first n bytes of the signature and PK.seed, PK.root and M are
+   * public, so every verifier recomputes the same digest (Algorithm 20,
+   * line 8): the indices disclose nothing the signature does not. R is
+   * secret-derived, PRF_msg under SK.prf and opt_rand, but is itself part
+   * of the output.
+   *
+   * Still secret: SK.seed, SK.prf, opt_rand, and every FORS secret and
+   * WOTS+ chain value that the signature does not contain.
+   *
+   * A signature the C layer withholds (its fault check fails) has had
+   * these indices released all the same. They are addresses: the FORS
+   * secrets, chain values and authentication nodes they select stay in
+   * the withheld signature, and a forgery by tree grafting needs those
+   * values (docs/DECLASSIFICATION.md, "Withheld signatures").
+   */
+  #declassify(indices);
+  #declassify(idx_tree);
+  #declassify(idx_leaf);
+
+  /*
+   * A released value is transient: under a mispredicted branch it may still
+   * hold its secret-typed predecessor. Both indices bound loops and select
+   * slots in the tree code, so they are masked with the exact ms here.
+   * indices is protected per element where it is read (fors.jinc).
+   */
+  idx_tree = #protect(idx_tree, ms);
+  idx_leaf = #protect_32(idx_leaf, ms);
+
+  adrs = __adrs_zero(adrs);
+  adrs = __adrs_set_tree(adrs, idx_tree);
+  adrs = __adrs_set_type_and_clear(adrs, ADRS_FORS_TREE);
+  adrs = __adrs_set_keypair(adrs, idx_leaf);
+
+  /* SIG_FORS and PK_FORS, then SIG_HT, written into sig in place. */
+
+  #spill(sk, idx_tree, idx_leaf);
+  sig, pk_fors, ms = _fors_sign(sig, pk_fors, indices, sk[SLH_SK_SEED_OFFSET : SLH_N], ctx, adrs, ms);
+
+  /* The identity outside the fault test build (hook/hook.jinc). */
+  pk_fors = __hook_fors_pk(pk_fors);
+  #unspill(sk, idx_tree, idx_leaf);
+  sk = #protect_ptr(sk, ms);
+  idx_tree = #protect(idx_tree, ms);
+  idx_leaf = #protect_32(idx_leaf, ms);
+
+  sig, pk_fors, ms = _ht_sign(sig, pk_fors, sk[SLH_SK_SEED_OFFSET : SLH_N], ctx, idx_tree, idx_leaf, ms);
+
+  return sig, ms;
+}
+
+/*
+ * Verification (Algorithm 20)
+ *
+ * Returns 0 for a valid signature and all ones otherwise; the verdict is
+ * released in _ht_verify (hypertree.jinc). The length check of Algorithm
+ * 20, line 1, is the type of sig: the C layer rejects every other length
+ * before calling.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: transient } ×
+         { ptr: public, val: secret } × msf →
+         public × msf"]
+fn _slh_verify(
+  reg const ptr u8[SLH_SIG_BYTES] sig,
+  reg const ptr u8[SLH_PREFIX_MAX] prefix,
+  reg const ptr u64[3] mref,
+  reg const ptr u8[SLH_PK_BYTES] pk,
+  reg u64 ms
+) -> reg u64, reg u64
+{
+  stack u64[THASH_CTX_WORDS] ctx;
+  stack u8[SLH_M] digest;
+  stack u32[SLH_K] indices;
+  stack u64[4] adrs;
+  stack u8[SLH_N] pk_fors;
+  reg u64 idx_tree result;
+  reg u32 idx_leaf;
+
+  #spill(sig, prefix, mref, pk);
+  ctx, ms = _thash_ctx_init(ctx, pk[0 : SLH_N], ms);
+  #unspill(sig, prefix, mref, pk);
+  sig = #protect_ptr(sig, ms);
+  prefix = #protect_ptr(prefix, ms);
+  mref = #protect_ptr(mref, ms);
+  pk = #protect_ptr(pk, ms);
+
+  #spill(sig, pk);
+  digest, ms = _h_msg(digest, sig[0 : SLH_N], pk, prefix, mref, ms);
+  #unspill(sig, pk);
+  sig = #protect_ptr(sig, ms);
+  pk = #protect_ptr(pk, ms);
+  #spill(sig, pk);
+
+  indices = __fors_indices(indices, digest);
+  idx_tree, idx_leaf = __digest_tree_leaf(digest);
+
+  /*
+   * Declassification: verification digest indices. On the verification
+   * API they are public by contract: the digest is H_msg of the
+   * signature's R, the public key and the message, all verification
+   * inputs, and the release only lifts the secret type of a hash output.
+   * On the C layer's fault check the signature is not yet released; R is
+   * the signer's, so these are the indices _slh_sign released
+   * (docs/DECLASSIFICATION.md, "Withheld signatures"). The protects
+   * follow for the reason given in _slh_sign.
+   */
+  #declassify(indices);
+  #declassify(idx_tree);
+  #declassify(idx_leaf);
+  idx_tree = #protect(idx_tree, ms);
+  idx_leaf = #protect_32(idx_leaf, ms);
+
+  adrs = __adrs_zero(adrs);
+  adrs = __adrs_set_tree(adrs, idx_tree);
+  adrs = __adrs_set_type_and_clear(adrs, ADRS_FORS_TREE);
+  adrs = __adrs_set_keypair(adrs, idx_leaf);
+
+  #spill(sig, pk, idx_tree, idx_leaf);
+  pk_fors, ms = _fors_pk_from_sig(pk_fors, sig[SLH_SIG_FORS_OFFSET : SLH_FORS_SIG_BYTES],
+                                  indices, ctx, adrs, ms);
+  #unspill(sig, pk, idx_tree, idx_leaf);
+  sig = #protect_ptr(sig, ms);
+  pk = #protect_ptr(pk, ms);
+  idx_tree = #protect(idx_tree, ms);
+  idx_leaf = #protect_32(idx_leaf, ms);
+
+  result, ms = _ht_verify(sig[SLH_SIG_HT_OFFSET : SLH_HT_SIG_BYTES], pk_fors,
+                          pk[SLH_N : SLH_N], ctx, idx_tree, idx_leaf, ms);
+
+  return result, ms;
+}

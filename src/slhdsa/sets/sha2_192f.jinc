@@ -1,0 +1,27 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha2_192f.jinc
+ * ==============
+ *
+ * The compilation unit of SLH-DSA-SHA2-192f. The build wraps it in the
+ * namespace nirapod_slhdsa_jz_sha2_192f_<variant>. The kernels of the
+ * variant come from the KeccakKernel, KeccakKernelX and Sha2Kernel include
+ * roots (Makefile, "Kernel roots").
+ */
+
+from Slhdsa require "params/sha2_192f.jinc"
+from Slhdsa require "constants.jinc"
+from SlhdsaHook require "hook.jinc"
+from Slhdsa require "address.jinc"
+from Slhdsa require "encoding.jinc"
+from Slhdsa require "thash_sha2.jinc"
+from Slhdsa require "wots.jinc"
+from Slhdsa require "treehash.jinc"
+from Slhdsa require "xmss.jinc"
+from Slhdsa require "hypertree.jinc"
+from Slhdsa require "fors.jinc"
+from Slhdsa require "internal.jinc"
+from Slhdsa require "external.jinc"
+from Slhdsa require "api.jinc"
