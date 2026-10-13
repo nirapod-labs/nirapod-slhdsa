@@ -31,8 +31,9 @@
  *                              at most the SPHINCS+ bound of the imported
  *                              proof for the adversary W(B(A)), with its
  *                              mkg and mco terms replaced by the PRF_msg
- *                              and H_msg terms above, plus the pre-hash
- *                              collision term of ExternalFraming.ec
+ *                              and H_msg terms above, plus the success
+ *                              probability of the pre-hash collision
+ *                              finder of ExternalFraming.ec
  *
  * Route. The SPHINCS+ instance signs (PK.seed || PK.root || opt_rand, M')
  * (SPHINCS_Instance.eca), so hedged signing is SPHINCS+ signing of a
@@ -48,28 +49,42 @@
  *    that differ only in opt_rand share their FORS indices).
  *
  * prf_proj_h and itsr_proj_h restate both for PRF_msg and H_msg on their
- * own inputs, through the adversaries PP and PI of SLHDSA_EUFCMA.eca, which
- * does the same for deterministic signing. The first holds
- * because all of W's queries carry one public key, so the two random
- * functions see the same queries. The second holds because W's choice of
- * opt_rand makes its forgery a recorded query whenever its H_msg inputs
- * and randomizer match one, and a recorded query is never an ITSR win.
+ * own inputs, with n-byte opt_rand, PK.seed and PK.root, through the
+ * adversaries PP and PI of SLHDSA_EUFCMA.eca, which does the same for
+ * deterministic signing. The first holds because all of W's queries carry
+ * one public key, so the two random functions see the same queries. The
+ * second holds because W's choice of opt_rand makes its forgery a
+ * recorded query whenever its H_msg inputs and randomizer match one, and
+ * a recorded query is never an ITSR win.
  *
  * No term for opt_rand collisions appears: the PRF hop of the imported
  * proof replaces mkg by a random function of the whole message, and a
  * repeated opt_rand only repeats an input of that function.
  *
- * The bound has the same shape as that of slhdsa_euf_cma for deterministic
- * signing, with W in place of R; the two differ only in the reduction.
+ * The bound has the same terms as that of slhdsa_euf_cma, with W in place
+ * of R, and each term has the meaning stated in the header of
+ * SLHDSA_EUFCMA.eca: a standard property of a FIPS 205 function on the
+ * inputs FIPS 205 gives it, or collision resistance of the pre-hash
+ * functions through the finder CF(SLH_Hedged, A). The bound is concrete,
+ * with no numeric security level derived.
  *
  * Hypotheses: A terminates whenever its signing oracle does, and A does not
  * read or write the state of the games and reductions involved (the module
  * restrictions of the statement). Nothing is assumed about the hash
- * functions: each property appears as an advantage in the bound, the
- * PRF_msg term keyed by SK.prf drawn uniformly.
+ * functions: each property appears as a term of the bound.
  *
- * The randomness of key generation and of opt_rand is modelled as uniform
- * n-byte strings.
+ * Scope.
+ *
+ *  - Hedged signing for every query: a key used for both deterministic and
+ *    hedged signatures is not covered.
+ *  - The result is about the EasyCrypt operators of FIPS 205 in spec/, not
+ *    about the Jasmin code; relating the two is a separate correctness
+ *    proof, which is open.
+ *  - The error indication of signing is modelled as the empty string.
+ *  - The randomness of key generation and of opt_rand is modelled as
+ *    uniform n-byte strings.
+ *  - Software-visible behaviour only: faults and physical leakage are out
+ *    of scope of this theorem.
  *)
 
 require import AllCore List Distr DList FMap.
@@ -261,22 +276,22 @@ declare module A <: DSI.Stateless.Adv_EUFCMA
 
 (* All of W's queries carry the same public key, so the queries of the
    two games correspond one to one. *)
-pred prf_rel_h (pkb : bytes) (mS : (bytes * bytes, nbytes) fmap) (mF : (bytes * bytes, nbytes) fmap) =
+pred prf_rel_h (pkb : bytes) (mS : (bytes * bytes, nbytes) fmap) (mF : (nbytes * bytes, nbytes) fmap) =
   size pkb = 2 * P.`n
-  /\ forall r M, mF.[(r, M)] = if size r = P.`n then mS.[(pkb ++ r, M)] else None.
+  /\ forall r M, mF.[(r, M)] = mS.[(pkb ++ NBytes.val r, M)].
 
-lemma prf_rel_get_h pkb mS mF (r M : bytes) :
-  size r = P.`n => prf_rel_h pkb mS mF => mF.[(r, M)] = mS.[(pkb ++ r, M)].
-proof. by move=> hr [_ h]; rewrite h hr. qed.
+lemma prf_rel_get_h pkb mS mF (r : nbytes) (M : bytes) :
+  prf_rel_h pkb mS mF => mF.[(r, M)] = mS.[(pkb ++ NBytes.val r, M)].
+proof. by move=> [_ h]; rewrite h. qed.
 
-lemma prf_rel_set_h pkb mS mF (r M : bytes) (y : nbytes) :
-  size r = P.`n => prf_rel_h pkb mS mF =>
-  prf_rel_h pkb mS.[(pkb ++ r, M) <- y] mF.[(r, M) <- y].
+lemma prf_rel_set_h pkb mS mF (r : nbytes) (M : bytes) (y : nbytes) :
+  prf_rel_h pkb mS mF =>
+  prf_rel_h pkb mS.[(pkb ++ NBytes.val r, M) <- y] mF.[(r, M) <- y].
 proof.
-move=> hr [hp h]; split => // r' M'; rewrite !get_setE h.
-case: (size r' = P.`n) => hr' //=.
-+ by have -> : (pkb ++ r' = pkb ++ r) = (r' = r) by smt(catsI).
-by case: (r' = r) => [->> //|].
+move=> [hp h]; split => // r' M'; rewrite !get_setE h.
+have -> // : ((pkb ++ NBytes.val r', M') = (pkb ++ NBytes.val r, M)) = ((r', M') = (r, M)).
+rewrite eq_iff; split => [/= [h1 ->] | [-> ->] //].
+by rewrite (NBytes.val_inj _ _ (catsI _ _ _ h1)).
 qed.
 
 local lemma prf_oracle :
@@ -308,15 +323,15 @@ seq 3 5 : (={r, m0, ad, m, mk, W.pkb, W.rec, glob SP.R_MKGPRF_EUFCMA}
              /\ prf_rel_h W.pkb{1} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}
              /\ size (NBytes.val r{1}) = P.`n
              /\ x{1} = (W.pkb{1} ++ NBytes.val r{1}, m{1})
-             /\ x0{2} = (NBytes.val r{1}, m{1}) ==> _).
+             /\ x0{2} = (r{1}, m{1}) ==> _).
   + move=> &1 &2 [#] -> -> -> 11!-> hb hk hrel hm0.
-    rewrite hm0 /= slice_rand; [by case: hrel | by apply nval_size | smt(nval_size)].
+    rewrite hm0 /= slice_rand; [by case: hrel | by apply nval_size | smt(nval_size NBytes.valKd)].
   if => //.
   + if.
     + by move=> /> &1 &2 *; rewrite !domE; smt(prf_rel_get_h).
     + auto => /> &1 &2 hp hrel hsz _ _ y _; rewrite !get_set_sameE /=.
       by have [_ h] := prf_rel_set_h W.pkb{2} SP.MKG_PRF.O_PRF_Default.m{1} PRFMsg_PRF.O_PRF_Default.m{2}
-                         (NBytes.val r{2}) m{2} y hsz _; first by split.
+                         r{2} m{2} y _; first by split.
     by auto => /> &1 &2 *; smt(prf_rel_get_h).
   by auto => /> &1 &2 hp hrel hsz *; rewrite /prf_msg /= (slice_rand _ _ hp hsz).
 sim / (={b, k}(SP.MKG_PRF.O_PRF_Default, PRFMsg_PRF.O_PRF_Default)
@@ -380,13 +395,6 @@ pred itsr_rel (pkb : bytes) (rec : (bytes * bytes * nbytes) list)
   /\ (forall e, e \in rec => (e.`3, (pkb ++ e.`1, e.`2)) \in ts)
   /\ (forall m, m \in mmap => (oget mmap.[m], m) \in ts).
 
-lemma pmsg_cat (pkb r M : bytes) :
-  size pkb = 2 * P.`n => pmsg (pkb ++ r, M) = (slice pkb 0 P.`n, slice pkb P.`n (2 * P.`n), M).
-proof.
-move=> hp; have hn := n_bounds.
-by rewrite /pmsg /= !slice_cat_l // hp; smt().
-qed.
-
 (* The ITSR win of the instance game, for W's forgery, is an ITSR win for
    H_msg: the same index tuples, and a pair that is new on the inputs of
    H_msg, because W reuses the opt_rand of a recorded query whenever the
@@ -398,18 +406,16 @@ lemma itsr_final_h (pkb : bytes) rec mmap ts (k : nbytes) (M d : bytes) :
          t \in flatten (map (fun (kx : nbytes * (bytes * bytes)) => SP.FTWES.MCO_ITSR.h kx.`1 kx.`2) ts))
   /\ ! (k, x) \in ts
   => (forall t, t \in HMsg_ITSR.h k (pmsg x) =>
-         t \in flatten (map (fun (kx : nbytes * (bytes * bytes * bytes)) => HMsg_ITSR.h kx.`1 kx.`2) (map pi ts)))
+         t \in flatten (map (fun (kx : nbytes * (nbytes * nbytes * bytes)) => HMsg_ITSR.h kx.`1 kx.`2) (map pi ts)))
   /\ ! (k, pmsg x) \in map pi ts.
 proof.
 move=> [hp [hts [hrec hmm]]] /= [hcov hnew].
-have hh : forall k' x', SP.FTWES.MCO_ITSR.h k' x' = HMsg_ITSR.h k' (pmsg x').
-+ by move=> k' x'; rewrite /SP.FTWES.MCO_ITSR.h /HMsg_ITSR.h.
 split.
-+ move=> t; rewrite -hh => /hcov; rewrite -map_comp.
-  have -> : (fun (kx : nbytes * (bytes * bytes * bytes)) => HMsg_ITSR.h kx.`1 kx.`2) \o pi
-            = (fun (kx : nbytes * (bytes * bytes)) => SP.FTWES.MCO_ITSR.h kx.`1 kx.`2).
-  + by apply fun_ext => kx; rewrite /(\o) /pi /= hh.
-  by [].
++ have hx : 2 * P.`n <= size (pkb ++ pick rec M k d, M).`1.
+  + by rewrite /= size_cat hp; smt(size_ge0).
+  have hts' : forall (kx : nbytes * (bytes * bytes)), kx \in ts => 2 * P.`n <= size kx.`2.`1.
+  + by move=> -[k' x'] /hts [r0 [-> _]]; rewrite size_cat hp; smt(size_ge0).
+  exact (itsr_cover ts k _ hx hts' hcov).
 move: hnew; apply contra => /mapP [[k' x'] [hin /= [hk hx]]].
 have [r' [hx1 hrin]] := hts _ _ hin.
 have hM : x'.`2 = M.
@@ -600,10 +606,9 @@ lemma slhdsa_euf_cma_hedged &m :
    + Pr[SP.FSSLXMTWES.TRHC_TCR.SM_DT_TCR_C(SP.FSSLXMTWES.R_SMDTTCRCTRH_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(W(B(A)))),
        SP.FSSLXMTWES.TRHC_TCR.O_SMDTTCR_Default,
        SP.FSSLXMTWES.TRHC.O_THFC_Default).main () @ &m : res]
-   + Pr[EUF_CMA_Rec(SLH_Hedged, A).main() @ &m :
-          exists y, y \in DSE.Stateless.O_CMA_Default.qs /\ ph_collision Rec.forged y].
+   + Pr[PH_CR(CF(SLH_Hedged, A)).main() @ &m : res].
 proof.
-have h1 := euf_cma_external SLH_Hedged A SLH_Hedged_verify_ll &m.
+have h1 := euf_cma_external_cr SLH_Hedged A SLH_Hedged_verify_ll &m.
 have h2 := internal_le_sp_h (B(A)) &m.
 have h3 := SP.EUFCMA_SPHINCS_PLUS (W(B(A))) _ &m.
 + by move=> O hO; apply (WB_ll O hO).
