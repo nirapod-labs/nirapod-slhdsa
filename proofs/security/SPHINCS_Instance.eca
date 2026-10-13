@@ -28,11 +28,13 @@
  * under public key pk with randomness opt_rand is signing
  * (pk || opt_rand, M') in the instance; deterministic signing takes
  * opt_rand = PK.seed (FIPS 205 Algorithm 19, line 2). Because mkg and mco
- * each ignore part of the message, the PRF and ITSR advantages the imported
- * proof yields for this message type are not assumptions on PRF_msg and
- * H_msg by themselves; SLHDSA_EUFCMA.eca (deterministic signing) and
- * SLHDSA_Hedged.eca (hedged signing) relate them to PRF_msg and H_msg on
- * their own inputs.
+ * each ignore part of the message, neither is a PRF or ITSR on this
+ * message type, and the advantages the imported proof yields for them are
+ * not meaningful assumptions. SLHDSA_EUFCMA.eca (deterministic signing)
+ * and SLHDSA_Hedged.eca (hedged signing) bound them by the PRF advantage
+ * of PRF_msg on (opt_rand, M') and the ITSR advantage of H_msg on
+ * (PK.seed, PK.root, M'), with opt_rand, PK.seed and PK.root n-byte
+ * values, which are the standard properties.
  *
  * The keyed functions and tweakable hashes are FIPS 205 PRF, PRF_msg, F, H
  * and T_l on the 32-byte ADRS that the model address denotes, with the
@@ -46,6 +48,21 @@
  * Model digests are bit strings and FIPS 205 values are byte strings;
  * b2bits and bits2b convert between them, and bits2b is injective on
  * strings of whole bytes, so distinct model messages stay distinct.
+ *
+ * The tweakable hash thfc takes any bit string, while F, H and T_l take
+ * bytes. On a string of whole bytes, thfc is F, H or T_l of those bytes,
+ * chosen by the declared length. On any other string, which FIPS 205 never
+ * hashes, thfc is T_l of the string padded with a 1 bit and then 0 bits
+ * to whole bytes, under the same address with its type word set to 7, a
+ * type FIPS 205 does not use (section 4.2 uses 0 to 6). Every address of
+ * the model has a type from 0 to 4, so the two branches never hash under
+ * the same ADRS, and the padding is injective. Hence two distinct inputs
+ * of thfc under one public seed and one address are distinct inputs of F,
+ * H or T_l, and a collision or second preimage of thfc is an equal output
+ * of F, H or T_l (SHAKE256 or SHA-2) on two distinct inputs. Plain
+ * truncation to whole bytes would not have this property: x and x with a
+ * 0 bit appended would collide, and the target collision resistance games
+ * of the imported proof would be won with probability 1.
  *
  * The parameter set P is abstract here; SPHINCS_Sets.ec instantiates the
  * theory for each of the twelve sets of Table 2.
@@ -114,6 +131,12 @@ op adrs_bytes (l : int list) : bytes =
 op prf_retype (l : int list) : int list =
   let t = nth 0 l 3 in
   put l 3 (if t = WOTS_HASH then WOTS_PRF else if t = FORS_TREE then FORS_PRF else t).
+
+(* Inputs of thfc that are not whole bytes: the 1-then-0s padding to whole
+   bytes (injective), and the address type 7, which FIPS 205 leaves unused. *)
+op pad_bits (z : bool list) : bool list = z ++ true :: nseq ((7 - size z %% 8) %% 8) false.
+
+op sep_adrs (l : int list) : int list = put l 3 7.
 
 lemma size_bits2b (z : bool list) : size (bits2b z) = size z %/ 8.
 proof. by rewrite /bits2b size_map BitEncoding.BitChunking.size_chunk. qed.
@@ -209,9 +232,11 @@ clone SPHINCS_PLUS as SP with
     NBytes.insubd (PRF_msg P (NBytes.val ms) (slice m.`1 (2 * P.`n) (3 * P.`n)) m.`2),
   op thfc <= fun (l : int) (ps : nbytes) (ad : HA.adrs) (x : bool list) =>
     DigestBlock.insubd (b2bits
-      (if l = 8 * P.`n then F P (NBytes.val ps) (adrs_bytes (HA.Adrs.val ad)) (bits2b x)
-       else if l = 8 * P.`n * 2 then H P (NBytes.val ps) (adrs_bytes (HA.Adrs.val ad)) (bits2b x)
-       else T_l P (NBytes.val ps) (adrs_bytes (HA.Adrs.val ad)) (bits2b x))),
+      (if 8 %| size x then
+         (if l = 8 * P.`n then F P (NBytes.val ps) (adrs_bytes (HA.Adrs.val ad)) (bits2b x)
+          else if l = 8 * P.`n * 2 then H P (NBytes.val ps) (adrs_bytes (HA.Adrs.val ad)) (bits2b x)
+          else T_l P (NBytes.val ps) (adrs_bytes (HA.Adrs.val ad)) (bits2b x))
+       else T_l P (NBytes.val ps) (adrs_bytes (sep_adrs (HA.Adrs.val ad))) (bits2b (pad_bits x)))),
   op FTWES.mco <= fun (mk : nbytes) (m : bytes * bytes) =>
     let digest = H_msg P (NBytes.val mk) (slice m.`1 0 P.`n) (slice m.`1 P.`n (2 * P.`n)) m.`2 in
     let (md, it, il) = split_digest P digest in

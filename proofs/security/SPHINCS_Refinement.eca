@@ -145,6 +145,16 @@ rewrite (List.size_flatten_ctt (8 * P.`n)).
 by apply/dvdz_mulr/dvdz_mulr/dvdzz.
 qed.
 
+lemma dvd8_cat (x y : SP.dgstblock) : 8 %| size (SP.DigestBlock.val x ++ SP.DigestBlock.val y).
+proof. by rewrite size_cat; apply dvdzD; apply dvd8_val. qed.
+
+lemma dvd8_flatten (xs : SP.dgstblock list) : 8 %| size (flatten (map SP.DigestBlock.val xs)).
+proof.
+rewrite (List.size_flatten_ctt (8 * P.`n)).
++ by move=> b /mapP [z [_ ->]]; rewrite SP.DigestBlock.valP.
+by apply/dvdz_mulr/dvdz_mulr/dvdzz.
+qed.
+
 (* ------------------------------------------------------------------ *)
 (* The keyed functions and tweakable hashes                           *)
 
@@ -162,21 +172,23 @@ lemma len_n : len P = 2 * P.`n + 3 by have [#] := P_facts.
 lemma SP_len : SP.len = len P.
 proof. by rewrite /SP.len /SP.len2 /SP.len1 /SP.w model_len1 model_len2 len_n. qed.
 
-lemma enc_f ps ad x :
+(* On whole bytes, which is every input FIPS 205 hashes, the tweakable
+   hashes are F, H and T_l. *)
+lemma enc_f ps ad x : 8 %| size x =>
   enc (SP.f ps ad x) = F P (NBytes.val ps) (ab ad) (bits2b x).
-proof. by rewrite /SP.f /SP.thfc /= enc_insubd // (FIPS205_Hash_Props.size_F _ _ _ _ n_okP). qed.
+proof. by move=> hx; rewrite /SP.f /SP.thfc /= hx /= enc_insubd // (FIPS205_Hash_Props.size_F _ _ _ _ n_okP). qed.
 
-lemma enc_trh ps ad x :
+lemma enc_trh ps ad x : 8 %| size x =>
   enc (SP.trh ps ad x) = H P (NBytes.val ps) (ab ad) (bits2b x).
 proof.
-rewrite /SP.trh /SP.thfc ifF; first by have := n_bounds; smt().
+move=> hx; rewrite /SP.trh /SP.thfc hx /= ifF; first by have := n_bounds; smt().
 by rewrite /= enc_insubd // (FIPS205_Hash_Props.size_H _ _ _ _ n_okP).
 qed.
 
-lemma enc_pkco ps ad x :
+lemma enc_pkco ps ad x : 8 %| size x =>
   enc (SP.pkco ps ad x) = T_l P (NBytes.val ps) (ab ad) (bits2b x).
 proof.
-rewrite /SP.pkco /SP.thfc SP_len len_n ifF; first by have := n_bounds; smt().
+move=> hx; rewrite /SP.pkco /SP.thfc hx /= SP_len len_n ifF; first by have := n_bounds; smt().
 rewrite ifF; first by have := n_bounds; smt().
 by rewrite enc_insubd // (FIPS205_Hash_Props.size_T_l _ _ _ _ n_okP).
 qed.
@@ -189,11 +201,11 @@ rewrite /slh_dsa_shake_192f /slh_dsa_sha2_256s /slh_dsa_shake_256s /slh_dsa_sha2
 by rewrite /slh_dsa_shake_256f /=; smt().
 qed.
 
-lemma enc_trco ps ad x :
+lemma enc_trco ps ad x : 8 %| size x =>
   enc (SP.trco ps ad x) = T_l P (NBytes.val ps) (ab ad) (bits2b x).
 proof.
-have hk := P_k3.
-rewrite /SP.trco /SP.thfc ifF; first by have := n_bounds; smt().
+move=> hx; have hk := P_k3.
+rewrite /SP.trco /SP.thfc hx /= ifF; first by have := n_bounds; smt().
 rewrite ifF; first by have := n_bounds; smt().
 by rewrite enc_insubd // (FIPS205_Hash_Props.size_T_l _ _ _ _ n_okP).
 qed.
@@ -366,7 +378,8 @@ have inv : forall m, 0 <= m <= i =>
   /\ bits2b (iteri m g x) = chain_from P (NBytes.val ps) j t 0 kp c (bits2b x) (range s (s + m)).
 + move=> m [hm0 hmi]; elim: m hm0 hmi => [|m hm ih] hmi; first by rewrite iteri0 // range_geq.
   have [ih1 ih2] := ih _; first smt().
-  rewrite iteriS //= /g SP.DigestBlock.valP /= -/(enc _) enc_f ih2.
+  have h8 : 8 %| size (iteri m g x) by rewrite ih1 dvdz_mulr.
+  rewrite iteriS //= /g SP.DigestBlock.valP /= -/(enc _) (enc_f _ _ _ h8) ih2.
   rewrite addrA rangeSr 1:/# /chain_from -cats1 foldl_cat /=.
   rewrite /ab (val_set_hidx _ 0 c kp 0 t j (s + m) hv); first by apply valid_ch => /#.
   by rewrite adrs_bytesE.
@@ -675,7 +688,7 @@ while (leaves = mkseq (fun i => dec (xmss_leaf P (NBytes.val ss0) (NBytes.val ps
   move=> _ _ _ _ _ _ _ sk hsk pk hpk.
   rewrite !size_rcons {1}h1 (mkseqS _ (size lv)) 1:size_ge0 /=.
   split; [split|].
-  + congr; apply dec_inj_enc; rewrite enc_pkco (pkco_ad _ j t) // enc_flatten.
+  + congr; apply dec_inj_enc; rewrite (enc_pkco _ _ _ (dvd8_flatten _)) (pkco_ad _ j t) // enc_flatten.
     by apply wots_pkGen_leaf.
   + by move: h3; rewrite /SP.l'; smt().
   by smt().
@@ -722,7 +735,7 @@ lemma enc_tm_x ps ad (j t z i : int) x y :
   1 <= z <= P.`hp => 0 <= i < 2 ^ (P.`hp - z) =>
   enc (tm ps ad z i x y) = xmss_hash P (NBytes.val ps) j t z i (enc x) (enc y).
 proof.
-move=> hv [hj ht] hz hi; rewrite /tm enc_trh enc_cat /xmss_hash /ab.
+move=> hv [hj ht] hz hi; rewrite /tm (enc_trh _ _ _ (dvd8_cat _ _)) enc_cat /xmss_hash /ab.
 have h := val_set_thtbidx ad 0 0 0 2 t j z i hv _; first by apply valid_trhx => /#.
 by rewrite h adrs_bytesE.
 qed.
@@ -1031,7 +1044,7 @@ rewrite (gfold_eq_auth _ _ (fun k => slice (flatten (map enc (rev (SP.FSSLXMTWES
 + move=> k hk /=; rewrite slice_flatten_enc //.
   by rewrite size_rev SP.FSSLXMTWES.DBHPL.valP.
 congr.
-rewrite /lf enc_pkco (pkco_ad _ j t) // enc_flatten hpk.
+rewrite /lf (enc_pkco _ _ _ (dvd8_flatten _)) (pkco_ad _ j t) // enc_flatten hpk.
 by apply wots_pkFromSig_enc.
 qed.
 
@@ -1208,7 +1221,7 @@ while (leaves = mkseq (fun j => dec (fors_leaf P (NBytes.val ss0) (NBytes.val ps
   rewrite hv /prf_retype /WOTS_HASH /FORS_TREE /FORS_PRF /= !size_rcons {1}h1 (mkseqS _ (size leaves{hr})) 1:size_ge0 /=.
   split; last smt().
   split; last smt().
-  congr; apply dec_inj_enc; rewrite enc_f /ab hv adrs_bytesE /= enc_val_dec.
+  congr; apply dec_inj_enc; rewrite (enc_f _ _ _ (dvd8_val _)) /ab hv adrs_bytesE /= enc_val_dec.
   + by rewrite (FIPS205_Hash_Props.size_PRF _ _ _ _ n_okP).
   by rewrite /fors_leaf /fors_sk adrs_bytesE.
 auto => />; split; first by rewrite mkseq0 /= /SP.t; smt(expr_gt0).
@@ -1235,7 +1248,7 @@ lemma enc_tm_f ps ad (t kp z i : int) x y :
   fors_ok ad t kp => 1 <= z <= P.`a => 0 <= i < P.`k * 2 ^ (P.`a - z) =>
   enc (tm ps ad z i x y) = fors_hash P (NBytes.val ps) 0 t 3 kp z i (enc x) (enc y).
 proof.
-move=> hf hz hi; rewrite /tm enc_trh enc_cat /fors_hash /ab.
+move=> hf hz hi; rewrite /tm (enc_trh _ _ _ (dvd8_cat _ _)) enc_cat /fors_hash /ab.
 by rewrite (thtb_f ad t kp z i hf) 1,2:/# adrs_bytesE.
 qed.
 
@@ -1472,7 +1485,7 @@ rewrite (gfold_hom enc _ (fors_hash P (NBytes.val ps) 0 t 3 kp)); first smt(a_ge
 + move=> k x y hk; rewrite (enc_tm_f _ _ t kp) //; first smt().
   by apply forest_lt => /#.
 congr; first done.
-rewrite /lf enc_f /ab (thtb_f ad t kp 0 (i * SP.t + idx) hf) /=; 1: smt(a_ge1).
+rewrite /lf (enc_f _ _ _ (dvd8_val _)) /ab (thtb_f ad t kp 0 (i * SP.t + idx) hf) /=; 1: smt(a_ge1).
 + by rewrite /SP.t; exact hg.
 by rewrite adrs_bytesE /= /SP.t.
 qed.
@@ -1511,7 +1524,7 @@ auto => /> &hr hsf; split.
 + by split; [smt(k_ge1) | rewrite range_geq].
 move=> rs; split; first smt().
 move=> hnot hk hmap; have hs : size rs = P.`k by smt().
-rewrite enc_trco enc_flatten hmap hs.
+rewrite (enc_trco _ _ _ (dvd8_flatten _)) enc_flatten hmap hs.
 rewrite (fors_pkFromSigE P (enc_fors sig{hr}) md (NBytes.val ps0) 0 t 3 kp 0 0) 1:lt_hp32 //.
 + smt(a_ge1).
 + smt(k_ge1).
