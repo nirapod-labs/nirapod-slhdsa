@@ -1,0 +1,369 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Mon, 12 Oct 2026 19:44:11 +0600
+Subject: [PATCH] safetylib: option to leave large arrays out of the numerical
+ domains
+
+Every byte of every array is a dimension of the numerical abstract state,
+and the cost of each operation grows with the number of dimensions. With
+"array_track_max_bytes": n (default -1, track all), the cells of arrays of
+more than n bytes are not dimensions: assignments to them are dropped and
+reads give the full range of the cell's type. Their initialization and the
+bounds of indices into them are still checked. The option can only add
+alarms.
+
+Signed-off-by: athexweb3 <athexweb3@nirapod.org>
+---
+ compiler/safetylib/domains/safetyCongr.ml     | 11 +++++---
+ compiler/safetylib/domains/safetyNum.ml       | 25 +++++++++++++++--
+ compiler/safetylib/safetyConfig.ml            | 11 ++++++++
+ compiler/safetylib/safetyConfig.mli           |  1 +
+ compiler/safetylib/safetyExpr.ml              | 12 +++++++++
+ compiler/safetylib/safetyExpr.mli             |  4 +++
+ compiler/safetylib/safetyVar.ml               |  6 +++++
+ compiler/safetylib/safetyVar.mli              |  5 ++++
+ .../tests/safety/arraytrack.t/lookup.jazz     | 11 ++++++++
+ .../tests/safety/arraytrack.t/masked.jazz     | 11 ++++++++
+ compiler/tests/safety/arraytrack.t/run.t      | 27 +++++++++++++++++++
+ compiler/tests/safety/arraytrack.t/small.json |  1 +
+ .../tests/safety/arraytrack.t/uninit.jazz     | 10 +++++++
+ 13 files changed, 129 insertions(+), 6 deletions(-)
+ create mode 100644 compiler/tests/safety/arraytrack.t/lookup.jazz
+ create mode 100644 compiler/tests/safety/arraytrack.t/masked.jazz
+ create mode 100644 compiler/tests/safety/arraytrack.t/run.t
+ create mode 100644 compiler/tests/safety/arraytrack.t/small.json
+ create mode 100644 compiler/tests/safety/arraytrack.t/uninit.jazz
+
+diff --git a/compiler/safetylib/domains/safetyCongr.ml b/compiler/safetylib/domains/safetyCongr.ml
+index 5b6544e83..0b65d36e4 100644
+--- a/compiler/safetylib/domains/safetyCongr.ml
++++ b/compiler/safetylib/domains/safetyCongr.ml
+@@ -161,8 +161,11 @@ module AbsNumCongr : AbsNumType = struct
+   (* Missing entries are [Top]. *)
+   type t = Congr.t Mm.t
+ 
++  (* Untracked array cells ([untracked_cell]) are never entries, hence
++     [Top]. *)
+   let make vs =
+-    List.fold_left (fun t v -> Mm.add v Congr.top t) Mm.empty vs
++    List.fold_left (fun t v ->
++        if untracked_cell v then t else Mm.add v Congr.top t) Mm.empty vs
+ 
+   let value v t = Mm.find_default Congr.top v t
+       
+@@ -266,8 +269,8 @@ module AbsNumCongr : AbsNumType = struct
+ 
+   let assign_expr ?force:(force=false) t ves =
+     let ves = List.filter (fun (v,_) -> match v with
+-        | Mlocal (AarraySlice _) -> false (* FIXME: add an option *)          
+-        | _ -> true
++        | Mlocal (AarraySlice _) -> false (* FIXME: add an option *)
++        | v -> not (untracked_cell v)
+       ) ves in
+     List.fold_left (assign_expr_one force) t ves
+     
+@@ -295,7 +298,7 @@ module AbsNumCongr : AbsNumType = struct
+     List.iter (fun x -> Hashtbl.replace h x ()) l;
+     let t = Mm.filter (fun k _ -> Hashtbl.mem h k) t in
+     List.fold_left (fun t v ->
+-        if not (Mm.mem v t)
++        if not (Mm.mem v t) && not (untracked_cell v)
+         then Mm.add v Congr.top t
+         else t
+       ) t l
+diff --git a/compiler/safetylib/domains/safetyNum.ml b/compiler/safetylib/domains/safetyNum.ml
+index 2fc151108..40ceeffa2 100644
+--- a/compiler/safetylib/domains/safetyNum.ml
++++ b/compiler/safetylib/domains/safetyNum.ml
+@@ -283,8 +283,15 @@ module AbsNumI (Manager : AprManager) (PW : ProgWrap) : AbsNumType = struct
+ 
+   let is_relational () = Ppl.manager_is_ppl man
+     
++  (* The cells of large arrays ([untracked_cell]) are never dimensions of
++     the domain: they are left out of the environments, assignments to them
++     are dropped, and expressions read them as their range
++     ([Mtexpr.top_untracked]). *)
++  let tracked v = not (untracked_cell v)
++
+   let make l =
+     let vars = u8_blast_vars ~blast_arrays:true l |>
++               List.filter tracked |>
+                List.map avar_of_mvar in
+     let env = env_of_list vars in
+     Abstract1.top man env
+@@ -346,6 +353,11 @@ module AbsNumI (Manager : AprManager) (PW : ProgWrap) : AbsNumType = struct
+    *   Abstract1.meet_lincons_array man res to_add *)
+ 
+   let compute_thresholds env oc =
++    (* A constraint on an untracked cell gives no threshold (thresholds only
++       affect the precision of the widening). *)
++    let oc = match oc with
++      | Some c when not (List.for_all tracked (Mtexpr.get_var (Mtcons.get_expr c))) -> None
++      | _ -> oc in
+     let vars = Option.map_default (fun c ->
+         Mtexpr.get_var (Mtcons.get_expr c)
+       ) [] oc in
+@@ -479,6 +491,7 @@ module AbsNumI (Manager : AprManager) (PW : ProgWrap) : AbsNumType = struct
+       Environment.lce env env_mexpr
+ 
+   let bound_texpr_man man a (e : Mtexpr.t) =
++    let e = Mtexpr.top_untracked e in
+     (* We use a different variable for each occurrence of weak variables *)
+     let map,e = Mtexpr.weak_transf Mm.empty e in
+     let a = add_weak_cp_man man a map in
+@@ -507,6 +520,7 @@ module AbsNumI (Manager : AprManager) (PW : ProgWrap) : AbsNumType = struct
+       | _ -> [v] in
+     let avs =
+       List.concat_map blast vs
++      |> List.filter tracked
+       |> List.rev_map avar_of_mvar
+       |> List.filter (fun av -> not (Environment.mem_var env av))
+       |> List.sort_uniq Var.compare in
+@@ -530,6 +544,12 @@ module AbsNumI (Manager : AprManager) (PW : ProgWrap) : AbsNumType = struct
+ 
+   (* Relational assignment. *)
+   let assign_expr_aux force a vs es =
++    let vs, es =
++      List.combine vs es
++      |> List.filter (fun (v, _) -> tracked v)
++      |> List.map (fun (v, e) -> (v, Mtexpr.top_untracked e))
++      |> List.split in
++    if vs = [] then a else
+     (* We use a different variable for each occurrence of weak variables *)
+     let map,es = List.fold_left (fun (map,acc) e ->
+         let map,e = Mtexpr.weak_transf map e in
+@@ -705,7 +725,7 @@ module AbsNumI (Manager : AprManager) (PW : ProgWrap) : AbsNumType = struct
+     if cs = [] then bottom_man man a
+     else
+       let map,cs = List.fold_left (fun (map, acc) c ->
+-          let e = Mtcons.get_expr c in
++          let e = Mtexpr.top_untracked (Mtcons.get_expr c) in
+ 
+           (* We use a different variable for each occurrence of weak variables *)
+           let map,mexpr = Mtexpr.weak_transf map e in
+@@ -746,7 +766,7 @@ module AbsNumI (Manager : AprManager) (PW : ProgWrap) : AbsNumType = struct
+   let sat_constr_man man a cnstr =
+     if trivially_false man a cnstr then false
+     else
+-      let e = Mtcons.get_expr cnstr in
++      let e = Mtexpr.top_untracked (Mtcons.get_expr cnstr) in
+       
+       (* We use a different variable for each occurrence of weak variables *)
+       let map,mexpr = Mtexpr.weak_transf Mm.empty e in
+@@ -765,6 +785,7 @@ module AbsNumI (Manager : AprManager) (PW : ProgWrap) : AbsNumType = struct
+ 
+   let change_environment a mvars =
+     let env_vars = u8_blast_vars ~blast_arrays:true mvars
++                   |> List.filter tracked
+                    |> List.map avar_of_mvar
+                    |> Array.of_list
+     and empty_var_array = Array.make 0 (Var.of_string "") in
+diff --git a/compiler/safetylib/safetyConfig.ml b/compiler/safetylib/safetyConfig.ml
+index efc42f8f7..5061356dd 100644
+--- a/compiler/safetylib/safetyConfig.ml
++++ b/compiler/safetylib/safetyConfig.ml
+@@ -123,6 +123,16 @@ let default =
+                    ("example", range_ex_json)]);
+   } ::
+ 
++  { p    = Int (-1);
++    name = "array_track_max_bytes";
++    desc = `String "Arrays of more than this many bytes are not tracked by the \
++            numerical domains: the values of their cells are unknown, and the \
++            cells are not dimensions of the abstract state, whose cost grows \
++            with its number of dimensions. The initialization of the cells and \
++            the bounds of the indices into these arrays are still checked. \
++            Can only add alarms. A negative value tracks every array.";
++  } ::
++
+   { p    = Int 1;
+     name = "k_unroll";
+     desc = `String "Number of unrolling of a loop body before applying the \
+@@ -302,6 +312,7 @@ let find_initprint name () =
+ let sc_input_ranges            = find_ranges     "input_range"
+ let sc_comp_pass               = find_comppass   "compilation_pass"
+ let sc_k_unroll                = find_int        "k_unroll"
++let sc_array_track_max_bytes   = find_int        "array_track_max_bytes"
+ let sc_call_policy             = find_callpolicy "call_policy"
+ let sc_widening_out            = find_bool       "widening_out"
+ let sc_zero_threshold          = find_bool       "zero_threshold"
+diff --git a/compiler/safetylib/safetyConfig.mli b/compiler/safetylib/safetyConfig.mli
+index 5e13e8d6b..d47aec7a0 100644
+--- a/compiler/safetylib/safetyConfig.mli
++++ b/compiler/safetylib/safetyConfig.mli
+@@ -18,6 +18,7 @@ type init_print = IP_None  | IP_NoArray | IP_All
+ val sc_input_ranges            : unit -> input_range list
+ val sc_comp_pass               : unit -> Compiler.compiler_step
+ val sc_k_unroll                : unit -> int
++val sc_array_track_max_bytes   : unit -> int
+ val sc_zero_threshold          : unit -> bool
+ val sc_param_threshold         : unit -> bool
+ val sc_more_threshold          : unit -> bool
+diff --git a/compiler/safetylib/safetyExpr.ml b/compiler/safetylib/safetyExpr.ml
+index e586fe890..65f05d98d 100644
+--- a/compiler/safetylib/safetyExpr.ml
++++ b/compiler/safetylib/safetyExpr.ml
+@@ -32,6 +32,7 @@ module Mtexpr : sig
+   val binop : binop -> t -> t -> t
+ 
+   val get_var : t -> mvar list
++  val top_untracked : t -> t
+   val contains_mod : t -> bool
+ 
+   val weak_cp : mvar -> int -> mvar
+@@ -177,6 +178,17 @@ end = struct
+     |> u8_blast_vars ~blast_arrays:true
+     |> List.sort_uniq Stdlib.compare
+ 
++  let rec top_untracked e = match e with
++    | Mvar mvar when untracked_cell mvar ->
++      let n = match ty_mvar mvar with
++        | Bty (U ws) -> int_of_ws ws
++        | _ -> assert false in
++      Mcst (Coeff.Interval (Interval.of_mpqf (Mpqf.of_int 0) (mpq_pow_minus n 1)))
++    | Mcst _ | Mvar _ -> e
++    | Munop (op, a, t, r) -> Munop (op, top_untracked a, t, r)
++    | Mbinop (op, a, b, t, r) ->
++      Mbinop (op, top_untracked a, top_untracked b, t, r)
++
+   let rec contains_mod = function
+     | Mvar _ | Mcst _ -> false
+     | Munop (_, a, _, _) -> contains_mod a
+diff --git a/compiler/safetylib/safetyExpr.mli b/compiler/safetylib/safetyExpr.mli
+index 29bc47a19..85de04ca5 100644
+--- a/compiler/safetylib/safetyExpr.mli
++++ b/compiler/safetylib/safetyExpr.mli
+@@ -22,6 +22,10 @@ sig
+   val binop : binop -> t -> t                 -> t
+     
+   val get_var : t -> SafetyVar.mvar list
++
++  (* Replace each untracked array cell ([SafetyVar.untracked_cell]) of
++     [ws] bits by its range, [0; 2^ws - 1]. *)
++  val top_untracked : t -> t
+       
+   val contains_mod : t -> bool   
+     
+diff --git a/compiler/safetylib/safetyVar.ml b/compiler/safetylib/safetyVar.ml
+index 9e133484e..4f68a79b9 100644
+--- a/compiler/safetylib/safetyVar.ml
++++ b/compiler/safetylib/safetyVar.ml
+@@ -112,6 +112,12 @@ let arr_size v = match v.v_ty with
+   | Arr (ws,_) -> ws
+   | _ -> assert false
+ 
++let untracked_cell = function
++  | Mlocal (AarraySlice (v,_,_)) | Mglobal (AarraySlice (v,_,_)) ->
++    let m = Config.sc_array_track_max_bytes () in
++    m >= 0 && arr_range v * size_of_ws (arr_size v) > m
++  | _ -> false
++
+ let ty_atype = function
+   | Avar s -> s.v_ty
+   | Aarray t -> t.v_ty
+diff --git a/compiler/safetylib/safetyVar.mli b/compiler/safetylib/safetyVar.mli
+index 034f71401..3d80e45e3 100644
+--- a/compiler/safetylib/safetyVar.mli
++++ b/compiler/safetylib/safetyVar.mli
+@@ -43,6 +43,11 @@ val mvar_ignore  : mvar -> bool
+ (*---------------------------------------------------------------*)
+ val arr_range : var -> int
+ val arr_size  : var -> wsize
++
++(* A cell of an array of more than [array_track_max_bytes] bytes (see
++   SafetyConfig): it is not a dimension of the numerical domains, and its
++   value is unknown. *)
++val untracked_cell : mvar -> bool
+ val ty_mvar   : mvar -> ty
+ 
+ (*---------------------------------------------------------------*)
+diff --git a/compiler/tests/safety/arraytrack.t/lookup.jazz b/compiler/tests/safety/arraytrack.t/lookup.jazz
+new file mode 100644
+index 000000000..98483aa58
+--- /dev/null
++++ b/compiler/tests/safety/arraytrack.t/lookup.jazz
+@@ -0,0 +1,11 @@
++// The cells of t hold 0..15, so the value read from t[3] is a valid index
++// into t when the checker knows the values of the cells.
++export fn lookup() -> reg u64 {
++  stack u64[16] t;
++  inline int k;
++  reg u64 v r;
++  for k = 0 to 16 { t[k] = k; }
++  v = t[3];
++  r = t[v];
++  return r;
++}
+diff --git a/compiler/tests/safety/arraytrack.t/masked.jazz b/compiler/tests/safety/arraytrack.t/masked.jazz
+new file mode 100644
+index 000000000..684958678
+--- /dev/null
++++ b/compiler/tests/safety/arraytrack.t/masked.jazz
+@@ -0,0 +1,11 @@
++// The value read from t is masked before it is used as an index.
++export fn masked() -> reg u64 {
++  stack u64[16] t;
++  inline int k;
++  reg u64 v r;
++  for k = 0 to 16 { t[k] = k; }
++  v = t[3];
++  v &= 15;
++  r = t[v];
++  return r;
++}
+diff --git a/compiler/tests/safety/arraytrack.t/run.t b/compiler/tests/safety/arraytrack.t/run.t
+new file mode 100644
+index 000000000..a6e4c7469
+--- /dev/null
++++ b/compiler/tests/safety/arraytrack.t/run.t
+@@ -0,0 +1,27 @@
++With "array_track_max_bytes", the values of the cells of larger arrays are
++unknown: a value read from such an array is no longer known to be a valid
++index. Initialization and index bounds are still checked.
++
++  $ ../../../jasmin-checksafety lookup.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** No Safety Violation
++
++  $ ../../../jasmin-checksafety --config small.json lookup.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** Possible Safety Violation(s):
++    "lookup.jazz", line 9 (2-11): in_bound: t[v] (length 128 U8)
++  Program is not safe!
++
++  $ ../../../jasmin-checksafety masked.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** No Safety Violation
++
++  $ ../../../jasmin-checksafety --config small.json masked.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** No Safety Violation
++
++  $ ../../../jasmin-checksafety uninit.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** Possible Safety Violation(s):
++    "uninit.jazz", line 8 (2-11): is_init t[i]
++  Program is not safe!
++
++  $ ../../../jasmin-checksafety --config small.json uninit.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** Possible Safety Violation(s):
++    "uninit.jazz", line 8 (2-11): is_init t[i]
++  Program is not safe!
+diff --git a/compiler/tests/safety/arraytrack.t/small.json b/compiler/tests/safety/arraytrack.t/small.json
+new file mode 100644
+index 000000000..eeaff39e4
+--- /dev/null
++++ b/compiler/tests/safety/arraytrack.t/small.json
+@@ -0,0 +1 @@
++{ "array_track_max_bytes": 64 }
+diff --git a/compiler/tests/safety/arraytrack.t/uninit.jazz b/compiler/tests/safety/arraytrack.t/uninit.jazz
+new file mode 100644
+index 000000000..d7a12735d
+--- /dev/null
++++ b/compiler/tests/safety/arraytrack.t/uninit.jazz
+@@ -0,0 +1,10 @@
++// The last cell of t is never written.
++export fn uninit(reg u64 i) -> reg u64 {
++  stack u64[16] t;
++  inline int k;
++  reg u64 r;
++  for k = 0 to 15 { t[k] = k; }
++  i &= 15;
++  r = t[i];
++  return r;
++}

@@ -43,6 +43,7 @@ replaces.
 | 0022 | this project | ARMv8-A: store of an immediate through a scratch register | lowering proved |
 | 0023 | this project | ARMv8-A: 32-bit load zero-extended to 64 bits (LDRW, written `LDR <Wt>`) | lowering proved; instruction semantics and printing trusted |
 | 0024 | this project | safety checker: abstract values and environments shared when unchanged; relational constraints printed sorted | safety checker (trusted) |
+| 0025 | this project | safety checker option `array_track_max_bytes` | safety checker (trusted) |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -234,6 +235,19 @@ another order, and the safety report printed them in the order returned.
 The patch prints them sorted, so the report depends on the value only. The
 expected output of the safety tests (`compiler/tests/safety/run.expected`)
 changes in that order alone. Upstream status: not yet proposed.
+
+### 0025, `array_track_max_bytes` (this project)
+
+Every byte of every array is a dimension of the numerical abstract state, and
+the cost of each operation grows with the number of dimensions. With the
+configuration option `"array_track_max_bytes": n`, the cells of arrays of
+more than n bytes are not dimensions: an assignment to such a cell is
+dropped, and a read gives the full range of the cell's type. Their
+initialization and the bounds of indices into them are still checked. The
+default, -1, tracks every array as before. Leaving cells out can only add
+alarms. Test: the cram test `compiler/tests/safety/arraytrack.t` (a table
+lookup, a masked index and an uninitialized read, with and without the
+option). Upstream status: not yet proposed.
 
 ## Assembly checks
 
