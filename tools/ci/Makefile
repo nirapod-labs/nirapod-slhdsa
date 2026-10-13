@@ -137,7 +137,7 @@ not_applicable = @echo "$(1): NOT APPLICABLE, the $(2) component is absent (none
 # component adds it here; from then on a tree without any of its
 # directories fails every target, so deleting a component cannot turn its
 # checks into NOT APPLICABLE.
-CI_REQUIRED := hash
+CI_REQUIRED := hash slhdsa asm
 CI_REQUIRED_UNKNOWN := $(filter-out $(CI_COMPONENTS),$(CI_REQUIRED))
 CI_REQUIRED_MISSING := $(strip $(foreach c,$(CI_REQUIRED),$(if $(call present,$(c)),,$(c))))
 ifneq ($(CI_REQUIRED_UNKNOWN),)
