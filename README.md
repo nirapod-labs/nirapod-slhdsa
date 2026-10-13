@@ -12,9 +12,9 @@ with machine-checked proofs in [EasyCrypt](https://github.com/EasyCrypt/easycryp
 
 > [!WARNING]
 > **Under development. Not for production use.**
-> Of the implementation, only the hash layer is on this branch so far. Nothing below is
-> claimed until its row shows a result, and every result names the revision it was
-> validated on.
+> The hash layer and the SLH-DSA core are on this branch; the C API and the proofs are
+> not. Nothing below is claimed until its row shows a result, and every result names the
+> revision it was validated on.
 
 ## Status
 
@@ -62,11 +62,12 @@ flowchart TB
   end
   spec -. "equivalence, open" .- core
   classDef planned stroke-dasharray: 5 4
-  class api,core,asm,sec,spec planned
+  class api,asm,sec,spec planned
 ```
 
 Dashed boxes are not on this branch yet; dotted links are proofs still open. The pinned
-compiler and the hash layer are here today.
+compiler, the hash layer and the core are here today; the assembly is built from them,
+not shipped.
 
 ## What is proven, and what is not
 
@@ -75,7 +76,7 @@ compiler and the hash layer are here today.
 | EUF-CMA security of the FIPS 205 specification | not yet in this repository | — |
 | The Jasmin implementation is equivalent to the specification | open | — |
 | Hash primitives match FIPS 180-4 and FIPS 202 | open | — |
-| Constant time and speculative constant time on every secret-dependent path | not run on this branch | — |
+| Constant time and speculative constant time on every secret-dependent path | checked by `jasmin-ct` and `jasmin-ct --sct` on every parameter-set unit (`make ct`, run by CI on both architectures); no result recorded yet, see the status table | the Jasmin source, under the security types of its exports; conditional on memory safety, which is not checked yet; declassifications argued in [`docs/DECLASSIFICATION.md`](docs/DECLASSIFICATION.md) |
 | Memory safety of every export | not run on this branch | — |
 | The compiler preserves the semantics of safe programs | proved in Rocq; `toolchain/build.sh` re-checks the proofs | from the Jasmin AST to the assembly semantics, per target; the front end, assembly printer, assembler and linker are outside it; assumptions in [`toolchain/jasmin/ASSUMPTIONS`](toolchain/jasmin/ASSUMPTIONS) |
 
@@ -92,6 +93,12 @@ export PATH="$PWD/toolchain/work/bin:$PATH"
 ```
 
 Host requirements, pins and the patch series are in [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md).
+Then the assembly of the core and its checks:
+
+```sh
+make JASMINC=jasminc               # build/<target>/asm/, one file per unit
+make ct asm-policy JASMINC=jasminc # constant-time checks, emitted-code policies
+```
 
 <details>
 <summary><b>Toolchain pins</b></summary>
@@ -112,12 +119,15 @@ Every patch has its provenance, purpose, test and upstream status in
 <summary><b>Repository layout</b></summary>
 
 ```text
+src/slhdsa/       FIPS 205 in Jasmin: addresses, WOTS+, XMSS, FORS, the hypertree,
+                  the internal and external interfaces, one unit per parameter set
 src/hash/         SHA-2, SHA-3, SHAKE, HMAC and MGF1 in Jasmin
 tests/hash/       CAVP, differential and negative tests of the hash layer
+analysis/         constant-time analysis and emitted-code policies of the units
 toolchain/        pinned Jasmin and EasyCrypt, the patch series, build.sh
 tools/            CI checks and release tooling
 changes/          one entry per change, collected at release
-docs/             toolchain and status
+docs/             declassification, toolchain and status
 ```
 
 </details>
