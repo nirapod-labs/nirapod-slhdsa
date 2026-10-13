@@ -30,8 +30,10 @@
 # a check runs runs it.
 #
 # A verdict lives in build/verdict/<check>/: the record (PASS, the key, the
-# run, the commit, and the input tree, which `git ls-tree -r <tree>` lists),
-# the check's log, and the files later jobs need from it (files/).
+# run, the commit, the input tree, which `git ls-tree -r <tree>` lists, and
+# the names of the files kept), the check's log, and the files later jobs
+# need from it (files/). Reuse puts back the files the record names, and
+# nothing else.
 #
 # Where verdicts come from. Only runs on main record one: the workflows
 # upload the directory as an artifact of the run, named by the key. A pull
@@ -221,6 +223,7 @@ cmd_record() {
     echo "commit ${GITHUB_SHA:-$(git rev-parse HEAD)}"
     echo "event ${GITHUB_EVENT_NAME:-local} ${GITHUB_REF:-}"
     echo "recorded $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    for f in "$@"; do echo "file $f"; done
   } > "$d/record"
   echo "verdict.sh: $check PASS recorded under $key"
 }
@@ -251,13 +254,15 @@ report() {
     */actions/runs/"$run"" attempt "*) ;;
     *) die "reuse $check: the record names '$url', not run $run" ;;
   esac
-  if [ -d "$d/files" ]; then
-    (cd "$d/files" && find . -type f) | while read -r f; do
-      f=${f#./}
-      mkdir -p "$(dirname "$f")"
-      cp "$d/files/$f" "$f"
-    done
-  fi
+  while IFS= read -r f; do
+    case "$f" in
+      ''|/*|*..*) die "reuse $check: '$f' in the record of run $run is not a path inside the tree" ;;
+    esac
+    [ -f "$d/files/$f" ] && [ ! -L "$d/files/$f" ] \
+      || die "reuse $check: $f, named in the record of run $run, is not among its files"
+    mkdir -p "$(dirname "$f")"
+    cp "$d/files/$f" "$f"
+  done < <(sed -n 's/^file //p' "$d/record")
   commit=$(sed -n 's/^commit //p' "$d/record")
   {
     echo "### $check: PASS, recorded on $MAIN with identical inputs"
