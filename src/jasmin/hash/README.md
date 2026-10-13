@@ -452,7 +452,7 @@ fn _keccak_x4_squeeze_array(reg mut ptr u8[HASH_ARRAY_LEN] out0 out1 out2 out3,
 
 The single-way contracts of `sponge.jinc` and `sponge_array.jinc` hold per
 instance. Instance `k`'s byte `b` is `st[:u8 32*(b/8) + 8*k + b%8]`. The same
-array may be passed for several instances (a shared prefix such as
+input array may be passed for several instances (a shared prefix such as
 `PK.seed`).
 
 ### Multi-way SHA-2: `sha2/sha256_x8.jinc`, `sha2/sha512_x4.jinc`
@@ -481,7 +481,8 @@ and the 4-way SHA-512 family with `u64[32]` states, `u8[512]` buffers
   instance, so a multi-way loop carries one input pointer, not one per
   instance.
 - `total` is shared, so each instance's FIPS 205 precomputed `PK.seed` state
-  is the same 8 words broadcast into the 8 lanes, continued with `total = 64`.
+  is the same 8 words broadcast into every lane, continued with `total = 64`
+  (SHA-512: `total = 128`).
 
 ## Kernel notes
 
