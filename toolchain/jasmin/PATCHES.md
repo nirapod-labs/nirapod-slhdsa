@@ -33,7 +33,7 @@ replaces.
 
 | Patches | Origin | Content | Proof status |
 |---|---|---|---|
-
+| 0001-0006 | PR #1624, head `282fcaa4192e` | LDP and STP; architecture-specific conditions on memory arguments | assembly generation and global-load lowering proved; instruction semantics trusted |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -48,7 +48,20 @@ pin, and each non-default value can only add alarms, never remove one.
 
 ## Why each change is carried
 
-No patch is applied yet.
+### #1624, LDP and STP
+
+Load and store a register pair in one instruction. The address of a pair
+access must be a base register plus a 7-bit offset scaled by the register
+size. The first commit adds conditions on memory arguments that assembly
+generation enforces, and 0005 checks the range on the scaled offset; an
+address outside the form is rejected by the compiler, not the assembler.
+
+0006 removes the assembly printer's rejection of an LDP whose two
+destinations are the same register, an encoding the Arm ARM makes
+CONSTRAINED UNPREDICTABLE. Register allocation gives the two destinations
+of one instruction distinct registers; `ldp_same_dest.jazz`, which loads
+both into one variable, compiles. Without the printer check, that test no
+longer fails if the two registers are equal.
 
 ## Assembly checks
 

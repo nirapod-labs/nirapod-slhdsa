@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Wed, 7 Oct 2026 13:08:55 +0600
+Subject: [PATCH] lower_glob_load: use the first destination of a load as
+ address register
+
+A load with several destinations (LDP on armv8a) now computes the address
+of the global into its first destination, as a single-destination load
+does, instead of into a separate temporary.
+
+Co-authored-by: orvenweb3 <orvenweb3@gmail.com>
+---
+ proofs/compiler/lower_glob_load.v       | 11 ++++++-----
+ proofs/compiler/lower_glob_load_proof.v | 23 +++++++++++++----------
+ 2 files changed, 19 insertions(+), 15 deletions(-)
+
+diff --git a/proofs/compiler/lower_glob_load.v b/proofs/compiler/lower_glob_load.v
+index 37f4c04c7..7b88e3d57 100644
+--- a/proofs/compiler/lower_glob_load.v
++++ b/proofs/compiler/lower_glob_load.v
+@@ -18,10 +18,11 @@ Definition lower_glob_load_error msg := {|
+ 
+ (* A load from a global, [x = [rip + n]], is split into the computation of
+    the address, [x = rip + n] (the instruction [glob_addr_op]), and the load
+-   [x = [x]]. When [x] is not a pointer-sized variable, when the load has
+-   several destinations (a load pair, [x, y = [rip + n]]), or when it has
+-   other arguments (a conditional load, [x = c ? [rip + n] : y]), the address
+-   is computed into [tmp]: the load is evaluated whatever [c] is. *)
++   [x = [x]]. A load with several destinations (a load pair) uses its first
++   one: [x, y = [rip + n]] becomes [x = rip + n; x, y = [x]]. When [x] is not
++   a pointer-sized variable, or when the load has other arguments (a
++   conditional load, [x = c ? [rip + n] : y]), the address is computed into
++   [tmp]: the load is evaluated whatever [c] is. *)
+ 
+ Section Section.
+ Context {pd : PointerData} {asm_op : Type} {asmop : asmOp asm_op}.
+@@ -42,7 +43,7 @@ Definition glob_addr (x : var_i) (e : pexpr) : instr_r :=
+ 
+ (* The variable that receives the address. *)
+ Definition glob_load_dst (xs : lvals) (es' : pexprs) : var_i :=
+-  if (xs, es') is ([:: Lvar x ], [::]) then
++  if (xs, es') is (Lvar x :: _, [::]) then
+     if vtype x == aword Uptr then x else tmp
+   else tmp.
+ 
+diff --git a/proofs/compiler/lower_glob_load_proof.v b/proofs/compiler/lower_glob_load_proof.v
+index 85ea39b8b..6e6e453a1 100644
+--- a/proofs/compiler/lower_glob_load_proof.v
++++ b/proofs/compiler/lower_glob_load_proof.v
+@@ -78,14 +78,14 @@ Qed.
+ Lemma glob_load_dstP (tmp : var_i) xs es' :
+   vtype tmp = aword Uptr ->
+   let y := glob_load_dst tmp xs es' in
+-  vtype y = aword Uptr /\ (y = tmp \/ xs = [:: Lvar y] /\ es' = [::]).
++  vtype y = aword Uptr /\
++  (y = tmp \/ (exists xs', xs = Lvar y :: xs') /\ es' = [::]).
+ Proof.
+   rewrite /glob_load_dst => tmp_ty.
+   case: xs => [ | x xs]; first by split => //; left.
+   case: x => [ | x | | | ]; try by split => //; left.
+-  case: xs => [ | ??]; last by split => //; left.
+   case: es' => [ | ??]; last by split => //; left.
+-  by case: eqP => [ | _]; split => //; [right | left].
++  by case: eqP => [ | _]; split => //; [right; split => //; exists xs | left].
+ Qed.
+ 
+ Lemma lower_glob_loadP rip tmp s1 s2 t o xs es ii c X :
+@@ -108,7 +108,7 @@ Proof using dc glob_addr_opP.
+   + by rewrite ok_ve.
+   rewrite (@glob_addr_opP _ _ _ _ _ h y_ty) /= /sem_sopn /=.
+   rewrite /get_gvar /= get_var_eq y_ty /= cmp_le_refl orbT //= truncate_word_u /= ok_w /=.
+-  case: hy => [? | [? ?]]; subst.
++  case: hy => [? | [[xs' ?] ?]]; subst.
+   (* [xs = [e], es] becomes [tmp = e; xs = [tmp], es]. *)
+   + set vm1 := (evm s1).[tmp <- _].
+     have eqX : evm s1 =[X] vm1.
+@@ -126,14 +126,17 @@ Proof using dc glob_addr_opP.
+       by apply tmp_nin; clear -hsub hz; SvD.fsetdec.
+     exists vm2 => // z hz; apply heq2 => /Sv.singleton_spec ?; subst z.
+     exact: tmp_nin hz.
+-  (* [x = [e]] becomes [x = e; x = [x]]. *)
++  (* [x, xs = [e]] becomes [x = e; x, xs = [x]]: [x] is written first. *)
+   move: ok_ves => /= -[?]; subst ves.
+   rewrite /= ok_vs /=.
+-  move: ok_s2; case: vs ok_vs => [ | v [ | v' vs]] ok_vs //=; last by t_xrbindP.
+-  t_xrbindP => s2' /write_varP [-> hdb htr] <-.
+-  rewrite (write_var_truncate hdb htr) /=.
+-  exists ((evm s1).[y <- Vword pa]).[y <- v]; first by rewrite with_vm_idem.
+-  by move=> z _; rewrite /= !Vm.setP; case: eqP.
++  move: ok_s2; case: vs ok_vs => [ | v vs] ok_vs //=.
++  t_xrbindP => s2' /write_varP [-> hdb htr] ok_s2.
++  rewrite (write_var_truncate hdb htr) /= with_vm_idem.
++  have [ | | vm2 -> heq2] := write_lvals_eq_ex (X := Sv.empty)
++    (vm1 := ((evm s1).[y <- Vword pa]).[y <- v]) _ ok_s2.
++  + by apply/disjointP => z; SvD.fsetdec.
++  + by move=> z _; rewrite /= !Vm.setP; case: eqP.
++  by exists vm2 => // z _; apply: heq2; SvD.fsetdec.
+ Qed.
+ 
+ Lemma Hopn_aux rip (tmp : var_i) (s1 s2 : estate) t o xs es ii vm1 X :

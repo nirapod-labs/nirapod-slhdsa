@@ -11,3 +11,9 @@
 #
 # PATCHES.md explains each patch.
 
+patches/0001-arch-architecture-specific-conditions-on-memory-argu.patch 3c7d36bff91357acf6edd61fa7cfe7856729d960109a5e34f4ccfdbc9fbf685e
+patches/0002-armv8a-add-the-LDP-and-STP-instructions.patch 5dda10e9293897964805602073de8a6be29669b1cb432a16ad570e6fbd0cfaff
+patches/0003-armv8a-changelog-entry-for-LDP-and-STP.patch 10d6890dd91a4442d900e235c4a64c5e629f7b6bcfe436ce3685fb32fc697918
+patches/0004-lower_glob_load-use-the-first-destination-of-a-load-.patch 083dc8a232dffb2087936ec3436e72bf9b7bdd7f9e78f704a1d8ccac3077624d
+patches/0005-armv8a-check-the-LDP-STP-offset-range-on-the-scaled-.patch 515255315e1a87024db792da624a6e370c0467ab4cef333320a5cc5cc608da02
+patches/0006-armv8a-remove-the-printer-check-for-LDP-with-equal-d.patch 031c2445471cc239c09cc4fcbd55c3553bbe502c13fcd2a022074c408433324a
