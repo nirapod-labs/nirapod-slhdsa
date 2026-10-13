@@ -69,7 +69,10 @@ void HT(hmac_sha256)(uint8_t out[32], const uint8_t *key, uint64_t keylen,
 void HT(hmac_sha512)(uint8_t out[64], const uint8_t *key, uint64_t keylen,
                      const uint8_t *msg, uint64_t msglen);
 
-/* Array instances, one per tested length L: in and out hold exactly L bytes. */
+/*
+ * Array instances, one per tested length L: in and out hold exactly L bytes.
+ * The squeeze reads out before it overwrites it, so out must be initialised.
+ */
 #define HT_ARRAY_PROTOS(L)                                                        \
   uint64_t HT(keccak_absorb_array_##L)(uint64_t st[25], uint64_t pos,             \
                                        uint64_t rate, const uint8_t *in);         \
@@ -95,7 +98,10 @@ void HT(keccak_x4_init)(uint64_t st[100]);
 void HT(keccakf1600_x4)(uint64_t st[100]);
 void HT(keccak_x4_finalize)(uint64_t st[100], uint64_t pos, uint64_t rate, uint64_t ds);
 
-/* 4-way array instances: in and out hold four L-byte arrays back to back. */
+/*
+ * 4-way array instances: in and out hold four L-byte arrays back to back.
+ * The squeeze reads out before it overwrites it, so out must be initialised.
+ */
 #define HT_X4_PROTOS(L)                                                           \
   uint64_t HT(keccak_x4_absorb_array_##L)(uint64_t st[100], uint64_t pos,         \
                                           uint64_t rate, const uint8_t *in);      \

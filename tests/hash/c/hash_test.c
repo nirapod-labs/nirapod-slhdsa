@@ -742,6 +742,13 @@ static size_t rnd_len(void)
 
 #define MAXMSG 8192
 
+/*
+ * The squeeze exports read their output buffer before overwriting it, so
+ * the buffer is filled first: the read is of defined bytes, and a byte the
+ * squeeze left unwritten would keep this value.
+ */
+#define CANARY 0xa5
+
 struct keccak_mode {
   const char *ossl;
   uint64_t rate, ds;
@@ -1115,6 +1122,7 @@ static void diff_arrays(unsigned long iter, uint8_t *msg)
   pos = ac->kabs(st, pos, km->rate, msg + pre);
   HT(keccak_finalize)(st, pos, km->rate, km->ds);
   pos = HT(keccak_squeeze)(st, 0, km->rate, got, skip);
+  memset(got, CANARY, ac->len);
   pos = ac->ksqz(got, st, pos, km->rate);
   HT(keccak_squeeze)(st, pos, km->rate, got + ac->len, more);
   snprintf(what, sizeof what, "diff iter %lu %s array L=%zu prefix=%zu skip=%zu more=%zu", iter,
@@ -1210,6 +1218,8 @@ static void diff_keccak_x4(unsigned long iter)
   pos = a->abs(st4, 0, km->rate, ina);
   pos = b->abs(st4, pos, km->rate, inb);
   HT(keccak_x4_finalize)(st4, pos, km->rate, km->ds);
+  memset(outc, CANARY, sizeof outc);
+  memset(outd, CANARY, sizeof outd);
   pos = c->sqz(outc, st4, 0, km->rate);
   d->sqz(outd, st4, pos, km->rate);
   /*

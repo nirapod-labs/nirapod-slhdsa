@@ -165,6 +165,7 @@ export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_1(reg u64 out p pos rate)
     t = [:u64 p + 8 * i];
     st[i] = t;
   }
+  buf = A1::__array_load(buf, out);
   () = #spill(out, p);
   buf, st, pos, ms = A1::_keccak_squeeze_array(buf, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -304,6 +305,7 @@ export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_7(reg u64 out p pos rate)
     t = [:u64 p + 8 * i];
     st[i] = t;
   }
+  buf = A7::__array_load(buf, out);
   () = #spill(out, p);
   buf, st, pos, ms = A7::_keccak_squeeze_array(buf, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -443,6 +445,7 @@ export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_16(reg u64 out p pos rate
     t = [:u64 p + 8 * i];
     st[i] = t;
   }
+  buf = A16::__array_load(buf, out);
   () = #spill(out, p);
   buf, st, pos, ms = A16::_keccak_squeeze_array(buf, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -582,6 +585,7 @@ export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_22(reg u64 out p pos rate
     t = [:u64 p + 8 * i];
     st[i] = t;
   }
+  buf = A22::__array_load(buf, out);
   () = #spill(out, p);
   buf, st, pos, ms = A22::_keccak_squeeze_array(buf, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -721,6 +725,7 @@ export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_32(reg u64 out p pos rate
     t = [:u64 p + 8 * i];
     st[i] = t;
   }
+  buf = A32::__array_load(buf, out);
   () = #spill(out, p);
   buf, st, pos, ms = A32::_keccak_squeeze_array(buf, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -860,6 +865,7 @@ export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_64(reg u64 out p pos rate
     t = [:u64 p + 8 * i];
     st[i] = t;
   }
+  buf = A64::__array_load(buf, out);
   () = #spill(out, p);
   buf, st, pos, ms = A64::_keccak_squeeze_array(buf, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -999,6 +1005,7 @@ export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_65(reg u64 out p pos rate
     t = [:u64 p + 8 * i];
     st[i] = t;
   }
+  buf = A65::__array_load(buf, out);
   () = #spill(out, p);
   buf, st, pos, ms = A65::_keccak_squeeze_array(buf, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -1138,6 +1145,7 @@ export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_129(reg u64 out p pos rat
     t = [:u64 p + 8 * i];
     st[i] = t;
   }
+  buf = A129::__array_load(buf, out);
   () = #spill(out, p);
   buf, st, pos, ms = A129::_keccak_squeeze_array(buf, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -1277,6 +1285,7 @@ export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_200(reg u64 out p pos rat
     t = [:u64 p + 8 * i];
     st[i] = t;
   }
+  buf = A200::__array_load(buf, out);
   () = #spill(out, p);
   buf, st, pos, ms = A200::_keccak_squeeze_array(buf, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -1442,7 +1451,10 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_finalize(reg u64 p pos rate ds)
   __x4_state_store(p, st);
 }
 
-/* in and out hold the four instances' arrays back to back, 1 bytes each. */
+/*
+ * in and out hold the four instances' arrays back to back, 1 bytes each.
+ * The squeeze's outputs are loaded from out first (see the generator).
+ */
 #[ct = "public × public × public × public -> public"]
 export fn nirapod_slhdsa_hashtest_keccak_x4_absorb_array_1(reg u64 p pos rate in) -> reg u64
 {
@@ -1476,7 +1488,7 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_1(reg u64 out p pos ra
 {
   stack u64[100] st;
   stack u8[1] a0 a1 a2 a3;
-  reg u64 ms;
+  reg u64 ms o;
 
   ms = #init_msf();
   out = #protect(out, ms);
@@ -1484,6 +1496,14 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_1(reg u64 out p pos ra
   pos = #protect(pos, ms);
   rate = #protect(rate, ms);
   st = __x4_state_load(st, p);
+  o = out;
+  a0 = A1::__array_load(a0, o);
+  o += 1;
+  a1 = A1::__array_load(a1, o);
+  o += 1;
+  a2 = A1::__array_load(a2, o);
+  o += 1;
+  a3 = A1::__array_load(a3, o);
   () = #spill(out, p);
   a0, a1, a2, a3, st, pos, ms = A1::_keccak_x4_squeeze_array(a0, a1, a2, a3, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -1500,7 +1520,10 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_1(reg u64 out p pos ra
   return pos;
 }
 
-/* in and out hold the four instances' arrays back to back, 7 bytes each. */
+/*
+ * in and out hold the four instances' arrays back to back, 7 bytes each.
+ * The squeeze's outputs are loaded from out first (see the generator).
+ */
 #[ct = "public × public × public × public -> public"]
 export fn nirapod_slhdsa_hashtest_keccak_x4_absorb_array_7(reg u64 p pos rate in) -> reg u64
 {
@@ -1534,7 +1557,7 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_7(reg u64 out p pos ra
 {
   stack u64[100] st;
   stack u8[7] a0 a1 a2 a3;
-  reg u64 ms;
+  reg u64 ms o;
 
   ms = #init_msf();
   out = #protect(out, ms);
@@ -1542,6 +1565,14 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_7(reg u64 out p pos ra
   pos = #protect(pos, ms);
   rate = #protect(rate, ms);
   st = __x4_state_load(st, p);
+  o = out;
+  a0 = A7::__array_load(a0, o);
+  o += 7;
+  a1 = A7::__array_load(a1, o);
+  o += 7;
+  a2 = A7::__array_load(a2, o);
+  o += 7;
+  a3 = A7::__array_load(a3, o);
   () = #spill(out, p);
   a0, a1, a2, a3, st, pos, ms = A7::_keccak_x4_squeeze_array(a0, a1, a2, a3, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -1558,7 +1589,10 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_7(reg u64 out p pos ra
   return pos;
 }
 
-/* in and out hold the four instances' arrays back to back, 16 bytes each. */
+/*
+ * in and out hold the four instances' arrays back to back, 16 bytes each.
+ * The squeeze's outputs are loaded from out first (see the generator).
+ */
 #[ct = "public × public × public × public -> public"]
 export fn nirapod_slhdsa_hashtest_keccak_x4_absorb_array_16(reg u64 p pos rate in) -> reg u64
 {
@@ -1592,7 +1626,7 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_16(reg u64 out p pos r
 {
   stack u64[100] st;
   stack u8[16] a0 a1 a2 a3;
-  reg u64 ms;
+  reg u64 ms o;
 
   ms = #init_msf();
   out = #protect(out, ms);
@@ -1600,6 +1634,14 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_16(reg u64 out p pos r
   pos = #protect(pos, ms);
   rate = #protect(rate, ms);
   st = __x4_state_load(st, p);
+  o = out;
+  a0 = A16::__array_load(a0, o);
+  o += 16;
+  a1 = A16::__array_load(a1, o);
+  o += 16;
+  a2 = A16::__array_load(a2, o);
+  o += 16;
+  a3 = A16::__array_load(a3, o);
   () = #spill(out, p);
   a0, a1, a2, a3, st, pos, ms = A16::_keccak_x4_squeeze_array(a0, a1, a2, a3, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -1616,7 +1658,10 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_16(reg u64 out p pos r
   return pos;
 }
 
-/* in and out hold the four instances' arrays back to back, 22 bytes each. */
+/*
+ * in and out hold the four instances' arrays back to back, 22 bytes each.
+ * The squeeze's outputs are loaded from out first (see the generator).
+ */
 #[ct = "public × public × public × public -> public"]
 export fn nirapod_slhdsa_hashtest_keccak_x4_absorb_array_22(reg u64 p pos rate in) -> reg u64
 {
@@ -1650,7 +1695,7 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_22(reg u64 out p pos r
 {
   stack u64[100] st;
   stack u8[22] a0 a1 a2 a3;
-  reg u64 ms;
+  reg u64 ms o;
 
   ms = #init_msf();
   out = #protect(out, ms);
@@ -1658,6 +1703,14 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_22(reg u64 out p pos r
   pos = #protect(pos, ms);
   rate = #protect(rate, ms);
   st = __x4_state_load(st, p);
+  o = out;
+  a0 = A22::__array_load(a0, o);
+  o += 22;
+  a1 = A22::__array_load(a1, o);
+  o += 22;
+  a2 = A22::__array_load(a2, o);
+  o += 22;
+  a3 = A22::__array_load(a3, o);
   () = #spill(out, p);
   a0, a1, a2, a3, st, pos, ms = A22::_keccak_x4_squeeze_array(a0, a1, a2, a3, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -1674,7 +1727,10 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_22(reg u64 out p pos r
   return pos;
 }
 
-/* in and out hold the four instances' arrays back to back, 32 bytes each. */
+/*
+ * in and out hold the four instances' arrays back to back, 32 bytes each.
+ * The squeeze's outputs are loaded from out first (see the generator).
+ */
 #[ct = "public × public × public × public -> public"]
 export fn nirapod_slhdsa_hashtest_keccak_x4_absorb_array_32(reg u64 p pos rate in) -> reg u64
 {
@@ -1708,7 +1764,7 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_32(reg u64 out p pos r
 {
   stack u64[100] st;
   stack u8[32] a0 a1 a2 a3;
-  reg u64 ms;
+  reg u64 ms o;
 
   ms = #init_msf();
   out = #protect(out, ms);
@@ -1716,6 +1772,14 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_32(reg u64 out p pos r
   pos = #protect(pos, ms);
   rate = #protect(rate, ms);
   st = __x4_state_load(st, p);
+  o = out;
+  a0 = A32::__array_load(a0, o);
+  o += 32;
+  a1 = A32::__array_load(a1, o);
+  o += 32;
+  a2 = A32::__array_load(a2, o);
+  o += 32;
+  a3 = A32::__array_load(a3, o);
   () = #spill(out, p);
   a0, a1, a2, a3, st, pos, ms = A32::_keccak_x4_squeeze_array(a0, a1, a2, a3, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -1732,7 +1796,10 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_32(reg u64 out p pos r
   return pos;
 }
 
-/* in and out hold the four instances' arrays back to back, 64 bytes each. */
+/*
+ * in and out hold the four instances' arrays back to back, 64 bytes each.
+ * The squeeze's outputs are loaded from out first (see the generator).
+ */
 #[ct = "public × public × public × public -> public"]
 export fn nirapod_slhdsa_hashtest_keccak_x4_absorb_array_64(reg u64 p pos rate in) -> reg u64
 {
@@ -1766,7 +1833,7 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_64(reg u64 out p pos r
 {
   stack u64[100] st;
   stack u8[64] a0 a1 a2 a3;
-  reg u64 ms;
+  reg u64 ms o;
 
   ms = #init_msf();
   out = #protect(out, ms);
@@ -1774,6 +1841,14 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_64(reg u64 out p pos r
   pos = #protect(pos, ms);
   rate = #protect(rate, ms);
   st = __x4_state_load(st, p);
+  o = out;
+  a0 = A64::__array_load(a0, o);
+  o += 64;
+  a1 = A64::__array_load(a1, o);
+  o += 64;
+  a2 = A64::__array_load(a2, o);
+  o += 64;
+  a3 = A64::__array_load(a3, o);
   () = #spill(out, p);
   a0, a1, a2, a3, st, pos, ms = A64::_keccak_x4_squeeze_array(a0, a1, a2, a3, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -1790,7 +1865,10 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_64(reg u64 out p pos r
   return pos;
 }
 
-/* in and out hold the four instances' arrays back to back, 65 bytes each. */
+/*
+ * in and out hold the four instances' arrays back to back, 65 bytes each.
+ * The squeeze's outputs are loaded from out first (see the generator).
+ */
 #[ct = "public × public × public × public -> public"]
 export fn nirapod_slhdsa_hashtest_keccak_x4_absorb_array_65(reg u64 p pos rate in) -> reg u64
 {
@@ -1824,7 +1902,7 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_65(reg u64 out p pos r
 {
   stack u64[100] st;
   stack u8[65] a0 a1 a2 a3;
-  reg u64 ms;
+  reg u64 ms o;
 
   ms = #init_msf();
   out = #protect(out, ms);
@@ -1832,6 +1910,14 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_65(reg u64 out p pos r
   pos = #protect(pos, ms);
   rate = #protect(rate, ms);
   st = __x4_state_load(st, p);
+  o = out;
+  a0 = A65::__array_load(a0, o);
+  o += 65;
+  a1 = A65::__array_load(a1, o);
+  o += 65;
+  a2 = A65::__array_load(a2, o);
+  o += 65;
+  a3 = A65::__array_load(a3, o);
   () = #spill(out, p);
   a0, a1, a2, a3, st, pos, ms = A65::_keccak_x4_squeeze_array(a0, a1, a2, a3, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -1848,7 +1934,10 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_65(reg u64 out p pos r
   return pos;
 }
 
-/* in and out hold the four instances' arrays back to back, 129 bytes each. */
+/*
+ * in and out hold the four instances' arrays back to back, 129 bytes each.
+ * The squeeze's outputs are loaded from out first (see the generator).
+ */
 #[ct = "public × public × public × public -> public"]
 export fn nirapod_slhdsa_hashtest_keccak_x4_absorb_array_129(reg u64 p pos rate in) -> reg u64
 {
@@ -1882,7 +1971,7 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_129(reg u64 out p pos 
 {
   stack u64[100] st;
   stack u8[129] a0 a1 a2 a3;
-  reg u64 ms;
+  reg u64 ms o;
 
   ms = #init_msf();
   out = #protect(out, ms);
@@ -1890,6 +1979,14 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_129(reg u64 out p pos 
   pos = #protect(pos, ms);
   rate = #protect(rate, ms);
   st = __x4_state_load(st, p);
+  o = out;
+  a0 = A129::__array_load(a0, o);
+  o += 129;
+  a1 = A129::__array_load(a1, o);
+  o += 129;
+  a2 = A129::__array_load(a2, o);
+  o += 129;
+  a3 = A129::__array_load(a3, o);
   () = #spill(out, p);
   a0, a1, a2, a3, st, pos, ms = A129::_keccak_x4_squeeze_array(a0, a1, a2, a3, st, pos, rate, ms);
   () = #unspill(out, p);
@@ -1906,7 +2003,10 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_129(reg u64 out p pos 
   return pos;
 }
 
-/* in and out hold the four instances' arrays back to back, 200 bytes each. */
+/*
+ * in and out hold the four instances' arrays back to back, 200 bytes each.
+ * The squeeze's outputs are loaded from out first (see the generator).
+ */
 #[ct = "public × public × public × public -> public"]
 export fn nirapod_slhdsa_hashtest_keccak_x4_absorb_array_200(reg u64 p pos rate in) -> reg u64
 {
@@ -1940,7 +2040,7 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_200(reg u64 out p pos 
 {
   stack u64[100] st;
   stack u8[200] a0 a1 a2 a3;
-  reg u64 ms;
+  reg u64 ms o;
 
   ms = #init_msf();
   out = #protect(out, ms);
@@ -1948,6 +2048,14 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_200(reg u64 out p pos 
   pos = #protect(pos, ms);
   rate = #protect(rate, ms);
   st = __x4_state_load(st, p);
+  o = out;
+  a0 = A200::__array_load(a0, o);
+  o += 200;
+  a1 = A200::__array_load(a1, o);
+  o += 200;
+  a2 = A200::__array_load(a2, o);
+  o += 200;
+  a3 = A200::__array_load(a3, o);
   () = #spill(out, p);
   a0, a1, a2, a3, st, pos, ms = A200::_keccak_x4_squeeze_array(a0, a1, a2, a3, st, pos, rate, ms);
   () = #unspill(out, p);

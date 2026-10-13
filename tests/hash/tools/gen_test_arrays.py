@@ -13,6 +13,11 @@
 # protects its arguments (export arguments are only transient under the
 # speculative model) and calls one primitive.
 #
+# The squeeze exports load their output arrays from the caller's buffer
+# before the squeeze. The squeeze writes every byte, but at run-time
+# offsets, which the safety checker does not count as initialising the
+# array. The harness fills that buffer before each call.
+#
 # Usage (from the repository root):
 #
 #     python3 -I tests/hash/tools/gen_test_arrays.py > tests/hash/jasmin/test_arrays.jinc
@@ -121,7 +126,8 @@ export fn nirapod_slhdsa_hashtest_keccak_squeeze_array_{L}(reg u64 out p pos rat
   inline int i;
 
   ms = #init_msf();
-{prot2}{load}  () = #spill(out, p);
+{prot2}{load}  buf = A{L}::__array_load(buf, out);
+  () = #spill(out, p);
   buf, st, pos, ms = A{L}::_keccak_squeeze_array(buf, st, pos, rate, ms);
   () = #unspill(out, p);
   out = #protect(out, ms);
@@ -238,7 +244,10 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_finalize(reg u64 p pos rate ds)
 
 def keccak_x4(L):
     return """
-/* in and out hold the four instances' arrays back to back, {L} bytes each. */
+/*
+ * in and out hold the four instances' arrays back to back, {L} bytes each.
+ * The squeeze's outputs are loaded from out first (see the generator).
+ */
 #[ct = "public × public × public × public -> public"]
 export fn nirapod_slhdsa_hashtest_keccak_x4_absorb_array_{L}(reg u64 p pos rate in) -> reg u64
 {{
@@ -268,10 +277,18 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_squeeze_array_{L}(reg u64 out p pos 
 {{
   stack u64[100] st;
   stack u8[{L}] a0 a1 a2 a3;
-  reg u64 ms;
+  reg u64 ms o;
 
   ms = #init_msf();
 {prot2}  st = __x4_state_load(st, p);
+  o = out;
+  a0 = A{L}::__array_load(a0, o);
+  o += {L};
+  a1 = A{L}::__array_load(a1, o);
+  o += {L};
+  a2 = A{L}::__array_load(a2, o);
+  o += {L};
+  a3 = A{L}::__array_load(a3, o);
   () = #spill(out, p);
   a0, a1, a2, a3, st, pos, ms = A{L}::_keccak_x4_squeeze_array(a0, a1, a2, a3, st, pos, rate, ms);
   () = #unspill(out, p);
