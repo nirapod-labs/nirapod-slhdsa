@@ -32,8 +32,23 @@
  * the pre-hash function. It vanishes for pure requests, whose framing is
  * injective (Validate_Framing.pure_message_inj), and a pure framing never
  * equals a pre-hash framing (framing_separated). I is arbitrary: the
- * statement holds for hedged and deterministic signing alike, and
- * instantiating I with the SLH-DSA internal functions is separate work.
+ * statement holds for hedged and deterministic signing alike.
+ * SLHDSA_EUFCMA.eca and SLHDSA_Hedged.eca instantiate I with the SLH-DSA
+ * internal functions.
+ *
+ * Corollary (euf_cma_external_cr). The second term is at most the success
+ * probability of the explicit collision finder CF(I, A) in the game PH_CR:
+ * CF runs the game and outputs the forged request with the first signed
+ * request it collides with. A win of PH_CR is a pair of distinct messages
+ * with equal digest under one of the pre-hash functions of
+ * FIPS205_External.ec, so the term is bounded by their collision
+ * resistance.
+ *
+ * spec_sign_frame and spec_verify_frame tie External to the operators of
+ * FIPS205_External.ec: Algorithms 22 to 25 on a request are the internal
+ * functions on its framing when the context is valid, and the error
+ * indication (None) or false otherwise. External signing returns the empty
+ * string where the operators return None.
  *
  * Hypotheses: internal verification terminates (I_verify_ll), and A and I
  * do not read or write the games' own state (the section's module
@@ -45,7 +60,7 @@
 require import AllCore List Distr.
 require DigitalSignatures.
 from Jasmin require import JWord.
-require import Bytes FIPS205_Encoding FIPS205_External Validate_Framing.
+require import Bytes FIPS205_Encoding FIPS205_Params FIPS205_Internal FIPS205_External Validate_Framing.
 
 (* ------------------------------------------------------------------ *)
 (* External requests and their framing                                *)
@@ -88,6 +103,38 @@ case: y => [ctx' m' | ctx' ph' m']; rewrite /valid /=.
 + by move=> _ _ /eq_sym; apply framing_separated.
 move=> h h' /(prehash_message_inj _ _ _ _ _ _ h h') [<- [<- heq]].
 by case: (m = m') => // ne; right.
+qed.
+
+(* Algorithms 22 to 25 on a request. *)
+op spec_sign (p : params) (x : request) (sk : bytes) (addrnd : bytes option) : bytes option =
+  with x = PureMsg ctx m    => slh_sign p m ctx sk addrnd
+  with x = HashMsg ctx ph m => hash_slh_sign p m ctx ph sk addrnd.
+
+op spec_verify (p : params) (x : request) (sg pk : bytes) : bool =
+  with x = PureMsg ctx m    => slh_verify p m sg ctx pk
+  with x = HashMsg ctx ph m => hash_slh_verify p m sg ctx ph pk.
+
+lemma spec_sign_frame p x sk addrnd :
+  spec_sign p x sk addrnd
+  = if valid x then Some (slh_sign_internal p (frame x) sk addrnd) else None.
+proof.
+case: x => [ctx m | ctx ph m];
+  rewrite /spec_sign /valid /ctx_of /frame /= /slh_sign /hash_slh_sign /=; case: (255 < size ctx) => h /=.
++ by have -> : !(size ctx <= 255) by smt().
++ by have -> : size ctx <= 255 by smt().
++ by have -> : !(size ctx <= 255) by smt().
+by have -> : size ctx <= 255 by smt().
+qed.
+
+lemma spec_verify_frame p x sg pk :
+  spec_verify p x sg pk = if valid x then slh_verify_internal p (frame x) sg pk else false.
+proof.
+case: x => [ctx m | ctx ph m];
+  rewrite /spec_verify /valid /ctx_of /frame /= /slh_verify /hash_slh_verify /=; case: (255 < size ctx) => h /=.
++ by have -> : !(size ctx <= 255) by smt().
++ by have -> : size ctx <= 255 by smt().
++ by have -> : !(size ctx <= 255) by smt().
+by have -> : size ctx <= 255 by smt().
 qed.
 
 (* ------------------------------------------------------------------ *)
@@ -163,6 +210,32 @@ module EUF_CMA_Rec (I : DSI.Stateless.Scheme) (A : DSE.Stateless.Adv_EUFCMA) = {
   }
 }.
 
+(* Collision resistance of the pre-hash functions: output two requests
+   that are distinct pre-hash requests with equal context, function and
+   digest. *)
+module type PH_Finder = {
+  proc find() : request * request
+}.
+
+module PH_CR (C : PH_Finder) = {
+  proc main() : bool = {
+    var x, y;
+    (x, y) <@ C.find();
+    return ph_collision x y;
+  }
+}.
+
+(* The collision finder: run the game, then pair the forged request with
+   the first signed request it collides with. *)
+module CF (I : DSI.Stateless.Scheme) (A : DSE.Stateless.Adv_EUFCMA) : PH_Finder = {
+  proc find() : request * request = {
+    var b, qs;
+    b <@ EUF_CMA_Rec(I, A).main();
+    qs <- DSE.Stateless.O_CMA_Default.qs;
+    return (Rec.forged, nth witness qs (find (ph_collision Rec.forged) qs));
+  }
+}.
+
 section Proof.
 
 declare module I <: DSI.Stateless.Scheme
@@ -226,5 +299,30 @@ sp; if{1}.
   by apply hnocoll; exists y.
 by wp; call{2} I_verify_ll; auto.
 qed.
+
+lemma coll_find (f : request) qs :
+  (exists y, y \in qs /\ ph_collision f y) =>
+  ph_collision f (nth witness qs (find (ph_collision f) qs)).
+proof.
+move=> [y [hy hc]]; have hh : has (ph_collision f) qs by apply/List.hasP; exists y.
+exact (nth_find witness _ _ hh).
+qed.
+
+lemma ph_cr &m :
+  Pr[EUF_CMA_Rec(I, A).main() @ &m :
+       exists y, y \in DSE.Stateless.O_CMA_Default.qs /\ ph_collision Rec.forged y]
+  <= Pr[PH_CR(CF(I, A)).main() @ &m : res].
+proof.
+byequiv => //; proc *.
+inline PH_CR(CF(I, A)).main CF(I, A).find.
+wp; call (: ={glob I, glob A} ==> ={glob DSE.Stateless.O_CMA_Default, glob Rec}); first by sim.
+skip => />; smt(coll_find).
+qed.
+
+lemma euf_cma_external_cr &m :
+  Pr[DSE.Stateless.EUF_CMA(External(I), A, DSE.Stateless.O_CMA_Default).main() @ &m : res]
+  <= Pr[DSI.Stateless.EUF_CMA(I, B(A), DSI.Stateless.O_CMA_Default).main() @ &m : res]
+   + Pr[PH_CR(CF(I, A)).main() @ &m : res].
+proof. by have := euf_cma_external &m; have := ph_cr &m; smt(). qed.
 
 end section Proof.
