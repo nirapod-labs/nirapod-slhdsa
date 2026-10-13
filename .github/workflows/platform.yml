@@ -27,6 +27,15 @@
 # condition, so a job that did not run means a job before it failed. The
 # check jobs run `make -f tools/ci/Makefile <target>`; a target whose
 # component is not in the tree reports NOT APPLICABLE (tools/ci/Makefile).
+#
+# Recorded verdicts. Each check job first computes the key of its inputs
+# (tools/ci/verdict.sh). When the caller sets reuse-verdicts, which ci.yml
+# does for pull requests only, a recorded pass under that key is restored
+# and reported in the job summary, with the run and commit that recorded
+# it, and the job's remaining steps are skipped: the job succeeds without
+# running the check again. Otherwise the check runs, and only when every
+# step has passed is its verdict recorded and saved under the key. A failed
+# check is never saved, so it runs again on the next attempt.
 # The EasyCrypt proofs need the full prover set and run once, in ci.yml,
 # with the switch of linux-x86_64 (outputs below).
 #
@@ -77,6 +86,10 @@ on:
         default: false
       cold:
         description: "Build the toolchain from scratch and compare it with the cached build"
+        type: boolean
+        default: false
+      reuse-verdicts:
+        description: "Report a recorded pass of a check whose inputs are unchanged instead of running it"
         type: boolean
         default: false
     outputs:
@@ -219,30 +232,70 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Compute the verdict key
+        id: verdict
+        env:
+          CI_TOOL_KEY: ${{ needs.toolchain.outputs.compiler-key }}
+        run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=test
+
+      - name: Restore a recorded verdict
+        id: recorded
+        if: inputs.reuse-verdicts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/test
+          key: ${{ steps.verdict.outputs.key }}
+
+      - name: Report the recorded verdict
+        if: steps.recorded.outputs.cache-hit == 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh report test "$KEY"
+
       - name: Install test dependencies
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh deps run
 
       - name: Download the compiler
+        if: steps.recorded.outputs.cache-hit != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: toolchain-${{ inputs.platform }}
           path: ${{ runner.temp }}/artifact
 
       - name: Install the compiler
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh install "$RUNNER_TEMP/artifact/toolchain-$PLATFORM.tar.gz" "$RUNNER_TEMP/toolchain"
 
       - name: Download the test vectors
+        if: steps.recorded.outputs.cache-hit != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: vectors
           path: build
 
       - name: Run the tests
-        run: make -f tools/ci/Makefile ci-test
+        if: steps.recorded.outputs.cache-hit != 'true'
+        run: tools/ci/verdict.sh run test make -f tools/ci/Makefile ci-test
 
       - name: Write the core transcript
-        run: make -f tools/ci/Makefile ci-transcript
+        if: steps.recorded.outputs.cache-hit != 'true'
+        run: tools/ci/verdict.sh run test make -f tools/ci/Makefile ci-transcript
 
+      - name: Record the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh record test "$KEY" build/ci/transcript-*.txt
+
+      - name: Save the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/test
+          key: ${{ steps.verdict.outputs.key }}
+
+      # After a reused verdict, the transcript is the recorded one.
       - name: Upload the core transcript
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -262,20 +315,57 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Compute the verdict key
+        id: verdict
+        env:
+          CI_TOOL_KEY: ${{ needs.toolchain.outputs.compiler-key }}
+        run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=analysis
+
+      - name: Restore a recorded verdict
+        id: recorded
+        if: inputs.reuse-verdicts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/analysis
+          key: ${{ steps.verdict.outputs.key }}
+
+      - name: Report the recorded verdict
+        if: steps.recorded.outputs.cache-hit == 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh report analysis "$KEY"
+
       - name: Install dependencies
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh deps run
 
       - name: Download the compiler
+        if: steps.recorded.outputs.cache-hit != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: toolchain-${{ inputs.platform }}
           path: ${{ runner.temp }}/artifact
 
       - name: Install the compiler
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh install "$RUNNER_TEMP/artifact/toolchain-$PLATFORM.tar.gz" "$RUNNER_TEMP/toolchain"
 
       - name: Constant-time, speculative constant-time and emitted-code checks
-        run: make -f tools/ci/Makefile ci-analysis
+        if: steps.recorded.outputs.cache-hit != 'true'
+        run: tools/ci/verdict.sh run analysis make -f tools/ci/Makefile ci-analysis
+
+      - name: Record the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh record analysis "$KEY"
+
+      - name: Save the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/analysis
+          key: ${{ steps.verdict.outputs.key }}
 
   differential:
     name: differential
@@ -288,20 +378,57 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Compute the verdict key
+        id: verdict
+        env:
+          CI_TOOL_KEY: ${{ needs.toolchain.outputs.compiler-key }}
+        run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=differential
+
+      - name: Restore a recorded verdict
+        id: recorded
+        if: inputs.reuse-verdicts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/differential
+          key: ${{ steps.verdict.outputs.key }}
+
+      - name: Report the recorded verdict
+        if: steps.recorded.outputs.cache-hit == 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh report differential "$KEY"
+
       - name: Install dependencies
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh deps run
 
       - name: Download the compiler
+        if: steps.recorded.outputs.cache-hit != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: toolchain-${{ inputs.platform }}
           path: ${{ runner.temp }}/artifact
 
       - name: Install the compiler
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh install "$RUNNER_TEMP/artifact/toolchain-$PLATFORM.tar.gz" "$RUNNER_TEMP/toolchain"
 
       - name: Differential test against an independent implementation
-        run: make -f tools/ci/Makefile ci-diff
+        if: steps.recorded.outputs.cache-hit != 'true'
+        run: tools/ci/verdict.sh run differential make -f tools/ci/Makefile ci-diff
+
+      - name: Record the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh record differential "$KEY"
+
+      - name: Save the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/differential
+          key: ${{ steps.verdict.outputs.key }}
 
   # jasmin-checksafety loads the switch's libraries, so this job restores
   # both caches instead of the packed compiler; on a deferring event it
@@ -362,17 +489,54 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Compute the verdict key
+        id: verdict
+        env:
+          CI_TOOL_KEY: ${{ needs.toolchain.outputs.compiler-key }}
+        run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=generated
+
+      - name: Restore a recorded verdict
+        id: recorded
+        if: inputs.reuse-verdicts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/generated
+          key: ${{ steps.verdict.outputs.key }}
+
+      - name: Report the recorded verdict
+        if: steps.recorded.outputs.cache-hit == 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh report generated "$KEY"
+
       - name: Install dependencies
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh deps run
 
       - name: Download the compiler
+        if: steps.recorded.outputs.cache-hit != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: toolchain-${{ inputs.platform }}
           path: ${{ runner.temp }}/artifact
 
       - name: Install the compiler
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh install "$RUNNER_TEMP/artifact/toolchain-$PLATFORM.tar.gz" "$RUNNER_TEMP/toolchain"
 
       - name: Regenerate the shipped assembly and compare
-        run: make -f tools/ci/Makefile ci-generated
+        if: steps.recorded.outputs.cache-hit != 'true'
+        run: tools/ci/verdict.sh run generated make -f tools/ci/Makefile ci-generated
+
+      - name: Record the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh record generated "$KEY"
+
+      - name: Save the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/generated
+          key: ${{ steps.verdict.outputs.key }}

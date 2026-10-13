@@ -47,6 +47,15 @@
 # protection requires: a job skipped because a job before it failed would
 # otherwise count as passing.
 #
+# On a pull request, an expensive check (tests, analyses, the differential
+# test, regeneration, proofs) whose inputs are identical to those of
+# a recorded passing run reports that run in its job summary instead of
+# running again; its inputs are every file except a reviewed list of paths
+# it does not read (tools/ci/Makefile, Verdicts). Pushes to main, the
+# schedule and manual runs never reuse a verdict: they run every check, and
+# record the passes that pull requests then reuse. There are no path
+# filters: every job runs on every event, so all-checks sees each of them.
+#
 # Weekly, the same workflow runs in cold mode: each platform builds its
 # toolchain from scratch, ignoring the caches, and compares the result with
 # the cached build of the same inputs (platform.yml).
@@ -236,6 +245,7 @@ jobs:
       jobs: 4
       safety: ${{ needs.scope.outputs.safety == 'run' }}
       cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
+      reuse-verdicts: ${{ github.event_name == 'pull_request' }}
 
   linux-aarch64:
     name: linux-aarch64
@@ -248,6 +258,7 @@ jobs:
       toolchain-options: --no-easycrypt
       safety: ${{ needs.scope.outputs.safety == 'run' }}
       cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
+      reuse-verdicts: ${{ github.event_name == 'pull_request' }}
 
   macos-aarch64:
     name: macos-aarch64
@@ -261,6 +272,7 @@ jobs:
       jobs: 2
       safety: ${{ needs.scope.outputs.safety == 'run' }}
       cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
+      reuse-verdicts: ${{ github.event_name == 'pull_request' }}
 
   # The EasyCrypt development, with the switch and Jasmin EasyCrypt library
   # of the linux-x86_64 toolchain build.
@@ -269,22 +281,49 @@ jobs:
     needs: linux-x86_64
     runs-on: ubuntu-24.04
     timeout-minutes: 240
+    env:
+      PLATFORM: linux-x86_64
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # A pull request reports a recorded pass of the same inputs instead of
+      # checking the proofs again (platform.yml, recorded verdicts).
+      - name: Compute the verdict key
+        id: verdict
+        env:
+          CI_TOOL_KEY: ${{ needs.linux-x86_64.outputs.compiler-key }}
+        run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=proofs
+
+      - name: Restore a recorded verdict
+        id: recorded
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/proofs
+          key: ${{ steps.verdict.outputs.key }}
+
+      - name: Report the recorded verdict
+        if: steps.recorded.outputs.cache-hit == 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh report proofs "$KEY"
+
       # The same packages as the toolchain job, so that the restored switch
       # finds the libraries it was built against.
       - name: Install build dependencies
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh deps build
 
       - name: Name the cache paths
         id: paths
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh cache-paths
 
       - name: Restore the opam switch
+        if: steps.recorded.outputs.cache-hit != 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.paths.outputs.switch }}
@@ -292,6 +331,7 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Restore the compiler and the Jasmin EasyCrypt library
+        if: steps.recorded.outputs.cache-hit != 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.paths.outputs.compiler }}
@@ -299,10 +339,25 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Put the cached tools on the PATH
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh bin-path
 
       - name: Check the proofs
-        run: tools/ci/toolchain.sh exec make -f tools/ci/Makefile ci-proofs
+        if: steps.recorded.outputs.cache-hit != 'true'
+        run: tools/ci/verdict.sh run proofs tools/ci/toolchain.sh exec make -f tools/ci/Makefile ci-proofs
+
+      - name: Record the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh record proofs "$KEY"
+
+      - name: Save the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/proofs
+          key: ${{ steps.verdict.outputs.key }}
 
   agree:
     name: agree
