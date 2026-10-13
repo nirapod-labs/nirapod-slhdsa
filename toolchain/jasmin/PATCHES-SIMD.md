@@ -146,7 +146,8 @@ computed with the SHA-2 instructions, must equal the published digests
 amount, rotation or element index are rejected at assembly generation
 (`negative.expected`).
 
-Run on an Apple M4 (macOS, native):
+Run on an Apple M4 (macOS, native), with harnesses that are not yet part of
+this repository:
 
 - every test program of `compiler/tests/success/**/armv8a` compiles to the
   same assembly as with the series of `patches/` alone, for Linux and macOS;
