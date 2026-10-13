@@ -35,6 +35,20 @@
  *     slhdsa_euf_cma           the external interface: the success
  *                              probability of any forger A is at most the
  *                              sum below, for the adversary R(B(A))
+ *     spec_det_eq              the game against External(SLH_Internal) is
+ *                              the game against Spec_Det, the external
+ *                              interface as FIPS205_External.ec writes it
+ *     slhdsa_euf_cma_spec      the bound of slhdsa_euf_cma for Spec_Det
+ *
+ * Spec_Det is the scheme of the specification itself: key generation is
+ * the module SLH_DSA (Algorithm 21, its seeds drawn by dbytes), signing is
+ * slh_sign and hash_slh_sign with addrnd absent, verification is
+ * SLH_DSA.verify and SLH_DSA.hash_verify. It only dispatches on the kind of
+ * request, returns SLH_DSA's (SK, PK) as the games' (pk, sk), and maps the
+ * error indication None to the empty string. spec_det_eq rests on three
+ * procedure equivalences: keygen_spec couples dnbytes with dbytes P.`n
+ * through the subtype bijection, spec_det_sign and spec_det_verify reduce
+ * to the operators case by case.
  *
  * The bound is concrete: a sum of success probabilities and advantages of
  * explicit adversaries built from A, with no numeric security level
@@ -94,10 +108,11 @@
  *  - The result is about the EasyCrypt operators of FIPS 205 in spec/, not
  *    about the Jasmin code; relating the two is a separate correctness
  *    proof, which is open.
- *  - The error indication of signing is modelled as the empty string
- *    (spec_sign_frame in ExternalFraming.ec relates it to None).
+ *  - The signature games type a signature as a byte string, so the error
+ *    indication None of slh_sign and hash_slh_sign is read as the empty
+ *    string.
  *  - The randomness of key generation is modelled as uniform n-byte
- *    strings.
+ *    strings, the dbytes of SLH_DSA.keygen.
  *  - Software-visible behaviour only: faults and physical leakage are out
  *    of scope of this theorem.
  *)
@@ -650,6 +665,97 @@ qed.
 end section ITSRProjection.
 
 (* ------------------------------------------------------------------ *)
+(* The specification's scheme                                         *)
+
+(* The external interface as FIPS205_External.ec writes it, with
+   deterministic signing: key generation is the module SLH_DSA (Algorithm
+   21), signing the operators slh_sign and hash_slh_sign with addrnd absent
+   (Algorithms 22 and 23), verification the procedures SLH_DSA.verify and
+   SLH_DSA.hash_verify (Algorithms 24 and 25). The wrapper only dispatches
+   on the kind of request, puts the key pair in the order of the signature
+   games (pk, sk), and returns the empty string for the error indication. *)
+module Spec_Det : DSE.Stateless.Scheme = {
+  proc keygen() : bytes * bytes = {
+    var k;
+    k <@ SLH_DSA.keygen(P);
+    return (k.`2, k.`1);
+  }
+
+  proc sign(sk : bytes, x : request) : bytes = {
+    var s;
+    if (is_pure x) {
+      s <- slh_sign P (msg_of x) (ctx_of x) sk None;
+    } else {
+      s <- hash_slh_sign P (msg_of x) (ctx_of x) (ph_of x) sk None;
+    }
+    return odflt [] s;
+  }
+
+  proc verify(pk : bytes, x : request, sg : bytes) : bool = {
+    var b;
+    if (is_pure x) {
+      b <@ SLH_DSA.verify(P, msg_of x, sg, ctx_of x, pk);
+    } else {
+      b <@ SLH_DSA.hash_verify(P, msg_of x, sg, ctx_of x, ph_of x, pk);
+    }
+    return b;
+  }
+}.
+
+(* The two samplers of n-byte strings agree: dnbytes is dbytes P.`n read
+   through the subtype, which is a bijection on its support. *)
+lemma dnbytes_supp (x : nbytes) : NBytes.val x \in dbytes P.`n.
+proof.
+have [hn _] := P_ranges; rewrite /dbytes supp_dlist 1:/# NBytes.valP /=.
+by apply/List.allP => w _; apply W8.dword_fu.
+qed.
+
+lemma dnbytes_mu1 (x : nbytes) : mu1 dnbytes x = mu1 (dbytes P.`n) (NBytes.val x).
+proof.
+have [hn _] := P_ranges.
+rewrite /dnbytes (in_dmap1E_can _ _ NBytes.val) 1:NBytes.valKd //.
+move=> y; rewrite supp_dlist 1:/# => -[hy _] <-.
+by rewrite NBytes.insubdK.
+qed.
+
+lemma dbytes_insubdK (y : bytes) : y \in dbytes P.`n => NBytes.val (NBytes.insubd y) = y.
+proof. by have [hn _] := P_ranges; rewrite supp_dlist 1:/# => -[hy _]; rewrite NBytes.insubdK. qed.
+
+(* Key generation: the same keys, in the swapped order. *)
+equiv keygen_spec : SLH_Internal.keygen ~ SLH_DSA.keygen :
+  p{2} = P ==> res{1} = (res{2}.`2, res{2}.`1).
+proof.
+proc; wp.
+do 3! (rnd NBytes.val NBytes.insubd); skip => />.
+split => [y /dbytes_insubdK -> // | _]; split => [y hy | _].
++ by rewrite dnbytes_mu1 dbytes_insubdK.
+move=> x _; rewrite dnbytes_supp NBytes.valKd /= => y _.
+by rewrite dnbytes_supp NBytes.valKd /= => z _; rewrite dnbytes_supp NBytes.valKd.
+qed.
+
+equiv spec_det_keygen : External(SLH_Internal).keygen ~ Spec_Det.keygen :
+  true ==> ={res}.
+proof. by proc; call keygen_spec; auto => /> /#. qed.
+
+equiv spec_det_sign : External(SLH_Internal).sign ~ Spec_Det.sign :
+  ={sk, x} ==> ={res}.
+proof.
+proc; inline *; auto => /> &2.
+case: (x{2}) => [ctx m | ctx ph m];
+  rewrite /is_pure /msg_of /ph_of /valid /ctx_of /frame /slh_sign /hash_slh_sign /=;
+  case: (255 < size ctx) => h /=; smt().
+qed.
+
+equiv spec_det_verify : External(SLH_Internal).verify ~ Spec_Det.verify :
+  ={pk, x} /\ s{1} = sg{2} ==> ={res}.
+proof.
+proc; inline *; auto => /> &2.
+case: (x{2}) => [ctx m | ctx ph m];
+  rewrite /is_pure /msg_of /ph_of /valid /ctx_of /frame /slh_verify /hash_slh_verify /=;
+  case: (255 < size ctx) => h /=; smt().
+qed.
+
+(* ------------------------------------------------------------------ *)
 (* The external interface                                             *)
 
 section Composition.
@@ -743,5 +849,68 @@ have h5 := prf_proj (B(A)) true &m.
 have h6 := itsr_proj (B(A)) &m.
 smt().
 qed.
+
+(* The game against the specification's scheme is the game against
+   External(SLH_Internal): the two schemes are equivalent procedure by
+   procedure and hold no state of their own. *)
+lemma spec_det_eq &m :
+  Pr[DSE.Stateless.EUF_CMA(External(SLH_Internal), A,
+      DSE.Stateless.O_CMA_Default).main() @ &m : res]
+  = Pr[DSE.Stateless.EUF_CMA(Spec_Det, A, DSE.Stateless.O_CMA_Default).main() @ &m : res].
+proof.
+byequiv => //; proc; inline DSE.Stateless.O_CMA_Default(External(SLH_Internal)).init
+  DSE.Stateless.O_CMA_Default(Spec_Det).init DSE.Stateless.O_CMA_Default(External(SLH_Internal)).fresh
+  DSE.Stateless.O_CMA_Default(Spec_Det).fresh.
+wp; call spec_det_verify.
+call (: ={glob DSE.Stateless.O_CMA_Default}).
++ by proc; wp; call spec_det_sign; auto.
+by wp; call spec_det_keygen; auto.
+qed.
+
+(* EUF-CMA of the FIPS 205 external interface with deterministic signing,
+   stated on the specification's scheme Spec_Det. *)
+lemma slhdsa_euf_cma_spec &m :
+  Pr[DSE.Stateless.EUF_CMA(Spec_Det, A, DSE.Stateless.O_CMA_Default).main() @ &m : res]
+  <= `|Pr[SP.SKG_PRF.PRF(SP.R_SKGPRF_EUFCMA(R(B(A))),
+      SP.SKG_PRF.O_PRF_Default).main (false) @ &m : res] -
+      Pr[SP.SKG_PRF.PRF(SP.R_SKGPRF_EUFCMA(R(B(A))),
+      SP.SKG_PRF.O_PRF_Default).main (true) @ &m : res]|
+   + `|Pr[PRFMsg_PRF.PRF(PP(SP.R_MKGPRF_EUFCMA(R(B(A)))),
+       PRFMsg_PRF.O_PRF_Default).main (false) @ &m : res] -
+       Pr[PRFMsg_PRF.PRF(PP(SP.R_MKGPRF_EUFCMA(R(B(A)))),
+       PRFMsg_PRF.O_PRF_Default).main (true) @ &m : res]|
+   + Pr[HMsg_ITSR.ITSR(PI(SP.FTWES.R_ITSR_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A))))),
+       HMsg_ITSR.O_ITSR_Default).main() @ &m : res]
+   + StdOrder.RealOrder.maxr 0%r (Pr[SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.SM_DT_DSPR(SP.FTWES.FP_OPRETCRDSPR.R_DSPR_OpenPRE(SP.FTWES.R_FPOpenPRE_FOpenPRE(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A))))),
+       SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.O_SMDTDSPR_Default).main () @ &m : res] -
+       Pr[SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.SM_DT_SPprob(SP.FTWES.FP_OPRETCRDSPR.R_DSPR_OpenPRE(SP.FTWES.R_FPOpenPRE_FOpenPRE(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A))))),
+       SP.FTWES.FP_OPRETCRDSPR.FP_DSPR.O_SMDTDSPR_Default).main () @ &m : res])
+   + 3%r * Pr[SP.FTWES.FP_OPRETCRDSPR.FP_TCR.SM_DT_TCR(SP.FTWES.FP_OPRETCRDSPR.R_TCR_OpenPRE(SP.FTWES.R_FPOpenPRE_FOpenPRE(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A))))),
+       SP.FTWES.FP_OPRETCRDSPR.FP_TCR.O_SMDTTCR_Default).main () @ &m : res]
+   + Pr[SP.FTWES.TRHC_TCR.SM_DT_TCR_C(SP.FTWES.R_TRHSMDTTCRC_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A)))),
+       SP.FTWES.TRHC_TCR.O_SMDTTCR_Default, SP.FTWES.TRHC.O_THFC_Default).main() @ &m : res]
+   + Pr[SP.FTWES.TRCOC_TCR.SM_DT_TCR_C(SP.FTWES.R_TRCOSMDTTCRC_EUFCMA(SP.R_MFORSTWESNPRFEUFCMA_EUFCMA(R(B(A)))),
+       SP.FTWES.TRCOC_TCR.O_SMDTTCR_Default, SP.FTWES.TRCOC.O_THFC_Default).main() @ &m : res]
+   + (SP.w -
+       2)%r * `|Pr[SP.FSSLXMTWES.WTWES.FC_UD.SM_DT_UD_C(SP.FSSLXMTWES.WTWES.R_SMDTUDC_Game23WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_UD.O_SMDTUD_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main (false) @ &m : res] -
+       Pr[SP.FSSLXMTWES.WTWES.FC_UD.SM_DT_UD_C(SP.FSSLXMTWES.WTWES.R_SMDTUDC_Game23WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_UD.O_SMDTUD_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main (true) @ &m : res]|
+   + Pr[SP.FSSLXMTWES.WTWES.FC_TCR.SM_DT_TCR_C(SP.FSSLXMTWES.WTWES.R_SMDTTCRC_Game34WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_TCR.O_SMDTTCR_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main () @ &m : res]
+   + Pr[SP.FSSLXMTWES.WTWES.FC_PRE.SM_DT_PRE_C(SP.FSSLXMTWES.WTWES.R_SMDTPREC_Game4WOTSTWES(SP.FSSLXMTWES.R_MEUFGCMAWOTSTWESNPRF_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A))))),
+       SP.FSSLXMTWES.WTWES.FC_PRE.O_SMDTPRE_Default,
+       SP.FSSLXMTWES.WTWES.FC.O_THFC_Default).main () @ &m : res]
+   + Pr[SP.FSSLXMTWES.PKCOC_TCR.SM_DT_TCR_C(SP.FSSLXMTWES.R_SMDTTCRCPKCO_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A)))),
+       SP.FSSLXMTWES.PKCOC_TCR.O_SMDTTCR_Default,
+       SP.FSSLXMTWES.PKCOC.O_THFC_Default).main () @ &m : res]
+   + Pr[SP.FSSLXMTWES.TRHC_TCR.SM_DT_TCR_C(SP.FSSLXMTWES.R_SMDTTCRCTRH_EUFNAGCMA(SP.R_FLSLXMSSMTTWESNPRFEUFNAGCMA_EUFCMA(R(B(A)))),
+       SP.FSSLXMTWES.TRHC_TCR.O_SMDTTCR_Default,
+       SP.FSSLXMTWES.TRHC.O_THFC_Default).main () @ &m : res]
+   + Pr[PH_CR(CF(SLH_Internal, A)).main() @ &m : res].
+proof. by rewrite -spec_det_eq; apply (slhdsa_euf_cma &m). qed.
 
 end section Composition.
