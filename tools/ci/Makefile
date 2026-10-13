@@ -31,8 +31,10 @@
 #                     the tree has Jasmin code but no safety component
 #     ci-diff         differential test of the library against an
 #                     independent implementation, and its negative control
-#     ci-proofs       the EasyCrypt development and its admit scan, and the
-#                     identity of the committed extracted models
+#     ci-proofs       the EasyCrypt development and its admit scan, with
+#                     the number of files checked per group, the axiom and
+#                     theorem inventory, and the identity of the committed
+#                     extracted models
 #     ci-generated    regenerate gen/ and fail on any byte difference
 #     ci-verdict-key  the key under which the verdict of an expensive
 #                     check is recorded (CHECK=<check>, below)
@@ -137,7 +139,7 @@ not_applicable = @echo "$(1): NOT APPLICABLE, the $(2) component is absent (none
 # component adds it here; from then on a tree without any of its
 # directories fails every target, so deleting a component cannot turn its
 # checks into NOT APPLICABLE.
-CI_REQUIRED := hash slhdsa asm
+CI_REQUIRED := hash slhdsa asm proofs
 CI_REQUIRED_UNKNOWN := $(filter-out $(CI_COMPONENTS),$(CI_REQUIRED))
 CI_REQUIRED_MISSING := $(strip $(foreach c,$(CI_REQUIRED),$(if $(call present,$(c)),,$(c))))
 ifneq ($(CI_REQUIRED_UNKNOWN),)
@@ -557,7 +559,10 @@ endif
 
 ci-proofs:
 ifneq ($(CI_PROOFS),)
-	$(MAKE) -C proofs check check-extraction
+	$(call logged,proofs,$(MAKE) -C proofs check)
+	$(CI_COUNTS) proofs $(CI_LOGS)/proofs.log
+	$(MAKE) -C proofs check-inventory
+	$(MAKE) -C proofs check-extraction
 else
 	$(call not_applicable,ci-proofs,proofs)
 endif

@@ -24,6 +24,8 @@
 #               the 28 interface combinations
 #   diff-control
 #               difftest.py --control=corrupt-b: mismatches detected
+#   proofs      proofs/ `make check`: the EasyCrypt files compiled, per
+#               group of files
 #   transcript  the core transcript: 7 lines for each of the 12 sets. This
 #               is a coverage minimum only; whether the lines are right is
 #               checked by comparing the transcripts of all platforms
@@ -62,6 +64,16 @@ RULES = {
          r"^difftest: control=corrupt-b seed=\d+ agree=\d+ verify_only=\d+ "
          r"mismatch=(\d+) notrun=\d+ verdict=FAIL$", 1),
     ],
+    "proofs": [
+        ("imported crypto-specs theories",
+         r"^check-imported: PASS (\d+) files$", 13),
+        ("this project's theories",
+         r"^check-own: PASS (\d+) files$", 6),
+        ("x86-64 portable model and its proofs",
+         r"^check-pair x86_64/scalar: PASS (\d+) files$", 13),
+        ("AArch64 portable model and its proofs",
+         r"^check-pair aarch64/scalar: PASS (\d+) files$", 13),
+    ],
 }
 
 TRANSCRIPT_LINES = 84
@@ -69,7 +81,7 @@ TRANSCRIPT_LINES = 84
 
 def main(argv):
     if len(argv) != 3 or (argv[1] not in RULES and argv[1] != "transcript"):
-        print("usage: counts.py hash|acvp|diff|diff-control|transcript FILE", file=sys.stderr)
+        print("usage: counts.py hash|acvp|diff|diff-control|proofs|transcript FILE", file=sys.stderr)
         return 2
     suite, path = argv[1], argv[2]
     with open(path, encoding="utf-8", errors="replace") as f:
