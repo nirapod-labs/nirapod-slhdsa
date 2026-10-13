@@ -172,6 +172,16 @@ THEOREMS := \
   SHA512_Compress.sha512_rounds_correct SHA512_Compress.sha512_compress_correct \
   SHA512_Compress.sha512_compress_total
 
+# EUF-CMA of the specification, per parameter set: the deterministic and
+# hedged theorems on the spec's own SLH_DSA module (_spec), the same bounds
+# for the internal scheme behind the framing, and the game equalities that
+# link the two.
+SLHDSA_SETS := SHA2_128S SHAKE_128S SHA2_128F SHAKE_128F SHA2_192S SHAKE_192S \
+               SHA2_192F SHAKE_192F SHA2_256S SHAKE_256S SHA2_256F SHAKE_256F
+SLHDSA_THEOREMS := slhdsa_euf_cma_spec slhdsa_euf_cma_hedged_spec \
+                   slhdsa_euf_cma slhdsa_euf_cma_hedged spec_det_eq spec_hedged_eq
+THEOREMS += $(foreach s,$(SLHDSA_SETS),$(foreach t,$(SLHDSA_THEOREMS),SPHINCS_Sets.SLH_DSA_$(s).$(t)))
+
 inventory_file = inventory/$(subst /,-,$(1)).txt
 
 .PHONY: inventory check-inventory inventory-pair
