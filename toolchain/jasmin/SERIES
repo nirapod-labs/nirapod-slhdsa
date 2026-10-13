@@ -28,3 +28,4 @@ patches/0014-safetylib-for-loop-counters-point-to-no-memory-regio.patch 4f8e4d83
 patches/0015-safetylib-faster-start-up-with-large-global-tables.patch 38a2770730871bff8fce2d37392ef8fee963e00eb8388c7181899245524e2870
 patches/0016-changes-changelog-entry-for-the-safety-checker-fixes.patch eb9173fed3d99cb7c7d001d74953a9ef1f117a9f8a92f7010139115b1e34f240
 patches/0017-armv8a-add-EXTR-and-the-bit-field-instructions.patch b825ee2e4a91386396f4c9a393945815959b1a07ed314d75570e69b1b88d9380
+patches/0018-safetylib-implement-the-safety-checker-for-ARMv8-A.patch f74fcc3a734c6adefac99953aad45e5e5a00499b60eed2396ad536ba673e0602

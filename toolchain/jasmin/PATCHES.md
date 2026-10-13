@@ -37,6 +37,7 @@ replaces.
 | 0007-0008 | PR #1594, head `a30c006246fc` | Mach-O relocation operators in ARMv8-A assembly | printer only (trusted) |
 | 0009-0016 | PR #1625, head `02a2330a04c9` | safety checker: unsound verdicts, false alarms, CallTopHeuristic | safety checker (trusted) |
 | 0017 | this project: port of PR #1617, head `00e7e972eeb6` | EXTR, BFC, BFI, BFXIL, SBFX, UBFX | instruction semantics trusted |
+| 0018 | this project | safety checker for ARMv8-A | safety checker (trusted) |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -114,6 +115,30 @@ conditions and removes the assertions and those lemmas, so the semantics is
 total and equal to the old one wherever the conditions hold. 0017 is not
 the pull request's code and is replaced by upstream's revision when there
 is one.
+
+### 0018, safety checker for ARMv8-A (this project)
+
+At the pin, `jasmin-checksafety -arch armv8a` fails with "the safety checker
+is not implemented for ARMv8-A" (`compiler/safetylib/safetyMain.ml`), and the
+safety test runner skips ARMv8-A. The patch instantiates the analysis with the
+abstraction ARMv7-M and RISC-V already use: the outputs of architecture-
+specific operators are unknown, and no comparison or conditional-instruction
+heuristic is applied. Unknown outputs can only cause alarms, never hide one;
+memory and array accesses, initialization and alignment are checked by the
+generic analysis, as on the other architectures.
+
+Tests: the common safety tests now also run on ARMv8-A, and
+`compiler/tests/safety/{success,fail}/armv8a/` cover 64-bit memory and array
+accesses, alignment, the initialization of the memory LDP reads, and an
+operator result used as an index with and without a mask. Upstream status:
+not yet proposed.
+
+A known limit of the generic analysis, seen on both architectures and not
+addressed by this series: an array that two loops fill at run-time indices,
+the second starting where the first stopped, is not recognised as
+initialized, and reading it raises an `is_init` alarm although every byte is
+written first. The alarm is a loss of precision, not of soundness.
+Initializing the array in one pass avoids it.
 
 ## Assembly checks
 
