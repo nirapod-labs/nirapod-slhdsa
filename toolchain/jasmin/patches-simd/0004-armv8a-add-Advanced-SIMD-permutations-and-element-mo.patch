@@ -1,0 +1,831 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Mon, 12 Oct 2026 16:58:20 +0600
+Subject: [PATCH] armv8a: add Advanced SIMD permutations and element moves
+
+EXT, REV32, REV64, TRN1, TRN2, ZIP1, ZIP2, UZP1, UZP2 rearrange the
+elements of vectors; DUP and INS from a general-purpose register or from
+a vector element, and UMOV to a general-purpose register, move single
+elements. Element indices are immediates checked against the number of
+elements of the arrangement. The printer writes element operands as
+Vn.Ts[index].
+---
+ changes/01-feature/armv8a-advanced-simd.md    |   2 +
+ compiler/src/pp_arm_v8a.ml                    |  41 +++
+ .../fail/asmgen/armv8a/vext_index_range.jazz  |   9 +
+ .../fail/asmgen/armv8a/vins_index_range.jazz  |  10 +
+ compiler/tests/negative.expected              |  22 +-
+ compiler/tests/success/armv8a/simd_lanes.jazz |  26 ++
+ eclib/JModel_armv8a.ec                        | 183 ++++++++++++
+ proofs/compiler/armv8a_decl.v                 |  11 +-
+ proofs/compiler/armv8a_instr_decl.v           | 274 +++++++++++++++++-
+ proofs/compiler/armv8a_simd.v                 |  49 +++-
+ 10 files changed, 622 insertions(+), 5 deletions(-)
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vext_index_range.jazz
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vins_index_range.jazz
+ create mode 100644 compiler/tests/success/armv8a/simd_lanes.jazz
+
+diff --git a/changes/01-feature/armv8a-advanced-simd.md b/changes/01-feature/armv8a-advanced-simd.md
+index 812b708c2..85bc5aeb4 100644
+--- a/changes/01-feature/armv8a-advanced-simd.md
++++ b/changes/01-feature/armv8a-advanced-simd.md
+@@ -6,3 +6,5 @@
+ - armv8a: add the SHA-256 and SHA-512 instructions SHA256H, SHA256H2,
+   SHA256SU0, SHA256SU1, SHA512H, SHA512H2, SHA512SU0 and SHA512SU1.
+ - armv8a: add the SHA-3 instructions EOR3, BCAX, RAX1 and XAR.
++- armv8a: add the Advanced SIMD permutations and element moves EXT, REV32,
++  REV64, TRN1, TRN2, ZIP1, ZIP2, UZP1, UZP2, DUP, INS and UMOV.
+diff --git a/compiler/src/pp_arm_v8a.ml b/compiler/src/pp_arm_v8a.ml
+index 63a95e7eb..ead9c2f9d 100644
+--- a/compiler/src/pp_arm_v8a.ml
++++ b/compiler/src/pp_arm_v8a.ml
+@@ -81,6 +81,20 @@ let pp_vregister (sz : Wsize.wsize) (r : vregister) =
+       hierror ~loc:Lnone ~kind:"assembly printing" ~internal:true
+         "no 256-bit view of a SIMD&FP register"
+ 
++(* A vector element operand [Vn.Ts[index]], for the element size [sz]. *)
++let pp_velement (sz : Wsize.wsize) (r : vregister) index =
++  let ts =
++    match sz with
++    | Wsize.U8 -> "b"
++    | Wsize.U16 -> "h"
++    | Wsize.U32 -> "s"
++    | Wsize.U64 -> "d"
++    | _ ->
++        hierror ~loc:Lnone ~kind:"assembly printing" ~internal:true
++          "no vector element of this size"
++  in
++  Format.asprintf "%s.%s[%s]" (pp_vregister_name r) ts (Z.to_string index)
++
+ (* A64 has no conditional execution: a condition is always a proper operand
+    (CSEL, CSET, ...), declared last in the argument list, so it is printed
+    in place like any other operand. *)
+@@ -256,6 +270,33 @@ module Armv8aTarget : AsmTargetBuilder.AsmTarget with
+               | MOVZ | MOVN | MOVK -> pp_mov_wide_shift pargs
+               | _ -> pp_shift op pargs
+             in
++            (* The element operands of DUP (element), INS and UMOV: the
++               description gives the register, paired with the element
++               size, followed by the index (see armv8a_instr_decl.v). *)
++            let index = function
++              | (_, Imm (ws, w)) -> Conv.z_unsigned_of_word ws w
++              | _ ->
++                  hierror ~loc:Lnone ~kind:"assembly printing" ~internal:true
++                    "vector element index is not an immediate"
++            in
++            let element (sz, a) i =
++              match a with
++              | XReg r -> pp_velement sz r (index i)
++              | _ ->
++                  hierror ~loc:Lnone ~kind:"assembly printing" ~internal:true
++                    "vector element of a non-vector register"
++            in
++            let pargs =
++              match mn, pp.pp_aop_args, pargs with
++              | VDUPE, [ _; n; i ], [ d; _; _ ] -> [ d; element n i ]
++              | VINS, [ d; _; i ], [ _; r; _ ] -> [ element d i; r ]
++              | VINSE, [ d; n; i; j ], _ -> [ element d i; element n j ]
++              | VUMOV, [ _; n; i ], [ r; _; _ ] -> [ r; element n i ]
++              | (VDUPE | VINS | VINSE | VUMOV), _, _ ->
++                  hierror ~loc:Lnone ~kind:"assembly printing" ~internal:true
++                    "unexpected operands of a vector element instruction"
++              | _, _, _ -> pargs
++            in
+             [ Instr (name, pargs) ]
+ 
+ end
+diff --git a/compiler/tests/fail/asmgen/armv8a/vext_index_range.jazz b/compiler/tests/fail/asmgen/armv8a/vext_index_range.jazz
+new file mode 100644
+index 000000000..6027dd655
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vext_index_range.jazz
+@@ -0,0 +1,9 @@
++/* EXT of 16B vectors takes a byte position in [0, 15]. */
++export
++fn vext_index_range(reg u64 p) {
++    reg u128 a b;
++    a = [:u128 p];
++    b = [:u128 p + 16];
++    a = #VEXT(a, b, 16);
++    [:u128 p] = a;
++}
+diff --git a/compiler/tests/fail/asmgen/armv8a/vins_index_range.jazz b/compiler/tests/fail/asmgen/armv8a/vins_index_range.jazz
+new file mode 100644
+index 000000000..f30bb9ebc
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vins_index_range.jazz
+@@ -0,0 +1,10 @@
++/* A 4S vector has elements 0 to 3. */
++export
++fn vins_index_range(reg u64 p) {
++    reg u128 a;
++    reg u32 w;
++    a = [:u128 p];
++    w = [:u32 p + 16];
++    a = #VINS_4u32(a, w, 4);
++    [:u128 p] = a;
++}
+diff --git a/compiler/tests/negative.expected b/compiler/tests/negative.expected
+index dd3d230bd..802c971df 100644
+--- a/compiler/tests/negative.expected
++++ b/compiler/tests/negative.expected
+@@ -592,6 +592,26 @@ Allowed args compatible with the input (except on immediate sizes and address sh
+ All allowed args (regardless of the input) are:
+   [[reg]; [reg]; [mem (glob not allowed) [Xn|SP, #imm], imm a multiple of 8 in [-512, 504]]]
+ 
++fail/asmgen/armv8a/vext_index_range.jazz:
++
++"fail/asmgen/armv8a/vext_index_range.jazz", line 7 (4-24):
++compilation error in function vext_index_range:
++asmgen: instruction VEXT is given at least one too large immediate as an argument.
++Allowed args compatible with the input (except on immediate sizes) are:
++  [[xreg]; [xreg]; [xreg]; [imm 8 [0, 15]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [xreg]; [xreg]; [imm 8 [0, 15]]]
++
++fail/asmgen/armv8a/vins_index_range.jazz:
++
++"fail/asmgen/armv8a/vins_index_range.jazz", line 8 (4-28):
++compilation error in function vins_index_range:
++asmgen: instruction VINS_4u32 is given at least one too large immediate as an argument.
++Allowed args compatible with the input (except on immediate sizes) are:
++  [[xreg]; [reg]; [imm 8 [0, 3]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [reg]; [imm 8 [0, 3]]]
++
+ fail/asmgen/armv8a/vldr_offset_range.jazz:
+ 
+ "fail/asmgen/armv8a/vldr_offset_range.jazz", line 5 (4-26):
+@@ -2156,4 +2176,4 @@ Statistics:
+ 	Pretyping:  65
+ 	Parsing:     5
+ 	Typing:      5
+-	Compile:   254
++	Compile:   256
+diff --git a/compiler/tests/success/armv8a/simd_lanes.jazz b/compiler/tests/success/armv8a/simd_lanes.jazz
+new file mode 100644
+index 000000000..c9ad16eac
+--- /dev/null
++++ b/compiler/tests/success/armv8a/simd_lanes.jazz
+@@ -0,0 +1,26 @@
++/* Advanced SIMD permutations and element moves. */
++export
++fn simd_lanes(reg u64 p) -> reg u64 {
++    reg u128 a b c;
++    reg u32 w;
++    reg u64 x;
++    a = [:u128 p];
++    b = [:u128 p + 16];
++    c = #VEXT(a, b, 8);
++    c = #VREV32_16u8(c);
++    c = #VREV64_4u32(c);
++    c = #VTRN1_4u32(c, a);
++    c = #VTRN2_2u64(c, b);
++    c = #VZIP1_16u8(c, a);
++    c = #VZIP2_8u16(c, b);
++    c = #VUZP1_4u32(c, a);
++    c = #VUZP2_2u64(c, b);
++    w = #VUMOV_4u32(c, 3);
++    c = #VDUP_16u8(w);
++    c = #VINS_4u32(c, w, 1);
++    c = #VINSE_2u64(c, a, 1, 0);
++    c = #VDUPE_8u16(c, 7);
++    x = #VUMOV_2u64(c, 1);
++    [:u128 p + 32] = c;
++    return x;
++}
+diff --git a/eclib/JModel_armv8a.ec b/eclib/JModel_armv8a.ec
+index 9863eaca7..e23c3c360 100644
+--- a/eclib/JModel_armv8a.ec
++++ b/eclib/JModel_armv8a.ec
+@@ -500,3 +500,186 @@ op RAX1 (n m: W128.t) : W128.t = n +^ W2u64.map (fun (e: W64.t) => e `|<<<|` 1)
+ 
+ op XAR (n m: W128.t) (imm: W8.t) : W128.t =
+   W2u64.map (fun (e: W64.t) => e `|>>>|` to_uint imm) (n +^ m).
++
++(* -------------------------------------------------------------------- *)
++(* Advanced SIMD permutations and element moves. Elements are indexed from
++   the least significant end ([w \bitsN i]). An element index at or beyond
++   the number of elements selects no element of a register: reading gives
++   0 and writing changes nothing, as in the Rocq semantics; assembly
++   generation only accepts indices in range. *)
++
++op VEXT (n m: W128.t) (imm: W8.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun k =>
++    let j = k + to_uint imm in
++    if j < 16 then n \bits8 j else if j < 32 then m \bits8 (j - 16) else W8.zero)).
++
++op VREV32_16u8 (x: W128.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun k => x \bits8 (k %/ 4 * 4 + (4 - 1 - k %% 4)))).
++
++op VREV64_16u8 (x: W128.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun k => x \bits8 (k %/ 8 * 8 + (8 - 1 - k %% 8)))).
++
++op VREV32_8u16 (x: W128.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun k => x \bits16 (k %/ 2 * 2 + (2 - 1 - k %% 2)))).
++
++op VREV64_8u16 (x: W128.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun k => x \bits16 (k %/ 4 * 4 + (4 - 1 - k %% 4)))).
++
++op VREV64_4u32 (x: W128.t) : W128.t =
++  W4u32.pack4_t (W4u32.Pack.init (fun k => x \bits32 (k %/ 2 * 2 + (2 - 1 - k %% 2)))).
++
++op VTRN1_16u8 (n m: W128.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits8 (k + 0) else m \bits8 (k - 1 + 0))).
++
++op VZIP1_16u8 (n m: W128.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits8 (0 * 8 + k %/ 2) else m \bits8 (0 * 8 + k %/ 2))).
++
++op VUZP1_16u8 (n m: W128.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun k =>
++    if 2 * k + 0 < 16 then n \bits8 (2 * k + 0) else m \bits8 (2 * k + 0 - 16))).
++
++op VTRN2_16u8 (n m: W128.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits8 (k + 1) else m \bits8 (k - 1 + 1))).
++
++op VZIP2_16u8 (n m: W128.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits8 (1 * 8 + k %/ 2) else m \bits8 (1 * 8 + k %/ 2))).
++
++op VUZP2_16u8 (n m: W128.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun k =>
++    if 2 * k + 1 < 16 then n \bits8 (2 * k + 1) else m \bits8 (2 * k + 1 - 16))).
++
++op VTRN1_8u16 (n m: W128.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits16 (k + 0) else m \bits16 (k - 1 + 0))).
++
++op VZIP1_8u16 (n m: W128.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits16 (0 * 4 + k %/ 2) else m \bits16 (0 * 4 + k %/ 2))).
++
++op VUZP1_8u16 (n m: W128.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun k =>
++    if 2 * k + 0 < 8 then n \bits16 (2 * k + 0) else m \bits16 (2 * k + 0 - 8))).
++
++op VTRN2_8u16 (n m: W128.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits16 (k + 1) else m \bits16 (k - 1 + 1))).
++
++op VZIP2_8u16 (n m: W128.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits16 (1 * 4 + k %/ 2) else m \bits16 (1 * 4 + k %/ 2))).
++
++op VUZP2_8u16 (n m: W128.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun k =>
++    if 2 * k + 1 < 8 then n \bits16 (2 * k + 1) else m \bits16 (2 * k + 1 - 8))).
++
++op VTRN1_4u32 (n m: W128.t) : W128.t =
++  W4u32.pack4_t (W4u32.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits32 (k + 0) else m \bits32 (k - 1 + 0))).
++
++op VZIP1_4u32 (n m: W128.t) : W128.t =
++  W4u32.pack4_t (W4u32.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits32 (0 * 2 + k %/ 2) else m \bits32 (0 * 2 + k %/ 2))).
++
++op VUZP1_4u32 (n m: W128.t) : W128.t =
++  W4u32.pack4_t (W4u32.Pack.init (fun k =>
++    if 2 * k + 0 < 4 then n \bits32 (2 * k + 0) else m \bits32 (2 * k + 0 - 4))).
++
++op VTRN2_4u32 (n m: W128.t) : W128.t =
++  W4u32.pack4_t (W4u32.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits32 (k + 1) else m \bits32 (k - 1 + 1))).
++
++op VZIP2_4u32 (n m: W128.t) : W128.t =
++  W4u32.pack4_t (W4u32.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits32 (1 * 2 + k %/ 2) else m \bits32 (1 * 2 + k %/ 2))).
++
++op VUZP2_4u32 (n m: W128.t) : W128.t =
++  W4u32.pack4_t (W4u32.Pack.init (fun k =>
++    if 2 * k + 1 < 4 then n \bits32 (2 * k + 1) else m \bits32 (2 * k + 1 - 4))).
++
++op VTRN1_2u64 (n m: W128.t) : W128.t =
++  W2u64.pack2_t (W2u64.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits64 (k + 0) else m \bits64 (k - 1 + 0))).
++
++op VZIP1_2u64 (n m: W128.t) : W128.t =
++  W2u64.pack2_t (W2u64.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits64 (0 * 1 + k %/ 2) else m \bits64 (0 * 1 + k %/ 2))).
++
++op VUZP1_2u64 (n m: W128.t) : W128.t =
++  W2u64.pack2_t (W2u64.Pack.init (fun k =>
++    if 2 * k + 0 < 2 then n \bits64 (2 * k + 0) else m \bits64 (2 * k + 0 - 2))).
++
++op VTRN2_2u64 (n m: W128.t) : W128.t =
++  W2u64.pack2_t (W2u64.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits64 (k + 1) else m \bits64 (k - 1 + 1))).
++
++op VZIP2_2u64 (n m: W128.t) : W128.t =
++  W2u64.pack2_t (W2u64.Pack.init (fun k =>
++    if k %% 2 = 0 then n \bits64 (1 * 1 + k %/ 2) else m \bits64 (1 * 1 + k %/ 2))).
++
++op VUZP2_2u64 (n m: W128.t) : W128.t =
++  W2u64.pack2_t (W2u64.Pack.init (fun k =>
++    if 2 * k + 1 < 2 then n \bits64 (2 * k + 1) else m \bits64 (2 * k + 1 - 2))).
++
++op VDUP_16u8 (x: W32.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun _ => W8.of_int (W32.to_uint x))).
++
++op VDUPE_16u8 (n: W128.t) (i: W8.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun _ => n \bits8 (to_uint i))).
++
++op VINS_16u8 (d: W128.t) (x: W32.t) (i: W8.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun k => if k = to_uint i then W8.of_int (W32.to_uint x) else d \bits8 k)).
++
++op VINSE_16u8 (d n: W128.t) (i j: W8.t) : W128.t =
++  W16u8.pack16_t (W16u8.Pack.init (fun k => if k = to_uint i then n \bits8 (to_uint j) else d \bits8 k)).
++
++op VUMOV_16u8 (n: W128.t) (i: W8.t) : W32.t =
++  W32.of_int (W8.to_uint (n \bits8 (to_uint i))).
++
++op VDUP_8u16 (x: W32.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun _ => W16.of_int (W32.to_uint x))).
++
++op VDUPE_8u16 (n: W128.t) (i: W8.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun _ => n \bits16 (to_uint i))).
++
++op VINS_8u16 (d: W128.t) (x: W32.t) (i: W8.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun k => if k = to_uint i then W16.of_int (W32.to_uint x) else d \bits16 k)).
++
++op VINSE_8u16 (d n: W128.t) (i j: W8.t) : W128.t =
++  W8u16.pack8_t (W8u16.Pack.init (fun k => if k = to_uint i then n \bits16 (to_uint j) else d \bits16 k)).
++
++op VUMOV_8u16 (n: W128.t) (i: W8.t) : W32.t =
++  W32.of_int (W16.to_uint (n \bits16 (to_uint i))).
++
++op VDUP_4u32 (x: W32.t) : W128.t =
++  W4u32.pack4_t (W4u32.Pack.init (fun _ => x)).
++
++op VDUPE_4u32 (n: W128.t) (i: W8.t) : W128.t =
++  W4u32.pack4_t (W4u32.Pack.init (fun _ => n \bits32 (to_uint i))).
++
++op VINS_4u32 (d: W128.t) (x: W32.t) (i: W8.t) : W128.t =
++  W4u32.pack4_t (W4u32.Pack.init (fun k => if k = to_uint i then x else d \bits32 k)).
++
++op VINSE_4u32 (d n: W128.t) (i j: W8.t) : W128.t =
++  W4u32.pack4_t (W4u32.Pack.init (fun k => if k = to_uint i then n \bits32 (to_uint j) else d \bits32 k)).
++
++op VUMOV_4u32 (n: W128.t) (i: W8.t) : W32.t =
++  n \bits32 (to_uint i).
++
++op VDUP_2u64 (x: W64.t) : W128.t =
++  W2u64.pack2_t (W2u64.Pack.init (fun _ => x)).
++
++op VDUPE_2u64 (n: W128.t) (i: W8.t) : W128.t =
++  W2u64.pack2_t (W2u64.Pack.init (fun _ => n \bits64 (to_uint i))).
++
++op VINS_2u64 (d: W128.t) (x: W64.t) (i: W8.t) : W128.t =
++  W2u64.pack2_t (W2u64.Pack.init (fun k => if k = to_uint i then x else d \bits64 k)).
++
++op VINSE_2u64 (d n: W128.t) (i j: W8.t) : W128.t =
++  W2u64.pack2_t (W2u64.Pack.init (fun k => if k = to_uint i then n \bits64 (to_uint j) else d \bits64 k)).
++
++op VUMOV_2u64 (n: W128.t) (i: W8.t) : W64.t =
++  n \bits64 (to_uint i).
+diff --git a/proofs/compiler/armv8a_decl.v b/proofs/compiler/armv8a_decl.v
+index 7fdf44617..fe47dab3f 100644
+--- a/proofs/compiler/armv8a_decl.v
++++ b/proofs/compiler/armv8a_decl.v
+@@ -341,7 +341,10 @@ Notation xregister := vregister.
+      [0, esize - 1] (SHL (vector), operand description); with [esize = 64],
+      also the rotation of XAR, encoded in the 6-bit field imm6.
+    - [CAimmC_armv8a_vshr esize]: a right shift amount (USHR, SRI) in
+-     [1, esize] (USHR (vector), operand description). *)
++     [1, esize] (USHR (vector), operand description).
++   - [CAimmC_armv8a_vindex esize]: an element index in
++     [0, 128 / esize - 1] (DUP (element), INS, UMOV); with [esize = 8] also
++     the byte position of EXT, in [0, 15] for the 16B arrangement. *)
+ #[only(eqbOK)] derive
+ Variant armv8a_caimm_cond :=
+   | CAimmC_armv8a_shift_amount of wsize
+@@ -350,7 +353,8 @@ Variant armv8a_caimm_cond :=
+   | CAimmC_armv8a_bitmask_imm
+   | CAimmC_armv8a_mov_imm
+   | CAimmC_armv8a_vshl of wsize
+-  | CAimmC_armv8a_vshr of wsize.
++  | CAimmC_armv8a_vshr of wsize
++  | CAimmC_armv8a_vindex of wsize.
+ 
+ #[ export ]
+ Instance eqTC_armv8a_caimm_cond : eqTypeC armv8a_caimm_cond :=
+@@ -366,6 +370,7 @@ Definition armv8a_check_CAimm (checker : armv8a_caimm_cond) ws (w : word ws) : b
+   | CAimmC_armv8a_mov_imm => is_mov_imm ws (wunsigned w)
+   | CAimmC_armv8a_vshl ve => (wunsigned w <? wsize_bits ve)%Z
+   | CAimmC_armv8a_vshr ve => (0 <? wunsigned w)%Z && (wunsigned w <=? wsize_bits ve)%Z
++  | CAimmC_armv8a_vindex ve => (wunsigned w <? wsize_size U128 / wsize_size ve)%Z
+   end.
+ 
+ Definition armv8a_caimm_cond_pp (checker : armv8a_caimm_cond) : string :=
+@@ -380,6 +385,8 @@ Definition armv8a_caimm_cond_pp (checker : armv8a_caimm_cond) : string :=
+       match ve with U8 => "[0, 7]" | U16 => "[0, 15]" | U32 => "[0, 31]" | _ => "[0, 63]" end
+   | CAimmC_armv8a_vshr ve =>
+       match ve with U8 => "[1, 8]" | U16 => "[1, 16]" | U32 => "[1, 32]" | _ => "[1, 64]" end
++  | CAimmC_armv8a_vindex ve =>
++      match ve with U8 => "[0, 15]" | U16 => "[0, 7]" | U32 => "[0, 3]" | _ => "[0, 1]" end
+   end%string.
+ 
+ (* Memory-argument conditions (see [camem_cond] in arch_decl.v).
+diff --git a/proofs/compiler/armv8a_instr_decl.v b/proofs/compiler/armv8a_instr_decl.v
+index 4a3c7d327..46b224cda 100644
+--- a/proofs/compiler/armv8a_instr_decl.v
++++ b/proofs/compiler/armv8a_instr_decl.v
+@@ -204,7 +204,23 @@ Variant armv8a_mnemonic : Type :=
+ | EOR3                           (* Three-way exclusive-OR *)
+ | BCAX                           (* Bit clear and exclusive-OR *)
+ | RAX1                           (* Rotate and exclusive-OR *)
+-| XAR.                           (* Exclusive-OR and rotate *)
++| XAR                            (* Exclusive-OR and rotate *)
++
++(* Advanced SIMD permutations and element moves. *)
++| VEXT                           (* Extract vector from a pair of vectors *)
++| VREV32                         (* Reverse elements in 32-bit words *)
++| VREV64                         (* Reverse elements in 64-bit doublewords *)
++| VTRN1                          (* Transpose vectors, primary *)
++| VTRN2                          (* Transpose vectors, secondary *)
++| VZIP1                          (* Zip vectors, primary *)
++| VZIP2                          (* Zip vectors, secondary *)
++| VUZP1                          (* Unzip vectors, primary *)
++| VUZP2                          (* Unzip vectors, secondary *)
++| VDUP                           (* Duplicate a general-purpose register *)
++| VDUPE                          (* Duplicate a vector element *)
++| VINS                           (* Insert a general-purpose register *)
++| VINSE                          (* Insert a vector element *)
++| VUMOV.                         (* Move a vector element to a general-purpose register *)
+ 
+ #[ export ]
+ Instance eqTC_armv8a_mnemonic : eqTypeC armv8a_mnemonic :=
+@@ -233,6 +249,9 @@ Definition armv8a_mnemonics : seq armv8a_mnemonic :=
+     ; SHA256H; SHA256H2; SHA256SU0; SHA256SU1
+     ; SHA512H; SHA512H2; SHA512SU0; SHA512SU1
+     ; EOR3; BCAX; RAX1; XAR
++    ; VEXT; VREV32; VREV64
++    ; VTRN1; VTRN2; VZIP1; VZIP2; VUZP1; VUZP2
++    ; VDUP; VDUPE; VINS; VINSE; VUMOV
+   ].
+ 
+ Lemma armv8a_mnemonic_fin_axiom : Finite.axiom armv8a_mnemonics.
+@@ -422,6 +441,20 @@ Definition string_of_armv8a_mnemonic (mn : armv8a_mnemonic) : string :=
+   | BCAX => "BCAX"
+   | RAX1 => "RAX1"
+   | XAR => "XAR"
++  | VEXT => "VEXT"
++  | VREV32 => "VREV32"
++  | VREV64 => "VREV64"
++  | VTRN1 => "VTRN1"
++  | VTRN2 => "VTRN2"
++  | VZIP1 => "VZIP1"
++  | VZIP2 => "VZIP2"
++  | VUZP1 => "VUZP1"
++  | VUZP2 => "VUZP2"
++  | VDUP => "VDUP"
++  | VDUPE => "VDUPE"
++  | VINS => "VINS"
++  | VINSE => "VINSE"
++  | VUMOV => "VUMOV"
+   end%string.
+ 
+ (* Assembly mnemonic of the Advanced SIMD instructions. *)
+@@ -441,6 +474,18 @@ Definition vasm_name (mn : armv8a_mnemonic) : string :=
+   | VUSHR => "USHR"
+   | VSRI => "SRI"
+   | VSLI => "SLI"
++  | VEXT => "EXT"
++  | VREV32 => "REV32"
++  | VREV64 => "REV64"
++  | VTRN1 => "TRN1"
++  | VTRN2 => "TRN2"
++  | VZIP1 => "ZIP1"
++  | VZIP2 => "ZIP2"
++  | VUZP1 => "UZP1"
++  | VUZP2 => "UZP2"
++  | VDUP | VDUPE => "DUP"
++  | VINS | VINSE => "INS"
++  | VUMOV => "UMOV"
+   | _ => string_of_armv8a_mnemonic mn
+   end%string.
+ 
+@@ -457,6 +502,11 @@ Definition vector_esizes (mn : armv8a_mnemonic) : seq wsize :=
+   | SHA512H | SHA512H2 | SHA512SU0 | SHA512SU1 => [:: U64 ]
+   | EOR3 | BCAX => [:: U8 ]
+   | RAX1 | XAR => [:: U64 ]
++  | VEXT => [:: U8 ]
++  | VREV32 => [:: U8; U16 ]
++  | VREV64 => [:: U8; U16; U32 ]
++  | VTRN1 | VTRN2 | VZIP1 | VZIP2 | VUZP1 | VUZP2
++  | VDUP | VDUPE | VINS | VINSE | VUMOV => [:: U8; U16; U32; U64 ]
+   | _ => [::]
+   end.
+ 
+@@ -3631,6 +3681,214 @@ Definition armv8a_XAR_semi (wn wm : word U128) (imm : word U8) : ty_v :=
+ Definition armv8a_XAR_instr : instr_desc_t :=
+   mk_v2_imm_instr XAR (CAimmC_armv8a_vshl U64) armv8a_XAR_semi.
+ 
++
++(* -------------------------------------------------------------------- *)
++(* Permutations and element moves.
++   A general-purpose operand is a W register for elements of at most 32 bits
++   and an X register for 64-bit elements ([gsz]). An element operand is
++   printed as [Vn.Ts[index]]: its description pairs the register with the
++   element size and is followed by the index, which the assembly printer
++   folds into the operand. *)
++
++Notation gsz := (if esize == U64 then U64 else U32) (only parsing).
++
++(* [EXT] ARM DDI 0602 2026-03
++   Syntax: EXT <Vd>.16B, <Vn>.16B, <Vm>.16B, #<index>
++   The index is in [0, 15] for the 16B arrangement.
++   Semantics: the 16 bytes starting at byte [index] of the 32-byte value
++   whose low half is Vn and high half Vm. *)
++Definition armv8a_VEXT_semi (wn wm : word U128) (idx : word U8) : ty_v :=
++  vext wn wm (vindex idx).
++
++Definition armv8a_VEXT_instr : instr_desc_t :=
++  mk_v2_imm_instr VEXT (CAimmC_armv8a_vindex U8) armv8a_VEXT_semi.
++
++(* [REV32 (vector)] ARM DDI 0602 2026-03
++   Syntax: REV32 <Vd>.<T>, <Vn>.<T>   (T in 16B, 8H)
++   Semantics: the order of the elements is reversed within each 32-bit
++   container. *)
++Definition armv8a_VREV32_semi (ve : wsize) (wn : word U128) : ty_v :=
++  lift1_vec U32 (vrev_elems ve) U128 wn.
++
++Definition armv8a_VREV32_instr : instr_desc_t :=
++  mk_v1_instr VREV32 (armv8a_VREV32_semi esize).
++
++(* [REV64 (vector)] ARM DDI 0602 2026-03
++   Syntax: REV64 <Vd>.<T>, <Vn>.<T>   (T in 16B, 8H, 4S)
++   Semantics: as REV32, within each 64-bit container. *)
++Definition armv8a_VREV64_semi (ve : wsize) (wn : word U128) : ty_v :=
++  lift1_vec U64 (vrev_elems ve) U128 wn.
++
++Definition armv8a_VREV64_instr : instr_desc_t :=
++  mk_v1_instr VREV64 (armv8a_VREV64_semi esize).
++
++(* [TRN1], [TRN2] ARM DDI 0602 2026-03
++   Syntax: TRN1 <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
++   Semantics (part = 0 for TRN1, 1 for TRN2): result pair p is
++   (Vn[2p + part], Vm[2p + part]). *)
++Definition armv8a_VTRN1_instr : instr_desc_t := mk_v2_instr VTRN1 (vtrn esize 0).
++Definition armv8a_VTRN2_instr : instr_desc_t := mk_v2_instr VTRN2 (vtrn esize 1).
++
++(* [ZIP1], [ZIP2] ARM DDI 0602 2026-03
++   Syntax: ZIP1 <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
++   Semantics (part = 0 for ZIP1, 1 for ZIP2): with half the number of
++   elements h, result pair p is (Vn[part * h + p], Vm[part * h + p]). *)
++Definition armv8a_VZIP1_instr : instr_desc_t := mk_v2_instr VZIP1 (vzip esize 0).
++Definition armv8a_VZIP2_instr : instr_desc_t := mk_v2_instr VZIP2 (vzip esize 1).
++
++(* [UZP1], [UZP2] ARM DDI 0602 2026-03
++   Syntax: UZP1 <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
++   Semantics (part = 0 for UZP1, 1 for UZP2): result element e is element
++   2e + part of the sequence of the elements of Vn followed by those of
++   Vm. *)
++Definition armv8a_VUZP1_instr : instr_desc_t := mk_v2_instr VUZP1 (vuzp esize 0).
++Definition armv8a_VUZP2_instr : instr_desc_t := mk_v2_instr VUZP2 (vuzp esize 1).
++
++(* [DUP (general)] ARM DDI 0602 2026-03
++   Syntax: DUP <Vd>.<T>, <R><n>   (R is W for 8, 16 and 32-bit elements, X for 64)
++   Semantics: the low [esize] bits of the general-purpose register in
++   every element. *)
++Definition armv8a_VDUP_semi (ve : wsize) {gs : wsize} (x : word gs) : ty_v :=
++  @vbroadcast ve (zero_extend ve x).
++
++Definition armv8a_VDUP_instr : instr_desc_t :=
++  let tin := [:: lword gsz ] in
++  let semi := armv8a_VDUP_semi esize (gs := gsz) in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Ea 1 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 2;
++    id_args_kinds := [:: [:: [:: CAxmm ]; [:: CAreg ] ] ];
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str VDUP;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop VDUP [:: esize; gsz ];
++    id_valid := vvalid VDUP;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* [DUP (element)] ARM DDI 0602 2026-03
++   Syntax: DUP <Vd>.<T>, <Vn>.<Ts>[<index>]
++   Semantics: element [index] of Vn in every element. *)
++Definition armv8a_VDUPE_semi (ve : wsize) (wn : word U128) (idx : word U8) : ty_v :=
++  @vbroadcast ve (velem_at ve wn (vindex idx)).
++
++Definition armv8a_VDUPE_instr : instr_desc_t :=
++  mk_v1_imm_instr VDUPE (CAimmC_armv8a_vindex esize) (armv8a_VDUPE_semi esize).
++
++(* [INS (general)] ARM DDI 0602 2026-03 (alias MOV)
++   Syntax: INS <Vd>.<Ts>[<index>], <R><n>
++   Semantics: Vd with element [index] replaced by the low [esize] bits of
++   the general-purpose register. *)
++Definition armv8a_VINS_semi (ve : wsize) {gs : wsize}
++  (wd : word U128) (x : word gs) (idx : word U8) : ty_v :=
++  @vset_elem ve wd (vindex idx) (zero_extend ve x).
++
++Definition armv8a_VINS_instr : instr_desc_t :=
++  let tin := [:: lvec; lword gsz; lword U8 ] in
++  let semi := armv8a_VINS_semi esize (gs := gsz) in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Ea 0; Ea 1; Ea 2 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 3;
++    id_args_kinds :=
++      [:: [:: [:: CAxmm ]; [:: CAreg ]; [:: CAimm (Some (CAimmC_armv8a_vindex esize)) U8 ] ] ];
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str VINS;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop VINS [:: esize; gsz; U8 ];
++    id_valid := vvalid VINS;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* [INS (element)] ARM DDI 0602 2026-03 (alias MOV)
++   Syntax: INS <Vd>.<Ts>[<index1>], <Vn>.<Ts>[<index2>]
++   Semantics: Vd with element [index1] replaced by element [index2] of
++   Vn. *)
++Definition armv8a_VINSE_semi (ve : wsize)
++  (wd wn : word U128) (di si : word U8) : ty_v :=
++  @vset_elem ve wd (vindex di) (velem_at ve wn (vindex si)).
++
++Definition armv8a_VINSE_instr : instr_desc_t :=
++  let tin := [:: lvec; lvec; lword U8; lword U8 ] in
++  let semi := armv8a_VINSE_semi esize in
++  let idx := CAimm (Some (CAimmC_armv8a_vindex esize)) U8 in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Ea 0; Ea 1; Ea 2; Ea 3 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 4;
++    id_args_kinds := [:: [:: [:: CAxmm ]; [:: CAxmm ]; [:: idx ]; [:: idx ] ] ];
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str VINSE;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop VINSE [:: esize; esize; U8; U8 ];
++    id_valid := vvalid VINSE;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* [UMOV] ARM DDI 0602 2026-03
++   Syntax: UMOV <Wd>, <Vn>.<Ts>[<index>]   (B, H, S)
++           UMOV <Xd>, <Vn>.D[<index>]
++   Semantics: element [index] of Vn, zero-extended to the destination.
++   A W destination clears the upper 32 bits of the X register
++   ([MSB_CLEAR]). *)
++Definition armv8a_VUMOV_semi (ve gs : wsize) (wn : word U128) (idx : word U8)
++  : sem_ltuple [:: lword gs ] :=
++  zero_extend gs (velem_at ve wn (vindex idx)).
++
++Definition armv8a_VUMOV_instr : instr_desc_t :=
++  let tin := [:: lvec; lword U8 ] in
++  let semi := armv8a_VUMOV_semi esize gsz in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Ea 1; Ea 2 ];
++    id_tout := [:: lword gsz ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 3;
++    id_args_kinds :=
++      [:: [:: [:: CAreg ]; [:: CAxmm ]; [:: CAimm (Some (CAimmC_armv8a_vindex esize)) U8 ] ] ];
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str VUMOV;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop VUMOV [:: gsz; esize; U8 ];
++    id_valid := vvalid VUMOV;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
+ (* -------------------------------------------------------------------- *)
+ (* Description of instructions. *)
+ 
+@@ -3736,6 +3994,20 @@ Definition mn_desc (mn : armv8a_mnemonic) : instr_desc_t :=
+   | BCAX => armv8a_BCAX_instr
+   | RAX1 => armv8a_RAX1_instr
+   | XAR => armv8a_XAR_instr
++  | VEXT => armv8a_VEXT_instr
++  | VREV32 => armv8a_VREV32_instr
++  | VREV64 => armv8a_VREV64_instr
++  | VTRN1 => armv8a_VTRN1_instr
++  | VTRN2 => armv8a_VTRN2_instr
++  | VZIP1 => armv8a_VZIP1_instr
++  | VZIP2 => armv8a_VZIP2_instr
++  | VUZP1 => armv8a_VUZP1_instr
++  | VUZP2 => armv8a_VUZP2_instr
++  | VDUP => armv8a_VDUP_instr
++  | VDUPE => armv8a_VDUPE_instr
++  | VINS => armv8a_VINS_instr
++  | VINSE => armv8a_VINSE_instr
++  | VUMOV => armv8a_VUMOV_instr
+   end.
+ 
+ End ARMV8A_INSTR.
+diff --git a/proofs/compiler/armv8a_simd.v b/proofs/compiler/armv8a_simd.v
+index 7ce466967..40b7631b8 100644
+--- a/proofs/compiler/armv8a_simd.v
++++ b/proofs/compiler/armv8a_simd.v
+@@ -12,7 +12,7 @@
+    are [split_vec ve w], element 0 first: element [e] is bits
+    [e*ve + ve - 1 .. e*ve]. Results are rebuilt with [make_vec U128]. *)
+ 
+-From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq ssralg.
++From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq div ssralg.
+ From mathcomp Require Import word_ssrZ.
+ Require Import utils word.
+ Import Utf8 ZArith.
+@@ -27,6 +27,16 @@ Import Utf8 ZArith.
+ Definition velem_at (ve : wsize) (w : u128) (i : nat) : word ve :=
+   nth (wrepr ve 0) (split_vec ve w) i.
+ 
++(* The number of [ve]-bit elements of a 128-bit register. *)
++Definition velems (ve : wsize) : nat := (U128 %/ ve)%nat.
++
++(* An immediate lane index, as a natural number. *)
++Definition vindex (i : u8) : nat := Z.to_nat (wunsigned i).
++
++(* [w] with its [i]-th [ve]-bit element replaced by [x]. *)
++Definition vset_elem (ve : wsize) (w : u128) (i : nat) (x : word ve) : u128 :=
++  make_vec U128 (update_at x (split_vec ve w) i).
++
+ (* -------------------------------------------------------------------- *)
+ (* Element-wise shifts and inserts. *)
+ 
+@@ -40,6 +50,43 @@ Definition vsri_elem {ve : wsize} (sh : Z) (d n : word ve) : word ve :=
+ Definition vsli_elem {ve : wsize} (sh : Z) (d n : word ve) : word ve :=
+   wor (wand d (wnot (wshl (-1)%R sh))) (wshl n sh).
+ 
++(* -------------------------------------------------------------------- *)
++(* Element moves. *)
++
++(* A register holding [x] in every [ve]-bit element. *)
++Definition vbroadcast (ve : wsize) (x : word ve) : u128 :=
++  make_vec U128 (nseq (velems ve) x).
++
++(* The [ve]-bit elements of a container in reverse order. *)
++Definition vrev_elems (ve : wsize) {cs : wsize} (c : word cs) : word cs :=
++  make_vec cs (rev (split_vec ve c)).
++
++(* -------------------------------------------------------------------- *)
++(* Permutations. [part] is 0 for TRN1/ZIP1/UZP1 and 1 for TRN2/ZIP2/UZP2. *)
++
++Definition vtrn (ve : wsize) (part : nat) (a b : u128) : u128 :=
++  let pairs := (velems ve %/ 2)%nat in
++  make_vec U128
++    (flatten [seq [:: velem_at ve a (2 * p + part); velem_at ve b (2 * p + part) ]
++             | p <- iota 0 pairs ]).
++
++Definition vzip (ve : wsize) (part : nat) (a b : u128) : u128 :=
++  let pairs := (velems ve %/ 2)%nat in
++  let base := (part * pairs)%nat in
++  make_vec U128
++    (flatten [seq [:: velem_at ve a (base + p); velem_at ve b (base + p) ]
++             | p <- iota 0 pairs ]).
++
++Definition vuzp (ve : wsize) (part : nat) (a b : u128) : u128 :=
++  let zipped := split_vec ve a ++ split_vec ve b in
++  make_vec U128
++    [seq nth (wrepr ve 0) zipped (2 * e + part) | e <- iota 0 (velems ve) ].
++
++(* EXT: bytes [index .. index + 15] of the 32-byte value whose bytes 0..15
++   are [lo] and bytes 16..31 are [hi]. *)
++Definition vext (lo hi : u128) (index : nat) : u128 :=
++  zero_extend U128 (wshr (make_vec U256 [:: lo; hi ]) (8 * Z.of_nat index)).
++
+ (* -------------------------------------------------------------------- *)
+ (* SHA-256 (FEAT_SHA256). *)
+ 

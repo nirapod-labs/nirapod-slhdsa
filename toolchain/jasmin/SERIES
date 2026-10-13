@@ -42,3 +42,4 @@ patches/0028-safetylib-options-to-keep-fewer-loop-variables-relat.patch 7724ea66
 patches-simd/0001-armv8a-add-the-SIMD-FP-registers-and-basic-Advanced-.patch 7552ae7b4569d9167e6fe9c56710f9e72131db09a31094ee18aa1410b213a89d
 patches-simd/0002-armv8a-add-the-SHA-256-and-SHA-512-instructions.patch c3482a2c109a6a1352f3dc554b20e4f8c74ce665732a10b0feca89a195a0bda0
 patches-simd/0003-armv8a-add-the-SHA-3-instructions.patch 45a2405c6987d81b5724e66bf5557271eefb7112aef420175d7bdcb729e371cc
+patches-simd/0004-armv8a-add-Advanced-SIMD-permutations-and-element-mo.patch f1ea5291acb8a08c181b6e9e11bb2390b96bfaa316986fa10f588c8579f1f73c
