@@ -51,14 +51,17 @@
 # The EasyCrypt proofs need the full prover set and run once, in ci.yml,
 # with the switch of linux-x86_64 (outputs below).
 #
-# Caches. Two entries per platform, named by tools/ci/toolchain.sh keys:
-# the opam switch and the compiler built on it. An entry is saved only after
-# the steps that produce it have passed. Pull requests restore the entries
-# saved on main; a pull request that changes a toolchain input has no entry
-# and builds from scratch. What the entries hold and the cache budget are
-# described in tools/ci/toolchain.sh. GitHub evicts entries independently; with one of
-# the two evicted, the other is still valid (the compiler key contains the
-# switch key) and only the missing one is rebuilt.
+# Caches. Three entries per platform, named by tools/ci/toolchain.sh keys:
+# the opam switch, the compiler built on it, and the compiler's build record
+# alone, a few kilobytes, for runs that reuse every verdict. An entry is
+# saved only after the steps that produce it have passed. Pull requests
+# restore the entries saved on main; a pull request that changes a
+# toolchain input has no entry and builds from scratch. What the entries
+# hold and the cache budget are described in tools/ci/toolchain.sh. GitHub
+# evicts entries independently. With the switch or the compiler evicted,
+# the other is still valid (the compiler key contains the switch key) and
+# only the missing one is rebuilt; without the build record, the toolchain
+# is restored and the record saved again.
 #
 # Cancelling a superseded pull-request run (ci.yml) also cancels a cold
 # toolchain build in progress. The switch entry is saved as soon as the
@@ -132,7 +135,7 @@ defaults:
 env:
   PLATFORM: ${{ inputs.platform }}
   TOOLCHAIN_OPTIONS: ${{ inputs.toolchain-options }}
-  # The paths of the two cache entries, what they hold, and the cache
+  # The paths of the three cache entries, what they hold, and the cache
   # budget are in tools/ci/toolchain.sh (cache-paths).
 
 jobs:
