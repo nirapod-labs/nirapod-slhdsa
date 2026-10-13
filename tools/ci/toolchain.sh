@@ -13,10 +13,16 @@
 #   deps build      system packages of docs/TOOLCHAIN.md and the pinned opam
 #   deps run        what a downstream job needs to run the packed compiler
 #                   and the tests (GMP, libcrypto, unzip)
-#   keys            cache keys of the switch and of the compiler, written to
-#                   $GITHUB_OUTPUT as switch-key= and compiler-key=
+#   keys            cache keys of the switch and of the compiler, and of the
+#                   compiler's build record alone, written to $GITHUB_OUTPUT
+#                   as switch-key=, compiler-key= and record-key=
 #   pack FILE       the compiler (jasminc, jasmin-ct, jasmin2ec) and the
 #                   record of its build, as a gzip tar archive
+#   pack-record FILE
+#                   the build record alone, from the record cache entry, as
+#                   an archive `agree` reads and `install` refuses; for a
+#                   run whose checks all reused their verdicts, so that the
+#                   compiler itself was not restored
 #   install FILE DIR
 #                   unpack an archive made by `pack` into DIR, check each
 #                   binary against the build record in the same archive,
@@ -37,9 +43,10 @@
 #                   before the switch is saved to the cache
 #   clear           remove the part of toolchain/work the compiler cache
 #                   holds
-#   cache-paths     the paths of the two cache entries, written to
-#                   $GITHUB_OUTPUT as switch= and compiler=, so that every
-#                   job that saves or restores an entry names the same paths
+#   cache-paths     the paths of the cache entries, written to
+#                   $GITHUB_OUTPUT as switch=, compiler= and record=, so
+#                   that every job that saves or restores an entry names the
+#                   same paths
 #   bin-path        put toolchain/work/bin (all four tools of the cached
 #                   build, jasmin-checksafety included) on the PATH of the
 #                   following workflow steps
@@ -148,6 +155,9 @@ toolchain/work/opam/$SWITCH/lib/easycrypt/config/jasmin.conf"
 # where the toolchain has EasyCrypt; every other file always.
 RECORD_LOGS="provenance.txt assumptions.log admit-scan.log cil.sha256 binaries.sha256 switch.txt test-suites.txt"
 RECORD_LOGS_EASYCRYPT="eclib-axioms.log"
+# The record entry: the build record alone, a few kilobytes, saved beside
+# the compiler entry under the compiler's own hash.
+RECORD_PATHS=$(for l in $RECORD_LOGS $RECORD_LOGS_EASYCRYPT; do echo "toolchain/work/logs/$l"; done)
 
 # opam, pinned by the SHA-256 of the release binary; toolchain/build.sh
 # requires this release.
@@ -307,10 +317,12 @@ cmd_keys() {
   rm -rf "$tmp"
   echo "switch-key=toolchain-switch-$PLATFORM-$switch"
   echo "compiler-key=toolchain-compiler-$PLATFORM-$compiler"
+  echo "record-key=toolchain-record-$PLATFORM-$compiler"
   if [ -n "${GITHUB_OUTPUT:-}" ]; then
     {
       echo "switch-key=toolchain-switch-$PLATFORM-$switch"
       echo "compiler-key=toolchain-compiler-$PLATFORM-$compiler"
+      echo "record-key=toolchain-record-$PLATFORM-$compiler"
     } >> "$GITHUB_OUTPUT"
   fi
 }
@@ -359,12 +371,32 @@ cmd_pack() {
   cat "$WORK/logs/binaries.sha256"
 }
 
+cmd_pack_record() {
+  local out=${1:?usage: toolchain.sh pack-record FILE} stage l
+  stage=$(mktemp -d)
+  mkdir -p "$stage/toolchain/logs"
+  for l in $RECORD_LOGS; do
+    [ -f "$WORK/logs/$l" ] || die "$WORK/logs/$l: missing from the restored build record"
+    cp "$WORK/logs/$l" "$stage/toolchain/logs/$l"
+  done
+  for l in $RECORD_LOGS_EASYCRYPT; do
+    if [ -f "$WORK/logs/$l" ]; then cp "$WORK/logs/$l" "$stage/toolchain/logs/$l"; fi
+  done
+  echo "$PLATFORM" > "$stage/toolchain/PLATFORM"
+  : > "$stage/toolchain/RECORD-ONLY"
+  tar -C "$stage" -czf "$out" toolchain
+  rm -rf "$stage"
+  echo "packed the build record alone into $out:"
+  cat "$WORK/logs/binaries.sha256"
+}
+
 cmd_install() {
   local file=${1:?usage: toolchain.sh install FILE DIR} dir=${2:?usage: toolchain.sh install FILE DIR}
   [ ! -e "$dir" ] || die "$dir already exists"
   mkdir -p "$dir"
   dir=$(cd "$dir" && pwd)
   tar -C "$dir" --strip-components=1 -xzf "$file"
+  [ ! -e "$dir/RECORD-ONLY" ] || die "the archive holds the build record but no compiler: the toolchain job found a recorded verdict for every check and did not restore the compiler, but this check has none now (evicted since?); run the workflow again"
   [ "$(cat "$dir/PLATFORM")" = "$PLATFORM" ] \
     || die "the archive was built on $(cat "$dir/PLATFORM"), this host is $PLATFORM"
   check_record "$dir"
@@ -507,10 +539,11 @@ cmd_clear() {
 }
 
 cmd_cache_paths() {
-  printf 'switch paths:\n%s\ncompiler paths:\n%s\n' "$SWITCH_PATHS" "$COMPILER_PATHS"
+  printf 'switch paths:\n%s\ncompiler paths:\n%s\nrecord paths:\n%s\n' \
+    "$SWITCH_PATHS" "$COMPILER_PATHS" "$RECORD_PATHS"
   if [ -n "${GITHUB_OUTPUT:-}" ]; then
-    printf 'switch<<END_OF_PATHS\n%s\nEND_OF_PATHS\ncompiler<<END_OF_PATHS\n%s\nEND_OF_PATHS\n' \
-      "$SWITCH_PATHS" "$COMPILER_PATHS" >> "$GITHUB_OUTPUT"
+    printf 'switch<<END_OF_PATHS\n%s\nEND_OF_PATHS\ncompiler<<END_OF_PATHS\n%s\nEND_OF_PATHS\nrecord<<END_OF_PATHS\n%s\nEND_OF_PATHS\n' \
+      "$SWITCH_PATHS" "$COMPILER_PATHS" "$RECORD_PATHS" >> "$GITHUB_OUTPUT"
   fi
 }
 
@@ -550,6 +583,7 @@ case "${1:-}" in
   deps)    shift; cmd_deps "$@" ;;
   keys)    shift; cmd_keys "$@" ;;
   pack)    shift; cmd_pack "$@" ;;
+  pack-record) shift; cmd_pack_record "$@" ;;
   install) shift; cmd_install "$@" ;;
   compare) shift; cmd_compare "$@" ;;
   agree)   shift; cmd_agree "$@" ;;
@@ -560,5 +594,5 @@ case "${1:-}" in
   cache-paths) shift; cmd_cache_paths "$@" ;;
   bin-path) shift; cmd_bin_path "$@" ;;
   exec)    shift; cmd_exec "$@" ;;
-  *) echo "usage: toolchain.sh deps|keys|pack|install|compare|compare-cached|no-cached-build|agree|prune|clear|cache-paths|bin-path|exec ..." >&2; exit 2 ;;
+  *) echo "usage: toolchain.sh deps|keys|pack|pack-record|install|compare|compare-cached|no-cached-build|agree|prune|clear|cache-paths|bin-path|exec ..." >&2; exit 2 ;;
 esac

@@ -47,8 +47,11 @@
 # running again; its inputs are every file except a reviewed list of paths
 # it does not read (tools/ci/Makefile, Verdicts). Pushes to main, the
 # schedule and manual runs never reuse a verdict: they run every check, and
-# record the passes that pull requests then reuse. There are no path
-# filters: every job runs on every event, so all-checks sees each of them.
+# record the passes that pull requests then reuse. A platform whose checks
+# all reuse their verdicts does not restore its toolchain either, so a
+# change that touches none of their inputs finishes in minutes. There are
+# no path filters: every job runs on every event, so all-checks sees each
+# of them.
 #
 # Weekly, the same workflow runs in cold mode: each platform builds its
 # toolchain from scratch, ignoring the caches, and compares the result with
@@ -216,6 +219,7 @@ jobs:
       platform: linux-x86_64
       runner: ubuntu-24.04
       jobs: 4
+      proofs: true
       cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
       reuse-verdicts: ${{ github.event_name == 'pull_request' }}
 

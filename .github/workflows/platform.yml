@@ -35,6 +35,15 @@
 # running the check again. Otherwise the check runs, and only when every
 # step has passed is its verdict recorded and saved under the key. A failed
 # check is never saved, so it runs again on the next attempt.
+#
+# The toolchain job computes the cache keys and the verdict keys first, and
+# looks the verdicts up without downloading them. When every check of the
+# platform (and the proofs, for the platform whose toolchain they use) has
+# a recorded pass, it restores neither the switch nor the compiler: it packs
+# the compiler's build record alone, from its own small cache entry, for
+# the cross-platform comparison, and the job summary names the compiler key
+# the recorded verdicts were made with. Otherwise, and on every event that
+# does not reuse verdicts, it restores or builds the toolchain as above.
 # The EasyCrypt proofs need the full prover set and run once, in ci.yml,
 # with the switch of linux-x86_64 (outputs below).
 #
@@ -87,6 +96,10 @@ on:
         description: "Report a recorded pass of a check whose inputs are unchanged instead of running it"
         type: boolean
         default: false
+      proofs:
+        description: "The proofs job of ci.yml runs with this platform's toolchain"
+        type: boolean
+        default: false
     outputs:
       switch-key:
         description: "Cache key of this platform's opam switch"
@@ -137,8 +150,95 @@ jobs:
         id: paths
         run: tools/ci/toolchain.sh cache-paths
 
+      - name: Compute the verdict keys of this platform's checks
+        id: verdicts
+        env:
+          CI_TOOL_KEY: ${{ steps.keys.outputs.compiler-key }}
+          PROOFS: ${{ inputs.proofs }}
+        run: make -s -f tools/ci/Makefile ci-platform-verdict-keys
+
+      - name: Look up the recorded verdict of test
+        id: found-test
+        if: inputs.reuse-verdicts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/test
+          key: ${{ steps.verdicts.outputs.key-test }}
+          lookup-only: true
+
+      - name: Look up the recorded verdict of analysis
+        id: found-analysis
+        if: inputs.reuse-verdicts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/analysis
+          key: ${{ steps.verdicts.outputs.key-analysis }}
+          lookup-only: true
+
+      - name: Look up the recorded verdict of safety
+        id: found-safety
+        if: inputs.reuse-verdicts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/safety
+          key: ${{ steps.verdicts.outputs.key-safety }}
+          lookup-only: true
+
+      - name: Look up the recorded verdict of generated
+        id: found-generated
+        if: inputs.reuse-verdicts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/generated
+          key: ${{ steps.verdicts.outputs.key-generated }}
+          lookup-only: true
+
+      - name: Look up the recorded verdict of differential
+        id: found-differential
+        if: inputs.reuse-verdicts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/differential
+          key: ${{ steps.verdicts.outputs.key-differential }}
+          lookup-only: true
+
+      - name: Look up the recorded verdict of proofs
+        id: found-proofs
+        if: inputs.reuse-verdicts && inputs.proofs
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/proofs
+          key: ${{ steps.verdicts.outputs.key-proofs }}
+          lookup-only: true
+
+      - name: Look up the compiler's build record
+        id: found-record
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.paths.outputs.record }}
+          key: ${{ steps.keys.outputs.record-key }}
+          lookup-only: true
+
+      - name: Decide whether to restore the toolchain
+        id: toolchain
+        env:
+          REUSE: ${{ inputs.reuse-verdicts }}
+          COMPILER_KEY: ${{ steps.keys.outputs.compiler-key }}
+          RECORD: ${{ steps.found-record.outputs.cache-hit == 'true' }}
+          TEST: ${{ steps.found-test.outputs.cache-hit == 'true' }}
+          ANALYSIS: ${{ steps.found-analysis.outputs.cache-hit == 'true' }}
+          SAFETY: ${{ steps.found-safety.outputs.cache-hit == 'true' }}
+          GENERATED: ${{ steps.found-generated.outputs.cache-hit == 'true' }}
+          DIFFERENTIAL: ${{ steps.found-differential.outputs.cache-hit == 'true' }}
+          PROOFS: ${{ !inputs.proofs || steps.found-proofs.outputs.cache-hit == 'true' }}
+        run: >-
+          tools/ci/verdict.sh toolchain "$REUSE" "$COMPILER_KEY" "$RECORD"
+          test="$TEST" analysis="$ANALYSIS" safety="$SAFETY" generated="$GENERATED"
+          differential="$DIFFERENTIAL" proofs="$PROOFS"
+
       - name: Restore the opam switch
         id: switch
+        if: steps.toolchain.outputs.toolchain == 'needed'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.paths.outputs.switch }}
@@ -146,15 +246,15 @@ jobs:
           lookup-only: ${{ inputs.cold }}
 
       - name: Build the opam switch
-        if: inputs.cold || steps.switch.outputs.cache-hit != 'true'
+        if: steps.toolchain.outputs.toolchain == 'needed' && (inputs.cold || steps.switch.outputs.cache-hit != 'true')
         run: toolchain/build.sh ${TOOLCHAIN_OPTIONS:+"$TOOLCHAIN_OPTIONS"} switch
 
       - name: Remove what only an installation reads
-        if: steps.switch.outputs.cache-hit != 'true'
+        if: steps.toolchain.outputs.toolchain == 'needed' && steps.switch.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh prune
 
       - name: Save the opam switch
-        if: steps.switch.outputs.cache-hit != 'true'
+        if: steps.toolchain.outputs.toolchain == 'needed' && steps.switch.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.paths.outputs.switch }}
@@ -162,6 +262,7 @@ jobs:
 
       - name: Restore the compiler
         id: compiler
+        if: steps.toolchain.outputs.toolchain == 'needed'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.paths.outputs.compiler }}
@@ -169,22 +270,44 @@ jobs:
           lookup-only: ${{ inputs.cold }}
 
       - name: Build the compiler (proofs, extraction, compiler)
-        if: inputs.cold || steps.compiler.outputs.cache-hit != 'true'
+        if: steps.toolchain.outputs.toolchain == 'needed' && (inputs.cold || steps.compiler.outputs.cache-hit != 'true')
         run: toolchain/build.sh ${TOOLCHAIN_OPTIONS:+"$TOOLCHAIN_OPTIONS"} jasmin
 
       - name: Test the compiler
-        if: inputs.cold || steps.compiler.outputs.cache-hit != 'true'
+        if: steps.toolchain.outputs.toolchain == 'needed' && (inputs.cold || steps.compiler.outputs.cache-hit != 'true')
         run: toolchain/build.sh ${TOOLCHAIN_OPTIONS:+"$TOOLCHAIN_OPTIONS"} test
 
       - name: Save the compiler
-        if: steps.compiler.outputs.cache-hit != 'true'
+        if: steps.toolchain.outputs.toolchain == 'needed' && steps.compiler.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.paths.outputs.compiler }}
           key: ${{ steps.keys.outputs.compiler-key }}
 
       - name: Pack the compiler
+        if: steps.toolchain.outputs.toolchain == 'needed'
         run: tools/ci/toolchain.sh pack "$RUNNER_TEMP/toolchain-$PLATFORM.tar.gz"
+
+      - name: Save the compiler's build record
+        if: steps.toolchain.outputs.toolchain == 'needed' && steps.found-record.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.paths.outputs.record }}
+          key: ${{ steps.keys.outputs.record-key }}
+
+      # Every check reuses its verdict: the cross-platform comparison still
+      # needs this compiler's build record, and nothing else.
+      - name: Restore the compiler's build record
+        if: steps.toolchain.outputs.toolchain == 'skipped'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.paths.outputs.record }}
+          key: ${{ steps.keys.outputs.record-key }}
+          fail-on-cache-miss: true
+
+      - name: Pack the build record alone
+        if: steps.toolchain.outputs.toolchain == 'skipped'
+        run: tools/ci/toolchain.sh pack-record "$RUNNER_TEMP/toolchain-$PLATFORM.tar.gz"
 
       - name: Upload the compiler
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

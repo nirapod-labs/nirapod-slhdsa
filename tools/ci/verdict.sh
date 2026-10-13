@@ -37,8 +37,8 @@
 # Usage, from the repository root:
 #
 #   verdict.sh key CHECK PLATFORM TOOL_KEY PATHSPEC...
-#       print the key (and add key=... to $GITHUB_OUTPUT); PATHSPEC... are
-#       the paths the check does not read. Every *.mk file stays an input:
+#       print the key (and add key=... and key-CHECK=... to $GITHUB_OUTPUT);
+#       PATHSPEC... are the paths the check does not read. Every *.mk file stays an input:
 #       the top-level Makefile includes the fragments it finds, wherever
 #       they sit.
 #   verdict.sh run CHECK COMMAND...
@@ -51,6 +51,15 @@
 #       after a cache hit: check that the restored record is a pass under
 #       KEY, put its files back in place, and state the reuse, the run that
 #       recorded it and the end of its log in the log and the job summary
+#   verdict.sh toolchain REUSE COMPILER_KEY RECORD_FOUND CHECK=FOUND...
+#       whether the toolchain job has to restore (or build) the toolchain:
+#       not when verdicts are reused (REUSE is true), every CHECK of the
+#       platform has a recorded pass (FOUND is true), and the compiler's
+#       build record is cached for the cross-platform comparison. Writes
+#       toolchain=needed or toolchain=skipped to $GITHUB_OUTPUT, and the
+#       decision with the compiler key to the job summary. A check found
+#       here and evicted before its job restores it fails that job, which
+#       then has no compiler; the next run restores the toolchain.
 
 set -euo pipefail
 
@@ -104,7 +113,9 @@ cmd_key() {
   sed 's/^/  /' "$DIR/$check.material"
   echo "input set: $kept of $all tracked files (git ls-tree -r $tree)"
   echo "key=$key"
-  if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "key=$key" >> "$GITHUB_OUTPUT"; fi
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    { echo "key=$key"; echo "key-$check=$key"; } >> "$GITHUB_OUTPUT"
+  fi
 }
 
 cmd_run() {
@@ -187,10 +198,45 @@ cmd_report() {
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then cat "$DIR/$check.report" >> "$GITHUB_STEP_SUMMARY"; fi
 }
 
+cmd_toolchain() {
+  [ $# -ge 4 ] || die "usage: verdict.sh toolchain REUSE COMPILER_KEY RECORD_FOUND CHECK=FOUND..."
+  local reuse=$1 compiler=$2 record=$3 pair missing="" decision reason
+  shift 3
+  [ -n "$compiler" ] || die "toolchain: no compiler key"
+  for pair in "$@"; do
+    case "$pair" in
+      *=true) ;;
+      [a-z]*=*) missing="$missing ${pair%%=*}" ;;
+      *) die "toolchain: '$pair' is not CHECK=FOUND" ;;
+    esac
+  done
+  if [ "$reuse" != true ]; then
+    decision=needed reason="this event runs every check"
+  elif [ -n "$missing" ]; then
+    decision=needed reason="no recorded pass for:$missing"
+  elif [ "$record" != true ]; then
+    decision=needed reason="the compiler's build record is not cached"
+  else
+    decision=skipped reason="every check of this platform has a recorded pass with this compiler"
+  fi
+  echo "toolchain=$decision"
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "toolchain=$decision" >> "$GITHUB_OUTPUT"; fi
+  {
+    echo "### toolchain: $decision"
+    echo
+    echo "$reason."
+    echo
+    echo "Compiler key: \`$compiler\`"
+  } > "$DIR.toolchain"
+  cat "$DIR.toolchain"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then cat "$DIR.toolchain" >> "$GITHUB_STEP_SUMMARY"; fi
+}
+
 case "${1:-}" in
   key)    shift; cmd_key "$@" ;;
   run)    shift; cmd_run "$@" ;;
   record) shift; cmd_record "$@" ;;
   report) shift; cmd_report "$@" ;;
-  *) die "usage: verdict.sh key|run|record|report ..." ;;
+  toolchain) shift; cmd_toolchain "$@" ;;
+  *) die "usage: verdict.sh key|run|record|report|toolchain ..." ;;
 esac

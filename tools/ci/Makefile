@@ -194,6 +194,9 @@ endif
 # CI_VERDICT_SKIP holds what no check reads: documentation, change entries,
 # licensing and repository metadata, and the scripts of the cheap jobs.
 CI_VERDICT_CHECKS := test analysis safety generated differential proofs
+# The checks of each platform (platform.yml); proofs runs once, with the
+# linux-x86_64 toolchain.
+CI_VERDICT_PLATFORM_CHECKS := test analysis safety generated differential
 
 CI_VERDICT_SKIP := docs changes LICENSES ':(glob)**/*.md' \
                    AUTHORS NOTICE LICENSE CITATION.cff REUSE.toml \
@@ -271,7 +274,7 @@ CI_CORE_TRANSCRIPT := $(CI_BUILD)/$(CI_TARGET)/transcript-core.txt
 .PHONY: ci-source ci-components ci-hash-sets ci-vectors ci-vectors-key
 .PHONY: ci-test ci-test-hash ci-test-core ci-test-acvp ci-transcript ci-agree
 .PHONY: ci-analysis ci-analysis-core ci-analysis-hash ci-asm ci-safety ci-diff
-.PHONY: ci-proofs ci-generated ci-verdict-key
+.PHONY: ci-proofs ci-generated ci-verdict-key ci-platform-verdict-keys
 
 # ---------------------------------------------------------------------------
 # Source checks
@@ -534,6 +537,13 @@ endif
 # ---------------------------------------------------------------------------
 # Verdict keys. CHECK names the check; PLATFORM and CI_TOOL_KEY (the
 # compiler's cache key) come from the workflow.
+
+# ci-platform-verdict-keys: the key of each check of a platform, for the
+# toolchain job to look up; PROOFS=true adds the proofs.
+ci-platform-verdict-keys:
+	@for c in $(CI_VERDICT_PLATFORM_CHECKS) $(if $(filter true,$(PROOFS)),proofs); do \
+	  $(MAKE) -s -f tools/ci/Makefile ci-verdict-key CHECK=$$c || exit 1; \
+	done
 
 ci-verdict-key:
 	@test "$(words $(CHECK))" = 1 -a -n "$(filter $(CHECK),$(CI_VERDICT_CHECKS))" || { echo "ci-verdict-key: CHECK must be one of $(CI_VERDICT_CHECKS), not '$(CHECK)'"; exit 1; }
