@@ -1,0 +1,159 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Mon, 12 Oct 2026 16:50:09 +0600
+Subject: [PATCH] armv8a: load a 32-bit word zero-extended to 64 bits
+
+`x = (64u)[:u32 p];` was rejected: the lowering of zero-extending loads
+covered bytes (LDRB) and halfwords (LDRH) but not words, although
+`LDR <Wt>` zero-extends the word into the whole X register. Add LDRW,
+written `LDR <Wt>, ...` and valid at the 64-bit operand size only (the
+counterpart of LDRSW), lower the zero-extending word load to it, and
+model it in the EasyCrypt library as the 64-bit zero extension of the
+word read.
+---
+ compiler/tests/success/armv8a/ldrw.jazz | 18 ++++++++++++++++++
+ eclib/JModel_armv8a.ec                  |  2 ++
+ proofs/compiler/armv8a_instr_decl.v     | 22 ++++++++++++++++------
+ proofs/compiler/armv8a_lowering.v       |  1 +
+ proofs/compiler/armv8a_params.v         |  2 +-
+ 5 files changed, 38 insertions(+), 7 deletions(-)
+ create mode 100644 compiler/tests/success/armv8a/ldrw.jazz
+
+diff --git a/compiler/tests/success/armv8a/ldrw.jazz b/compiler/tests/success/armv8a/ldrw.jazz
+new file mode 100644
+index 000000000..b12abeb16
+--- /dev/null
++++ b/compiler/tests/success/armv8a/ldrw.jazz
+@@ -0,0 +1,18 @@
++/* A 32-bit load zero-extended to 64 bits is a single LDR to a W register. */
++export fn ldrw(reg u64 p i) -> reg u64 {
++  reg u64 x y;
++  x = (64u)[:u32 p];
++  i &= 7;
++  y = (64u)[:u32 p + 4 * i];
++  x += y;
++  return x;
++}
++
++/* The same load from a global goes through its address, like other loads. */
++u32[4] H = { 1, 2, 3, 4 };
++
++export fn ldrw_global() -> reg u64 {
++  reg u64 x;
++  x = (64u) H[2];
++  return x;
++}
+diff --git a/eclib/JModel_armv8a.ec b/eclib/JModel_armv8a.ec
+index aa33242dc..37656be9c 100644
+--- a/eclib/JModel_armv8a.ec
++++ b/eclib/JModel_armv8a.ec
+@@ -281,6 +281,8 @@ op LDRSH_64 (x: W16.t) : W64.t = W64.of_int (W16.to_sint x).
+ 
+ op LDRSW (x: W32.t) : W64.t = W64.of_int (W32.to_sint x).
+ 
++op LDRW (x: W32.t) : W64.t = W64.of_int (W32.to_uint x).
++
+ op STR_64 (x: W64.t) : W64.t = x.
+ 
+ op STRB_64 (x: W8.t) : W8.t = x.
+diff --git a/proofs/compiler/armv8a_instr_decl.v b/proofs/compiler/armv8a_instr_decl.v
+index 2b9dc4d3c..11e936fa5 100644
+--- a/proofs/compiler/armv8a_instr_decl.v
++++ b/proofs/compiler/armv8a_instr_decl.v
+@@ -155,6 +155,7 @@ Variant armv8a_mnemonic : Type :=
+ | LDRSB                          (* Load a sign extended byte *)
+ | LDRSH                          (* Load a sign extended halfword *)
+ | LDRSW                          (* Load a sign extended word *)
++| LDRW                           (* Load a zero extended word *)
+ | LDP                            (* Load a pair of words or doublewords *)
+ 
+ (* Stores *)
+@@ -185,7 +186,7 @@ Definition armv8a_mnemonics : seq armv8a_mnemonic :=
+     ; SXTB; SXTH; SXTW; UXTB; UXTH; UXTW
+     ; CMP; CMN; TST
+     ; CSEL; CSINC; CSINV; CSNEG; CSET; CSETM
+-    ; LDR; LDRB; LDRH; LDRSB; LDRSH; LDRSW; LDP
++    ; LDR; LDRB; LDRH; LDRSB; LDRSH; LDRSW; LDRW; LDP
+     ; STR; STRB; STRH; STP
+     ; CSDB; DSB; ISB
+   ].
+@@ -258,7 +259,7 @@ Definition wsize_of_narrow_load_mn (mn : armv8a_mnemonic) : option wsize :=
+   match mn with
+   | LDRB | LDRSB => Some U8
+   | LDRH | LDRSH => Some U16
+-  | LDRSW => Some U32
++  | LDRSW | LDRW => Some U32
+   | _ => None
+   end.
+ 
+@@ -342,6 +343,7 @@ Definition string_of_armv8a_mnemonic (mn : armv8a_mnemonic) : string :=
+   | LDRSB => "LDRSB"
+   | LDRSH => "LDRSH"
+   | LDRSW => "LDRSW"
++  | LDRW => "LDRW"
+   | LDP => "LDP"
+   | STR => "STR"
+   | STRB => "STRB"
+@@ -2498,6 +2500,11 @@ Definition armv8a_CSETM_instr := mk_cset_instr CSETM (armv8a_CSETM_semi (ws := o
+      constant bits(datasize) data = Mem[address, datasize DIV 8, accdesc];
+      X[t, regsize] = ZeroExtend(data, regsize);
+ *)
++(* LDRW is LDR with a W destination register used for a 64-bit result: the
++   load writes [X[t, 32] = ZeroExtend(data, 32)], and a write to the W form of
++   a register clears its upper 32 bits, so the word is zero-extended to 64
++   bits. It is written [LDR <Wt>, ...] and valid at the 64-bit operand size
++   only, like LDRSW. *)
+ Definition armv8a_load_instr mn : instr_desc_t :=
+   let wacc :=
+     if wsize_of_narrow_load_mn mn is Some ws'
+@@ -2524,11 +2531,13 @@ Definition armv8a_load_instr mn : instr_desc_t :=
+     id_doit := DOIT;
+     (* The transferred register of the zero-extending narrow loads is
+        always a W register ([LDRB <Wt>, ...]); the sign-extending loads
+-       name it at the operand size ([LDRSB <Wt>|<Xt>, ...]). *)
++       name it at the operand size ([LDRSB <Wt>|<Xt>, ...]). LDRW is
++       printed as LDR. *)
+     id_pp_asm :=
+-      pp_armv8a_op_szs mn
+-        [:: (match mn with LDRB | LDRH => U32 | _ => osz end); osz ];
+-    id_valid := osz_valid && (if mn is LDRSW then osz == U64 else true);
++      pp_armv8a_op_szs (if mn is LDRW then LDR else mn)
++        [:: (match mn with LDRB | LDRH | LDRW => U32 | _ => osz end); osz ];
++    id_valid :=
++      osz_valid && (match mn with LDRSW | LDRW => osz == U64 | _ => true end);
+     id_safe_wf := refl_equal;
+     id_wf := refl_equal;
+   |}.
+@@ -2999,6 +3008,7 @@ Definition mn_desc (mn : armv8a_mnemonic) : instr_desc_t :=
+   | LDRSB => armv8a_load_instr LDRSB
+   | LDRSH => armv8a_load_instr LDRSH
+   | LDRSW => armv8a_load_instr LDRSW
++  | LDRW => armv8a_load_instr LDRW
+   | LDP => armv8a_LDP_instr
+   | STR => armv8a_store_instr STR
+   | STRB => armv8a_store_instr STRB
+diff --git a/proofs/compiler/armv8a_lowering.v b/proofs/compiler/armv8a_lowering.v
+index 457a3f200..113adcf2f 100644
+--- a/proofs/compiler/armv8a_lowering.v
++++ b/proofs/compiler/armv8a_lowering.v
+@@ -196,6 +196,7 @@ Definition uload_mn (ws ws' : wsize) : option armv8a_mnemonic :=
+   match ws' with
+   | U8 => Some LDRB
+   | U16 => Some LDRH
++  | U32 => if ws == U64 then Some LDRW else None
+   | _ => None
+   end.
+ 
+diff --git a/proofs/compiler/armv8a_params.v b/proofs/compiler/armv8a_params.v
+index cb7686fb0..9ae9a50dc 100644
+--- a/proofs/compiler/armv8a_params.v
++++ b/proofs/compiler/armv8a_params.v
+@@ -420,7 +420,7 @@ Definition armv8a_szparams : stack_zeroization_params :=
+ 
+ Definition armv8a_is_load (o : asm_op_t) : bool :=
+   if o is BaseOp (None, ARMv8A_op mn _) then
+-    mn \in [:: LDR; LDRB; LDRH; LDRSB; LDRSH; LDRSW; LDP ]
++    mn \in [:: LDR; LDRB; LDRH; LDRSB; LDRSH; LDRSW; LDRW; LDP ]
+   else false.
+ 
+ Definition armv8a_laparams : lower_addressing_params :=
