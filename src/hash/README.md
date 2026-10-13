@@ -270,6 +270,11 @@ fn _keccak_squeeze_array(reg mut ptr u8[HASH_ARRAY_LEN] out,
 
 The same contracts as the memory forms, with the whole array as input or
 output.
+The squeeze writes every byte of `out` (and the 4-way squeeze every byte of
+`out0` to `out3`), but at run-time offsets that the safety checker of the
+pinned toolchain does not count as initialising the array, so a
+safety-checked caller initialises the outputs before the call, as the test
+exports do by loading them from the caller's buffer.
 
 ### `keccak/fips202.jinc`
 
