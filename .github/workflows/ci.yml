@@ -34,10 +34,11 @@
 # `changelog`).
 #
 # jasmin-checksafety runs on pushes to main, on the schedule, on manual runs,
-# and on pull requests that change the Jasmin sources, the toolchain, the
-# safety configuration or the CI (job `scope`, tools/ci/Makefile
-# ci-safety-scope); on other pull requests its job states the deferral in
-# the job summary.
+# and on every pull request that changes a file it could depend on; it is
+# deferred only when every changed file is documentation, licensing,
+# benchmarks, the ACVP or differential tests, or proofs (job `scope`,
+# tools/ci/Makefile ci-safety-scope), and the job summary states the
+# deferral.
 #
 # The job `all-checks` succeeds only when every other job of this file
 # succeeded, and it checks that it depends on every other job of this file

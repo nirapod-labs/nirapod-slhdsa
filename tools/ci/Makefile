@@ -410,16 +410,28 @@ else
 endif
 
 # Safety. jasmin-checksafety takes up to an hour per export today. It runs
-# on every event except a pull request that changes nothing it could
-# depend on: the Jasmin sources, the toolchain, its own configuration in
-# analysis/safety, and the CI that runs it (CI_SAFETY_PATHS). ci-safety-scope
-# decides, from the event and the files the pull request changes against
-# its base (CI_EVENT, CI_BASE), and writes safety=run or safety=defer to
-# $GITHUB_OUTPUT. A deferral is stated, in the log and in the job summary,
-# never left silent. Without the safety component there is nothing to
-# decide, and the answer is run (ci-safety then reports NOT APPLICABLE).
+# on every event except a pull request whose every changed file is one it
+# cannot depend on (CI_SAFETY_SKIP_DIRS, CI_SAFETY_SKIP_FILES, and any
+# *.md): documentation, licences, benchmarks, the ACVP and differential
+# tests, and the proofs. Everything else runs it, including a path nobody
+# has classified yet, the top-level Makefile and its *.mk fragments (which
+# choose the units safety checks), the toolchain, and the CI. A rename
+# counts as a deletion plus an addition, so moving a file out of a watched
+# place runs safety too.
+#
+# ci-safety-scope decides, from the event and the files the pull request
+# changes against its base (CI_EVENT, CI_BASE), and writes safety=run or
+# safety=defer to $GITHUB_OUTPUT. A deferral is stated, in the log and in
+# the job summary, never left silent. Without the safety component there is
+# nothing to decide, and the answer is run (ci-safety then reports NOT
+# APPLICABLE).
 CI_SAFETY ?= run
-CI_SAFETY_PATHS := src/jasmin toolchain analysis/safety tools/ci .github/workflows
+CI_SAFETY_SKIP_DIRS  := docs bench LICENSES .github/ISSUE_TEMPLATE \
+                        $(CI_DIRS_acvp) $(CI_DIRS_diff) $(CI_DIRS_proofs)
+CI_SAFETY_SKIP_FILES := AUTHORS NOTICE LICENSE CITATION.cff REUSE.toml \
+                        .github/CODEOWNERS .github/pull_request_template.md
+ci_alt = $(subst .,\.,$(subst $(eval) ,|,$(strip $(1))))
+CI_SAFETY_SKIP_RE := ^(($(call ci_alt,$(CI_SAFETY_SKIP_DIRS)))/|($(call ci_alt,$(CI_SAFETY_SKIP_FILES)))$$|.*\.md$$)
 CI_EVENT ?=
 CI_BASE  ?=
 
@@ -428,12 +440,13 @@ ci-safety-scope:
 	  if [ -n "$$GITHUB_OUTPUT" ]; then echo "safety=$$1" >> "$$GITHUB_OUTPUT"; fi; }; \
 	if [ "$(CI_EVENT)" != pull_request ]; then decide run "event '$(CI_EVENT)' always runs safety"; exit 0; fi; \
 	[ -n "$(CI_BASE)" ] || { echo "ci-safety-scope: a pull request needs CI_BASE"; exit 1; }; \
-	changed=$$(git diff --name-only "$(CI_BASE)" HEAD) || { echo "ci-safety-scope: cannot diff against $(CI_BASE)"; exit 1; }; \
-	hits=$$(printf '%s\n' "$$changed" | grep -E '^($(subst .,\.,$(subst $(eval) ,|,$(CI_SAFETY_PATHS))))/' || true); \
+	changed=$$(git -c core.quotePath=false diff --name-only --no-renames "$(CI_BASE)" HEAD) || { echo "ci-safety-scope: cannot diff against $(CI_BASE)"; exit 1; }; \
+	hits=$$(printf '%s\n' "$$changed" | grep -v '^$$' | grep -vE '$(CI_SAFETY_SKIP_RE)' || true); \
 	if [ -n "$$hits" ]; then \
-	  decide run "the pull request changes $$(printf '%s\n' "$$hits" | wc -l | tr -d ' ') file(s) under $(CI_SAFETY_PATHS)"; \
+	  printf '%s\n' "$$hits" | head -20 | sed 's/^/  /'; \
+	  decide run "the pull request changes $$(printf '%s\n' "$$hits" | wc -l | tr -d ' ') file(s) safety may depend on (first 20 above)"; \
 	else \
-	  decide defer "the pull request changes nothing under $(CI_SAFETY_PATHS)"; \
+	  decide defer "every file the pull request changes is documentation, licensing, benchmarks, ACVP or differential tests, or proofs"; \
 	fi
 
 ci-safety:
@@ -442,7 +455,7 @@ ifeq ($(CI_SAFETY),run)
 	$(call CI_NEED_JASMINC,ci-safety)
 	$(MAKE) safety $(CI_CORE_VARS)
 else ifeq ($(CI_SAFETY),defer)
-	@msg="ci-safety: NOT RUN, this pull request changes nothing under $(CI_SAFETY_PATHS); jasmin-checksafety runs on main, on the schedule, and on pull requests that do"; \
+	@msg="ci-safety: NOT RUN, this pull request changes only files safety cannot depend on; jasmin-checksafety runs on main, on the schedule, and on every other pull request"; \
 	echo "$$msg"; if [ -n "$$GITHUB_STEP_SUMMARY" ]; then echo "$$msg" >> "$$GITHUB_STEP_SUMMARY"; fi
 else
 	@echo "ci-safety: CI_SAFETY must be run or defer, not '$(CI_SAFETY)'"; exit 1
