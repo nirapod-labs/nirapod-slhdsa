@@ -1,25 +1,125 @@
+<div align="center">
+
 # nirapod-slhdsa
 
-SLH-DSA (FIPS 205) written in [Jasmin](https://github.com/jasmin-lang/jasmin)
-for AArch64 and x86-64, with machine-checked proofs in
-[EasyCrypt](https://github.com/EasyCrypt/easycrypt).
+SLH-DSA (FIPS 205) in [Jasmin](https://github.com/jasmin-lang/jasmin) for AArch64 and x86-64,
+with machine-checked proofs in [EasyCrypt](https://github.com/EasyCrypt/easycrypt).
 
-> **Status: under development. Not for production use.**
-> Nothing in this repository is complete yet, and no security or
-> correctness property is claimed. Status is reported per feature, parameter
-> set and architecture in `docs/STATUS.md` as work lands.
+[![CI](https://github.com/nirapod-labs/nirapod-slhdsa/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nirapod-labs/nirapod-slhdsa/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-## Scope
+</div>
 
-- All twelve FIPS 205 parameter sets (SHA2 and SHAKE; 128, 192, 256; s and f).
-- Key generation, signing and verification through the external interfaces
-  of FIPS 205 section 10: pure SLH-DSA with context strings and HashSLH-DSA,
-  with deterministic and hedged signing.
-- The internal functions of FIPS 205 section 9, for testing and validation
-  only.
-- A C-callable API that runs the Jasmin implementation end to end, with no
-  heap allocation and no global mutable state.
+> [!WARNING]
+> **Under development. Not for production use.**
+> The implementation is not yet on this branch. Nothing below is claimed until its row
+> shows a result, and every result names the revision it was validated on.
+
+## Status
+
+Each cell is filled by the change that lands the component, with the CI run that checked
+it. A dash means no result yet.
+
+| Parameter set     | Tests, AArch64 | Tests, x86-64 | Constant time | Speculative CT | Memory safety | Proof |
+| :---------------- | :------------: | :-----------: | :-----------: | :------------: | :-----------: | :---: |
+| `SLH-DSA-SHA2-128s`  | — | — | — | — | — | — |
+| `SLH-DSA-SHA2-128f`  | — | — | — | — | — | — |
+| `SLH-DSA-SHA2-192s`  | — | — | — | — | — | — |
+| `SLH-DSA-SHA2-192f`  | — | — | — | — | — | — |
+| `SLH-DSA-SHA2-256s`  | — | — | — | — | — | — |
+| `SLH-DSA-SHA2-256f`  | — | — | — | — | — | — |
+| `SLH-DSA-SHAKE-128s` | — | — | — | — | — | — |
+| `SLH-DSA-SHAKE-128f` | — | — | — | — | — | — |
+| `SLH-DSA-SHAKE-192s` | — | — | — | — | — | — |
+| `SLH-DSA-SHAKE-192f` | — | — | — | — | — | — |
+| `SLH-DSA-SHAKE-256s` | — | — | — | — | — | — |
+| `SLH-DSA-SHAKE-256f` | — | — | — | — | — | — |
+
+Tests means NIST ACVP vectors, differential tests against independent implementations,
+and negative tests, run natively on that architecture. Per-interface detail is in
+[`docs/STATUS.md`](docs/STATUS.md).
+
+## How it fits together
+
+```mermaid
+flowchart LR
+  subgraph code["Implementation"]
+    direction TB
+    api["C API"]
+    core["SLH-DSA core<br/>WOTS+ · XMSS · FORS · hypertree"]
+    hash["Hash<br/>SHA-2 · SHAKE<br/>scalar · NEON · AVX2"]
+    jc["Jasmin compiler<br/>verified in Rocq"]
+    asm["Assembly<br/>AArch64 · x86-64"]
+    api --> core --> hash
+    core -.-> jc
+    hash -.-> jc
+    jc --> asm
+  end
+  subgraph proof["Proof"]
+    direction TB
+    sec["SPHINCS+ security proof"]
+    spec["FIPS 205 specification<br/>in EasyCrypt"]
+    sec --- spec
+  end
+  spec -. "equivalence" .- core
+```
+
+## What is proven, and what is not
+
+| Claim | Evidence | Scope |
+| :---- | :------- | :---- |
+| EUF-CMA security of the FIPS 205 specification | not yet in this repository | — |
+| The Jasmin implementation is equivalent to the specification | open | — |
+| Hash primitives match FIPS 180-4 and FIPS 202 | open | — |
+| Constant time and speculative constant time on every secret-dependent path | not run on this branch | — |
+| Memory safety of every export | not run on this branch | — |
+| The compiler preserves the semantics of the program | proved in Rocq; `toolchain/build.sh` re-checks the proofs and prints the theorem's assumptions | each target's compiler theorem, for the pinned compiler and series |
+
+A claim moves up only with its proof or check in the repository and a CI run that
+reproduces it. Assumptions of each proof are listed next to it.
+
+## Building
+
+The toolchain is rebuilt from pinned inputs by one script. From a clean checkout:
+
+```sh
+JOBS=4 toolchain/build.sh          # opam switch, Jasmin with its proofs, tests
+export PATH="$PWD/toolchain/work/bin:$PATH"
+```
+
+Host requirements, pins and the patch series are in [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md).
+
+<details>
+<summary><b>Toolchain pins</b></summary>
+
+| Component | Pin |
+| :-------- | :-- |
+| Jasmin | `jasmin-lang/jasmin` `2bf326d5` plus the series in [`toolchain/jasmin/SERIES`](toolchain/jasmin/SERIES) |
+| Rocq | 9.0.1, mathcomp 2.4.0, OCaml 4.14.4 |
+| EasyCrypt | `e7eff05d`, Why3 1.8.2 |
+| SMT provers | Z3 4.8.17, 4.12.6, 4.13.4, 4.16.0; CVC5 1.0.9, 1.2.1; Alt-Ergo 2.5.4, 2.6.4 |
+
+Every patch has its provenance, purpose, test and upstream status in
+[`toolchain/jasmin/PATCHES.md`](toolchain/jasmin/PATCHES.md).
+
+</details>
+
+<details>
+<summary><b>Repository layout</b></summary>
+
+```text
+toolchain/   pinned Jasmin and EasyCrypt, the patch series, build.sh
+tools/       CI checks and release tooling
+changes/     one entry per change, collected at release
+docs/        toolchain, status and design notes
+```
+
+</details>
+
+## Security
+
+Report vulnerabilities privately, as described in [`SECURITY.md`](SECURITY.md).
 
 ## License
 
-Apache-2.0. See `LICENSE` and `NOTICE`.
+Apache-2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
