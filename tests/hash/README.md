@@ -38,7 +38,9 @@ SHA-256 (`L=32`) and SHA-512 (`L=64`) sections; its SHA-1, SHA-224 and
 SHA-384 sections are counted and reported as not applicable. The Monte
 Carlo procedures are those of SHAVS and SHA3VS and are restated in the
 harness. These cases exercise the one-shot exports and, through them,
-absorb, finalize and squeeze from memory.
+absorb, finalize and squeeze from memory. The same run checks the
+Keccak-f[1600] export alone against the two permutation examples in XKCP's
+`KeccakF-1600-IntermediateValues.txt`.
 
 **Differential** (`hash_test diff <seed> <n>`). `n` iterations of seeded
 random cases compared with libcrypto (OpenSSL 3), which shares no code with

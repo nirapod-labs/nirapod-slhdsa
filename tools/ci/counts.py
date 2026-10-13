@@ -14,9 +14,9 @@
 # the current vectors and settings; raising coverage needs no change here,
 # lowering it does.
 #
-#   hash        tests/hash `check negative-control`: CAVP checks, the
-#               differential checks of DIFF_ITERS=2000, and a negative
-#               control that detected every mutated family
+#   hash        tests/hash `check negative-control`: CAVP and known-answer
+#               checks, the differential checks of DIFF_ITERS=2000, and a
+#               negative control that detected every mutated family
 #   acvp        tests/acvp `check`: the verdict line of the full vector set
 #   diff        tests/diff/difftest.py: agreeing cases of all 12 sets times
 #               the 28 interface combinations
@@ -36,8 +36,8 @@ import sys
 # suite: list of (description, regex with one integer group, minimum)
 RULES = {
     "hash": [
-        ("CAVP checks passed with no failure",
-         r"^cavp: (\d+) checks passed, 0 failed$", 7128),
+        ("CAVP and known-answer checks passed with no failure",
+         r"^cavp: (\d+) checks passed, 0 failed$", 7130),
         ("differential checks passed with no failure",
          r"^diff: (\d+) checks passed, 0 failed$", 26000),
         ("negative control: failing checks with every family detected",

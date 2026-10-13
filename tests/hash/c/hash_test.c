@@ -12,7 +12,8 @@
  *         NIST CAVP byte-oriented response files: ShortMsg, LongMsg and
  *         Monte Carlo for SHA-224 .. SHA-512/256, SHA3-224 .. SHA3-512,
  *         SHAKE128 and SHAKE256; VariableOut for SHAKE; HMAC for the
- *         SHA-256 and SHA-512 sections.
+ *         SHA-256 and SHA-512 sections. Also the published known answers
+ *         for Keccak-f[1600] alone.
  *
  *     hash_test diff <seed> <iterations>
  *         Seeded random comparison with libcrypto (OpenSSL 3) as an
@@ -629,11 +630,49 @@ static unsigned long cavp_hmac(const char *dir, unsigned long *skipped)
   return n;
 }
 
+/*
+ * Keccak-f[1600] applied to the all-zero state, then to its own output:
+ * the two examples of KeccakF-1600-IntermediateValues.txt in XKCP
+ * (tests/TestVectors). Lane (x, y) is word x + 5y.
+ */
+static const uint64_t KECCAKF_ZERO[2][25] = {
+  { 0xf1258f7940e1dde7ull, 0x84d5ccf933c0478aull, 0xd598261ea65aa9eeull, 0xbd1547306f80494dull,
+    0x8b284e056253d057ull, 0xff97a42d7f8e6fd4ull, 0x90fee5a0a44647c4ull, 0x8c5bda0cd6192e76ull,
+    0xad30a6f71b19059cull, 0x30935ab7d08ffc64ull, 0xeb5aa93f2317d635ull, 0xa9a6e6260d712103ull,
+    0x81a57c16dbcf555full, 0x43b831cd0347c826ull, 0x01f22f1a11a5569full, 0x05e5635a21d9ae61ull,
+    0x64befef28cc970f2ull, 0x613670957bc46611ull, 0xb87c5a554fd00ecbull, 0x8c3ee88a1ccf32c8ull,
+    0x940c7922ae3a2614ull, 0x1841f924a2c509e4ull, 0x16f53526e70465c2ull, 0x75f644e97f30a13bull,
+    0xeaf1ff7b5ceca249ull },
+  { 0x2d5c954df96ecb3cull, 0x6a332cd07057b56dull, 0x093d8d1270d76b6cull, 0x8a20d9b25569d094ull,
+    0x4f9c4f99e5e7f156ull, 0xf957b9a2da65fb38ull, 0x85773dae1275af0dull, 0xfaf4f247c3d810f7ull,
+    0x1f1b9ee6f79a8759ull, 0xe4fecc0fee98b425ull, 0x68ce61b6b9ce68a1ull, 0xdeea66c4ba8f974full,
+    0x33c43d836eafb1f5ull, 0xe00654042719dbd9ull, 0x7cf8a9f009831265ull, 0xfd5449a6bf174743ull,
+    0x97ddad33d8994b40ull, 0x48ead5fc5d0be774ull, 0xe3b8c8ee55b7b03cull, 0x91a0226e649e42e9ull,
+    0x900e3129e7badd7bull, 0x202a9ec5faa3cce8ull, 0x5b3402464e1c3db6ull, 0x609f4e62a44c1059ull,
+    0x20d06cd26a8fbf5cull },
+};
+
+static unsigned long kat_keccakf(void)
+{
+  uint64_t st[25];
+  char what[64];
+  int i;
+
+  memset(st, 0, sizeof st);
+  for (i = 0; i < 2; i++) {
+    HT(keccakf1600)(st);
+    snprintf(what, sizeof what, "Keccak-f[1600] zero state, application %d", i + 1);
+    check(what, (const uint8_t *)st, (const uint8_t *)KECCAKF_ZERO[i], sizeof st);
+  }
+  return 2;
+}
+
 static int run_cavp(const char *dir)
 {
   size_t i;
   unsigned long n, skipped;
 
+  printf("kat  Keccak-f[1600] zero state %lu\n", kat_keccakf());
   for (i = 0; i < sizeof DIGESTS / sizeof DIGESTS[0]; i++) {
     unsigned long s = cavp_msg(dir, &DIGESTS[i], "ShortMsg");
     unsigned long l = cavp_msg(dir, &DIGESTS[i], "LongMsg");
