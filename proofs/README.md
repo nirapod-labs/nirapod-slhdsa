@@ -144,13 +144,20 @@ established). `check-spec` limits the compilation to `spec/`. Variables:
 `EASYCRYPT`, `EC_PROVERS`, `EC_TIMEOUT`, `JASMIN2EC`, `JASMIN_SRC`, `PYTHON`.
 
 `check-inventory` requires, for each pair, every theory that pair is
-checked with, has EasyCrypt print every axiom then in scope and the
-statement of each theorem in `THEOREMS` (Makefile), and fails unless the
-result equals `inventory/<arch>-<variant>.txt`. An axiom can enter by an
-`axiom` declaration, by an `axiomatized by` definition, or as an axiom a
-`clone` leaves unrealized; all three are in EasyCrypt's list, so none can
-be added, and no theorem can be dropped or weakened, without a reviewed
-change to the inventory. `make inventory` rewrites the files.
+checked with, has EasyCrypt print every axiom then in scope, the statement
+of each theorem in `THEOREMS` (Makefile) and every definition (type,
+operator, predicate, abbreviation, module) of the theories in this
+directory and in `../third_party`, and fails unless the result equals
+`inventory/<arch>-<variant>.txt`. An axiom can enter by an `axiom`
+declaration, by an `axiomatized by` definition, or as an axiom a `clone`
+leaves unrealized; all three are in EasyCrypt's list. A statement means
+what the definitions it names mean, so the definitions are pinned too: no
+axiom can be added, and no theorem dropped or weakened, either in its text
+or by changing a definition it relies on, without a reviewed change to the
+inventory. The extracted models are left out of the definitions because
+`check-extraction` already ties them to the Jasmin sources; the EasyCrypt
+and Jasmin libraries are part of the pinned toolchain. Proofs and helper
+lemmas are not listed. `make inventory` rewrites the files.
 
 The SMT provers are those of the EasyCrypt pin in `../toolchain/easycrypt/`.
 The imported theories are checked with the prover selection of their own

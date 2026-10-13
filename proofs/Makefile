@@ -19,9 +19,9 @@
 #                         a command that skips checking (admit, admitted,
 #                         pragma, exit, fail)
 #   make check-constants  re-derive the FIPS 180-4 constant tables and compare
-#   make check-inventory  fail unless EasyCrypt's list of the axioms in scope
-#                         and the claimed theorem statements equal the
-#                         committed inventory/<arch>-<variant>.txt
+#   make check-inventory  fail unless EasyCrypt's list of the axioms in scope,
+#                         the claimed theorem statements and the definitions
+#                         equal the committed inventory/<arch>-<variant>.txt
 #   make inventory        rewrite the inventory files
 #   make extract          regenerate extracted/<arch>/<variant>/ with jasmin2ec
 #   make check-extraction re-extract into a scratch directory and fail if the
@@ -142,14 +142,15 @@ check-constants:
 	@$(PYTHON) -I tools/sha2_constants.py spec/hash/FIPS180_SHA2.ec
 
 # ------------------------------------------------------------------
-# Axiom and theorem inventory
+# Axiom, theorem and definition inventory
 #
 # For each pair, tools/inventory.py requires every theory checked for that
 # pair and records what EasyCrypt prints for `print axiom` (every axiom in
 # scope, whether declared, given by `axiomatized by`, or left unrealized by
-# a clone) and the statements of THEOREMS. check-inventory fails on any
-# difference from the committed file, and on an inventory file of a pair
-# that is no longer extracted.
+# a clone), the statements of THEOREMS, and the definitions of every theory
+# outside extracted/ (which check-extraction pins). check-inventory fails on
+# any difference from the committed file, and on an inventory file of a
+# pair that is no longer extracted.
 
 THEOREMS := \
   SHA256_Compress.sha256_rounds_correct SHA256_Compress.sha256_compress_correct \
@@ -181,7 +182,7 @@ inventory-pair:
 	@test -n "$(PAIR)" || { echo "inventory-pair: PAIR not set"; exit 1; }
 	@$(PYTHON) -I tools/inventory.py --pair $(PAIR) --easycrypt "$(EASYCRYPT)" \
 	  --flags "$(call pair_flags,$(PAIR))" --namespace JazzEC=$(CRYPTO_SPECS)/arrays \
-	  --theorems "$(THEOREMS)" --$(MODE) $(call inventory_file,$(PAIR)) \
+	  --generated extracted --theorems "$(THEOREMS)" --$(MODE) $(call inventory_file,$(PAIR)) \
 	  $(OWN_FILES) $(IMPORTED_FILES) $(call pair_files,$(PAIR))
 
 # ------------------------------------------------------------------

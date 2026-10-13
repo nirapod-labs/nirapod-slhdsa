@@ -8,4 +8,4 @@
   blocks from memory and the rest of the hash layer have no proof yet.
   `make -C proofs check-extraction` fails when the committed models no
   longer match the hash sources, and `make -C proofs check-inventory` when
-  an axiom or a claimed theorem statement changes.
+  an axiom, a claimed theorem statement or a definition changes.

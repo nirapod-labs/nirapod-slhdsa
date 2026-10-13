@@ -3,10 +3,10 @@
 #
 # inventory.py
 #
-# Builds the axiom and theorem inventory of one (architecture, variant)
-# pair: a scratch theory requires every theory checked for the pair, then
-# asks EasyCrypt to `print axiom` and to print each claimed theorem. The
-# result lists
+# Builds the axiom, theorem and definition inventory of one (architecture,
+# variant) pair: a scratch theory requires every theory checked for the
+# pair, then asks EasyCrypt to `print axiom`, to print each claimed theorem,
+# and to `print theory` each theory written by hand. The result lists
 #
 #   - every axiom in scope, from any source: an `axiom` declaration, an
 #     `axiomatized by` definition, or an axiom a `clone` leaves unrealized,
@@ -16,15 +16,28 @@
 #     SHA-256 of its statement (whitespace collapsed), so that a changed
 #     statement shows as a changed line;
 #   - the statement of every claimed theorem, in full. A theorem that does
-#     not exist makes EasyCrypt fail, and a weakened one shows as a diff.
+#     not exist makes EasyCrypt fail, and a weakened one shows as a diff;
+#   - every type, operator, predicate, abbreviation and module defined in
+#     the theories of this project and the imported ones (not the generated
+#     models under a --generated directory, which `make check-extraction`
+#     pins to their sources), by qualified name, kind and the first 16 hex
+#     digits of the SHA-256 of its printed definition. A theorem statement
+#     means what the definitions it names mean; listing every definition,
+#     rather than following the names in the statements, needs no name
+#     resolution and cannot miss one reached through an imported theory.
+#     Definitions nested more than DEPTH theories deep (clones inside
+#     clones) are summarised by one digest per enclosing theory at that
+#     depth, with their count.
 #
 # The committed inventory/<arch>-<variant>.txt is the reviewed list; `make
 # check-inventory` regenerates it and fails on any difference, so a new or
-# changed axiom or theorem cannot pass without a visible change to it.
+# changed axiom, theorem or definition cannot pass without a visible change
+# to it. Proofs and lemma statements other than the claimed theorems are not
+# listed: changing them cannot change what a claimed theorem says.
 #
 # Usage:
 #   python3 inventory.py --pair P --easycrypt CMD --flags FLAGS
-#       [--namespace NS=DIR]... [--theorems "T.name ..."]
+#       [--namespace NS=DIR]... [--generated DIR]... [--theorems "T.name ..."]
 #       (--write OUT | --check OUT) FILE...
 # FILE... are the .ec/.eca files of the pair. A file whose directory is
 # the DIR of a --namespace is required as `from NS require Name`.
@@ -43,12 +56,19 @@ import tempfile
 
 MARK_AXIOMS = "inventory_axioms_follow"
 MARK_THEOREMS = "inventory_theorems_follow"
+MARK_DEFS = "inventory_definitions_follow"
 HEADING = re.compile(r"^=+ (\S+) =+$")
 # `axiom [tags] name ...`: the tags (e.g. [explicit]) are part of the statement.
 AXIOM = re.compile(r"^axiom ((?:\[[^\]]*\] )?)([^\s:\[]+)")
+# The first line of a declaration in `print theory` output.
+MARKER = re.compile(r"^\s*\(\* (?:no )?(?:import|export) \*\)\s*$")
+DECL = re.compile(r"^\s*(?:\(\* (?:no )?(?:import|export) \*\) )?(?:(?:abstract|local|declare) )*"
+                  r"(op|pred|type|abbrev|lemma|axiom|schema|theory|end|module|inductive|"
+                  r"notation|class|instance)\b\s*(.*)$")
+KEPT = {"op", "pred", "type", "abbrev", "module", "inductive", "notation", "class", "instance"}
 
 
-def scratch_theory(files, namespaces, theorems):
+def scratch_theory(files, namespaces, theorems, pinned):
     lines = []
     for path in files:
         name = os.path.splitext(os.path.basename(path))[0]
@@ -61,6 +81,10 @@ def scratch_theory(files, namespaces, theorems):
     lines.append("print %s." % MARK_THEOREMS)
     for t in theorems:
         lines.append("print lemma %s." % t)
+    lines.append("op %s = 0." % MARK_DEFS)
+    lines.append("print %s." % MARK_DEFS)
+    for t in pinned:
+        lines.append("print theory %s." % t)
     return "\n".join(lines) + "\n"
 
 
@@ -112,6 +136,80 @@ def parse_axioms(lines):
     return out
 
 
+# Definitions nested deeper than this many theories (clones inside clones)
+# are summarised by one line per theory at this depth.
+DEPTH = 2
+
+
+def decl_name(kind, rest):
+    rest = re.sub(r"^(\[[^\]]*\]\s*)+", "", rest)
+    if kind == "module-type" and rest.startswith("type "):
+        rest = rest[len("type "):]
+    if kind == "type" and rest.startswith("("):
+        rest = rest[rest.index(")") + 1:].lstrip()
+    m = re.match(r"\([^)]*\)|`[^`]*`|\"[^\"]*\"|[^\s:=(\[]+", rest)
+    return m.group(0) if m else "?"
+
+
+def parse_definitions(lines):
+    """Definitions printed by `print theory`, one line each."""
+    # Deeply nested output wraps an import marker onto a line of its own;
+    # join it to the declaration it belongs to.
+    joined = []
+    for line in lines:
+        if joined and MARKER.match(joined[-1]):
+            joined[-1] = joined[-1].rstrip() + " " + line.lstrip()
+        else:
+            joined.append(line)
+    path = []
+    items = []
+    current = None
+    for line in joined + [""]:
+        if line.startswith("* In ["):
+            continue
+        d = DECL.match(line)
+        if d or not line.strip():
+            if current:
+                items.append(current)
+                current = None
+        if not d:
+            if current is not None and line.strip():
+                current[3].append(line)
+            continue
+        kind, rest = d.group(1), d.group(2)
+        if kind == "theory":
+            path.append(rest.rstrip(".").strip())
+        elif kind == "end":
+            name = rest.rstrip(".").strip()
+            if not path or path[-1] != name:
+                raise ValueError("unbalanced theory end: %s" % line)
+            path.pop()
+        elif kind in KEPT:
+            if kind == "module" and rest.startswith("type "):
+                kind = "module-type"
+            current = [list(path), kind, decl_name(kind, rest), [line]]
+        else:
+            current = None
+    if path:
+        raise ValueError("unterminated theory %s" % ".".join(path))
+    out = []
+    nested = {}
+    for path, kind, name, body in items:
+        text = " ".join(" ".join(body).split())
+        text = re.sub(r"^\(\* (?:no )?(?:import|export) \*\) ", "", text)
+        if len(path) <= DEPTH:
+            digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+            out.append("%s.%s %s %s" % (".".join(path), name, kind, digest))
+        else:
+            key = ".".join(path[:DEPTH])
+            entry = ".".join(path[DEPTH:]) + " " + kind + " " + name + " " + text
+            nested.setdefault(key, []).append(entry)
+    for key, entries in nested.items():
+        h = hashlib.sha256("\n".join(sorted(entries)).encode("utf-8")).hexdigest()[:16]
+        out.append("%s.* nested %s %d" % (key, h, len(entries)))
+    return sorted(out)
+
+
 def parse_theorems(lines):
     out = []
     for line in lines:
@@ -123,7 +221,7 @@ def parse_theorems(lines):
     return out
 
 
-def render(pair, axioms, theorems):
+def render(pair, axioms, theorems, defs):
     head = [
         # The licence of the generated inventory (not of this script).
         # REUSE-IgnoreStart
@@ -133,10 +231,12 @@ def render(pair, axioms, theorems):
         "#",
         "# GENERATED FILE. DO NOT EDIT.",
         "#",
-        "# Axioms in scope of the %s proofs, and the statements of the" % pair,
-        "# claimed theorems, as the pinned EasyCrypt prints them after requiring",
-        "# every theory checked for this pair. One axiom per line: theory, name,",
-        "# first 16 hex digits of the SHA-256 of its statement.",
+        "# Axioms in scope of the %s proofs, the statements of the claimed" % pair,
+        "# theorems, and the definitions of the hand-written theories, as the",
+        "# pinned EasyCrypt prints them after requiring every theory checked for",
+        "# this pair. One axiom per line: theory, name, first 16 hex digits of the",
+        "# SHA-256 of its statement; one definition per line: qualified name,",
+        "# kind, the same digest of its printed definition.",
         "#",
         "# Generator: proofs/tools/inventory.py",
         "# Regenerate: make -C proofs inventory   (check: make -C proofs check-inventory)",
@@ -144,7 +244,8 @@ def render(pair, axioms, theorems):
         "axioms %d" % len(axioms),
         "",
     ]
-    return "\n".join(head + axioms + ["", "theorems", ""] + theorems) + "\n"
+    return "\n".join(head + axioms + ["", "theorems", ""] + theorems
+                     + ["", "definitions %d" % len(defs), ""] + defs) + "\n"
 
 
 def main(argv):
@@ -154,6 +255,7 @@ def main(argv):
     ap.add_argument("--flags", required=True)
     ap.add_argument("--namespace", action="append", default=[])
     ap.add_argument("--theorems", default="")
+    ap.add_argument("--generated", action="append", default=[])
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write")
     mode.add_argument("--check")
@@ -168,11 +270,14 @@ def main(argv):
             return 2
         namespaces[os.path.normpath(d)] = ns
     theorems = args.theorems.split()
+    generated = [os.path.normpath(g) + os.sep for g in args.generated]
+    pinned = [os.path.splitext(os.path.basename(f))[0] for f in args.files
+              if not any(os.path.normpath(f).startswith(g) for g in generated)]
 
     with tempfile.TemporaryDirectory() as tmp:
         src = os.path.join(tmp, "Inventory.ec")
         with open(src, "w", encoding="utf-8") as f:
-            f.write(scratch_theory(args.files, namespaces, theorems))
+            f.write(scratch_theory(args.files, namespaces, theorems, pinned))
         cmd = shlex.split(args.easycrypt) + ["compile"] + shlex.split(args.flags) + [src]
         run = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              universal_newlines=True)
@@ -183,20 +288,24 @@ def main(argv):
         return 2
     try:
         axioms = parse_axioms(section(run.stdout, MARK_AXIOMS, MARK_THEOREMS))
-        thms = parse_theorems(section(run.stdout, MARK_THEOREMS, None))
+        thms = parse_theorems(section(run.stdout, MARK_THEOREMS, MARK_DEFS))
+        defs = parse_definitions(section(run.stdout, MARK_DEFS, None))
     except ValueError as e:
         print("inventory.py: %s" % e)
         return 2
     if theorems and not thms:
         print("inventory.py: no theorem statements printed")
         return 2
-    text = render(args.pair, axioms, thms)
+    if pinned and not defs:
+        print("inventory.py: no definitions printed")
+        return 2
+    text = render(args.pair, axioms, thms, defs)
 
     if args.write:
         with open(args.write, "w", encoding="utf-8") as f:
             f.write(text)
-        print("inventory %s: %d axioms, %d theorems -> %s"
-              % (args.pair, len(axioms), len(theorems), args.write))
+        print("inventory %s: %d axioms, %d theorems, %d definitions -> %s"
+              % (args.pair, len(axioms), len(theorems), len(defs), args.write))
         return 0
     try:
         with open(args.check, encoding="utf-8") as f:
@@ -205,8 +314,8 @@ def main(argv):
         print("inventory.py: %s" % e)
         return 2
     if old == text:
-        print("inventory %s: %d axioms, %d theorems, unchanged"
-              % (args.pair, len(axioms), len(theorems)))
+        print("inventory %s: %d axioms, %d theorems, %d definitions, unchanged"
+              % (args.pair, len(axioms), len(theorems), len(defs)))
         return 0
     sys.stdout.writelines(difflib.unified_diff(
         old.splitlines(True), text.splitlines(True),

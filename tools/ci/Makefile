@@ -32,9 +32,9 @@
 #     ci-diff         differential test of the library against an
 #                     independent implementation, and its negative control
 #     ci-proofs       the EasyCrypt development and its admit scan, with
-#                     the number of files checked per group, the axiom and
-#                     theorem inventory, and the identity of the committed
-#                     extracted models
+#                     the number of files checked per group, the axiom,
+#                     theorem and definition inventory, and the identity of
+#                     the committed extracted models
 #     ci-generated    regenerate gen/ and fail on any byte difference
 #     ci-verdict-key  the key under which the verdict of an expensive
 #                     check is recorded (CHECK=<check>, below)
