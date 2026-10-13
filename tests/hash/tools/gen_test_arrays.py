@@ -16,7 +16,8 @@
 # The squeeze exports load their output arrays from the caller's buffer
 # before the squeeze. The squeeze writes every byte, but at run-time
 # offsets, which the safety checker does not count as initialising the
-# array. The harness fills that buffer before each call.
+# array. The harness fills that buffer before each call, and its squeeze
+# sweep shows that the squeeze writes every byte.
 #
 # Usage (from the repository root):
 #

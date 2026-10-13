@@ -131,6 +131,7 @@ run:
 	@test -d $(VECTORS) || { echo "missing $(VECTORS): run 'make vectors'"; exit 1; }
 	$(BIN) cavp $(VECTORS)
 	$(BIN) diff $(DIFF_SEED) $(DIFF_ITERS)
+	$(BIN) squeeze $(DIFF_SEED)
 
 vectors:
 	$(TESTS)/vectors/fetch.sh $(VECTORS)

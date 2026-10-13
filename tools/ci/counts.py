@@ -17,7 +17,9 @@
 #   hash        tests/hash `check negative-control fill-check`: CAVP and
 #               known-answer checks, the differential checks of
 #               DIFF_ITERS=2000 (on the normal and on the 0xa5-filled
-#               build), a fill check that filled every zeroed buffer site,
+#               build), the squeeze sweep over every tested length, rate
+#               and start position, a fill check that filled every zeroed
+#               buffer site,
 #               and a negative control that detected every mutated family
 #   acvp        tests/acvp `check`: the verdict line of the full vector set
 #   diff        tests/diff/difftest.py: agreeing cases of all 12 sets times
@@ -44,6 +46,8 @@ RULES = {
          r"^cavp: (\d+) checks passed, 0 failed$", 7130),
         ("differential checks passed with no failure",
          r"^diff: (\d+) checks passed, 0 failed$", 96000),
+        ("squeeze sweep checks passed with no failure",
+         r"^squeeze: (\d+) checks passed, 0 failed$", 45288),
         ("fill check: buffer sites filled with 0xa5, every test passed",
          r"^fill_check: PASS, every test passes with 0xa5-filled buffers \((\d+) sites filled\)$", 4),
         ("negative control: failing checks with every family detected",

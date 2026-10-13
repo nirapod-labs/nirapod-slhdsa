@@ -17,7 +17,7 @@ recorded results carry the revision and host they were obtained on.
 | `jasmin/test_sha2.jinc` | exports for SHA-2 (one-shot, incremental, compression) and HMAC |
 | `jasmin/test_arrays.jinc` | generated: array instances at lengths 1, 7, 16, 22, 32, 64, 65, 129, 200 (single-way and multi-way), and MGF1 at the FIPS 205 sizes |
 | `jasmin/array_io.jinc` | copy between C memory and a fixed-length stack array |
-| `c/hash_test.c` | C harness: CAVP and differential modes |
+| `c/hash_test.c` | C harness: CAVP, differential and squeeze sweep modes |
 | `c/hash_test_exports.h` | C prototypes of the test exports |
 | `c/openssl_min.h` | the libcrypto entry points the differential mode calls |
 | `vectors/fetch.sh` | fetch and verify the NIST CAVP response files |
@@ -75,6 +75,17 @@ this implementation:
 Message lengths concentrate on every rate and block boundary. The seed and
 the libcrypto version are printed; a failure prints its inputs.
 
+**Squeeze sweep** (`hash_test squeeze <seed>`). Every array squeeze export,
+single-way and 4-way, at every tested length, every Keccak rate (72, 104,
+136, 144, 168) and every start position from 0 to the rate, from a random
+state. Each case runs twice, with the output buffer filled with 0x00 and
+with 0xff, and both runs must equal a reference squeeze written in the
+harness: the output bytes, the returned position and the final state. The
+squeeze exports read their output buffer before the squeeze, so a byte
+the squeeze does not write keeps its fill, and no fill can match the
+reference in both runs. The reference Keccak-f[1600] is checked against
+the XKCP known answers first.
+
 **Constants** (`make constants`). Recomputes the SHA-2 round constants and
 initial values from roots of primes and the SHA-512/t generation function,
 and the Keccak round constants from the LFSR of FIPS 202, and compares them
@@ -126,7 +137,7 @@ by `JASMINC` and `JASMIN_CT`:
 
 ```sh
 make -C tests/hash vectors        # network: fetch and verify the CAVP files
-make -C tests/hash check          # build for this machine and run both modes
+make -C tests/hash check          # build for this machine and run every mode
 make -C tests/hash ct sct
 make -C tests/hash constants generated
 make -C tests/hash negative-control

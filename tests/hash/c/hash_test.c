@@ -6,7 +6,7 @@
  * ===========
  *
  * Native validation of the Jasmin hash primitives through their test
- * exports (hash_test_exports.h). Two modes:
+ * exports (hash_test_exports.h). Three modes:
  *
  *     hash_test cavp <dir>
  *         NIST CAVP byte-oriented response files: ShortMsg, LongMsg and
@@ -23,6 +23,12 @@
  *         the multi-way forms: 4-way Keccak, 8-way SHA-256, 4-way SHA-512.
  *         SHA-2 finalize, single-way and multi-way, with totals no message
  *         reaches is checked against padding laid out here.
+ *
+ *     hash_test squeeze <seed>
+ *         Every start position of every array squeeze, single-way and
+ *         4-way, at every Keccak rate, against a reference squeeze written
+ *         here, with the output buffer filled with two different values:
+ *         checks that the squeeze writes every output byte.
  *
  * What a PASS establishes: the exported production code paths produced
  * the expected bytes on the cases listed in the summary, on this host.
@@ -1445,6 +1451,171 @@ static int run_diff(uint64_t seed, unsigned long iters)
 }
 
 /* ------------------------------------------------------------------ */
+/* Squeeze sweep                                                      */
+
+/*
+ * Keccak-f[1600] written out from FIPS 202 section 3 (round constants of
+ * algorithm 5, rotation offsets of table 2), as the reference of the sweep
+ * below. It shares no code with the implementation, and the sweep stops
+ * unless it reproduces KECCAKF_ZERO. Lane (x, y) is word x + 5y.
+ */
+static const uint64_t REF_RC[24] = {
+  0x0000000000000001ull, 0x0000000000008082ull, 0x800000000000808aull, 0x8000000080008000ull,
+  0x000000000000808bull, 0x0000000080000001ull, 0x8000000080008081ull, 0x8000000000008009ull,
+  0x000000000000008aull, 0x0000000000000088ull, 0x0000000080008009ull, 0x000000008000000aull,
+  0x000000008000808bull, 0x800000000000008bull, 0x8000000000008089ull, 0x8000000000008003ull,
+  0x8000000000008002ull, 0x8000000000000080ull, 0x000000000000800aull, 0x800000008000000aull,
+  0x8000000080008081ull, 0x8000000000008080ull, 0x0000000080000001ull, 0x8000000080008008ull,
+};
+static const int REF_RHO[25] = { 0,  1,  62, 28, 27, 36, 44, 6,  55, 20, 3,  10, 43,
+                                 25, 39, 41, 45, 15, 21, 8,  18, 2,  61, 56, 14 };
+
+static uint64_t rol64(uint64_t v, int r)
+{
+  return r ? (v << r) | (v >> (64 - r)) : v;
+}
+
+static void ref_keccakf(uint64_t a[25])
+{
+  uint64_t c[5], b[25], d;
+  int r, x, y;
+
+  for (r = 0; r < 24; r++) {
+    for (x = 0; x < 5; x++)
+      c[x] = a[x] ^ a[x + 5] ^ a[x + 10] ^ a[x + 15] ^ a[x + 20];
+    for (x = 0; x < 5; x++) {
+      d = c[(x + 4) % 5] ^ rol64(c[(x + 1) % 5], 1);
+      for (y = 0; y < 5; y++)
+        a[x + 5 * y] ^= d;
+    }
+    for (x = 0; x < 5; x++)
+      for (y = 0; y < 5; y++)
+        b[y + 5 * ((2 * x + 3 * y) % 5)] = rol64(a[x + 5 * y], REF_RHO[x + 5 * y]);
+    for (x = 0; x < 5; x++)
+      for (y = 0; y < 5; y++)
+        a[x + 5 * y] = b[x + 5 * y] ^ (~b[(x + 1) % 5 + 5 * y] & b[(x + 2) % 5 + 5 * y]);
+    a[0] ^= REF_RC[r];
+  }
+}
+
+/* Squeeze n bytes from st at pos, permuting first when pos == rate. */
+static uint64_t ref_squeeze(uint64_t st[25], uint64_t pos, uint64_t rate, uint8_t *out, size_t n)
+{
+  size_t i;
+
+  for (i = 0; i < n; i++) {
+    if (pos == rate) {
+      ref_keccakf(st);
+      pos = 0;
+    }
+    out[i] = (uint8_t)(st[pos / 8] >> (8 * (pos % 8)));
+    pos++;
+  }
+  return pos;
+}
+
+/*
+ * A comparison of the sweep. A dropped store fails thousands of cases, so
+ * only the first few failures print their bytes; every one prints its case.
+ */
+static void sweep_check(const char *what, const uint8_t *got, const uint8_t *want, size_t n)
+{
+  static unsigned long shown;
+
+  if (memcmp(got, want, n) == 0)
+    g_pass++;
+  else if (shown++ < 8)
+    check(what, got, want, n);
+  else {
+    g_fail++;
+    fprintf(stderr, "FAIL %s\n", what);
+  }
+}
+
+/*
+ * Every output byte of the array squeezes is written. For each tested
+ * length, each Keccak rate and every start position in [0, rate] (at rate
+ * the squeeze permutes first), the 4-way and the single-way squeeze run
+ * from one random state twice, with the output buffer filled with 0x00 and
+ * with 0xff. Each run must give the reference bytes, and the reference
+ * state and position. An unwritten byte keeps its fill, which cannot equal
+ * the reference byte in both runs, so it fails at least one comparison.
+ * The two runs are also compared with each other, byte by byte, to count
+ * unwritten bytes in the summary.
+ */
+static void sweep_case(const char *way, size_t L, uint64_t rate, uint64_t pos0, int ways,
+                       const uint64_t *st, uint64_t (*sqz)(uint8_t *, uint64_t *, uint64_t, uint64_t),
+                       unsigned long *unwritten)
+{
+  static const uint8_t FILLS[2] = { 0x00, 0xff };
+  uint8_t out[2][4 * 200], want[4 * 200];
+  uint64_t ref[4][25], got[101], exp[101];
+  char what[160];
+  size_t i;
+  int f, j, k, nw = 25 * ways;
+
+  for (k = 0; k < ways; k++) {
+    for (j = 0; j < 25; j++)
+      ref[k][j] = st[ways * j + k];
+    exp[nw] = ref_squeeze(ref[k], pos0, rate, want + k * L, L);
+    for (j = 0; j < 25; j++)
+      exp[ways * j + k] = ref[k][j];
+  }
+  for (f = 0; f < 2; f++) {
+    memcpy(got, st, 8 * nw);
+    memset(out[f], FILLS[f], ways * L);
+    got[nw] = sqz(out[f], got, pos0, rate);
+    snprintf(what, sizeof what, "squeeze_%s L=%zu rate=%llu pos=%llu fill=0x%02x output", way, L,
+             (unsigned long long)rate, (unsigned long long)pos0, FILLS[f]);
+    sweep_check(what, out[f], want, ways * L);
+    snprintf(what, sizeof what, "squeeze_%s L=%zu rate=%llu pos=%llu fill=0x%02x state and position",
+             way, L, (unsigned long long)rate, (unsigned long long)pos0, FILLS[f]);
+    sweep_check(what, (const uint8_t *)got, (const uint8_t *)exp, 8 * (nw + 1));
+  }
+  for (i = 0; i < ways * L; i++)
+    *unwritten += out[0][i] != out[1][i];
+}
+
+static int run_squeeze(uint64_t seed)
+{
+  static const uint64_t RATES[] = { 72, 104, 136, 144, 168 };
+  uint64_t st[100], rate, pos0;
+  unsigned long cases = 0, unwritten = 0;
+  size_t t, r;
+  int j;
+
+  {
+    uint64_t z[25] = { 0 };
+    int i;
+
+    for (i = 0; i < 2; i++) {
+      ref_keccakf(z);
+      if (memcmp(z, KECCAKF_ZERO[i], sizeof z))
+        die("the reference Keccak-f[1600] disagrees with the known answers", NULL);
+    }
+  }
+  printf("squeeze seed %llu\n", (unsigned long long)seed);
+  g_rng = seed;
+  for (t = 0; t < sizeof ARRAYS / sizeof ARRAYS[0]; t++) {
+    if (t >= sizeof X4 / sizeof X4[0] || X4[t].len != ARRAYS[t].len)
+      die("the single-way and 4-way instance tables differ", NULL);
+    for (r = 0; r < sizeof RATES / sizeof RATES[0]; r++) {
+      rate = RATES[r];
+      for (pos0 = 0; pos0 <= rate; pos0++) {
+        for (j = 0; j < 100; j++)
+          st[j] = rnd();
+        sweep_case("x4", X4[t].len, rate, pos0, 4, st, X4[t].sqz, &unwritten);
+        sweep_case("x1", ARRAYS[t].len, rate, pos0, 1, st, ARRAYS[t].ksqz, &unwritten);
+        cases += 2;
+      }
+    }
+  }
+  printf("squeeze %lu cases (lengths x rates x start positions x {4-way, single-way}), "
+         "%lu unwritten output bytes\n", cases, unwritten);
+  return 0;
+}
+
+/* ------------------------------------------------------------------ */
 
 /* A command-line number in C notation (decimal, 0x hex or 0 octal). */
 static unsigned long long arg_number(const char *s)
@@ -1465,8 +1636,10 @@ int main(int argc, char **argv)
     run_cavp(argv[2]);
   else if (argc == 4 && !strcmp(argv[1], "diff"))
     run_diff(arg_number(argv[2]), (unsigned long)arg_number(argv[3]));
+  else if (argc == 3 && !strcmp(argv[1], "squeeze"))
+    run_squeeze(arg_number(argv[2]));
   else {
-    fprintf(stderr, "usage: %s cavp <dir> | diff <seed> <iterations>\n", argv[0]);
+    fprintf(stderr, "usage: %s cavp <dir> | diff <seed> <iterations> | squeeze <seed>\n", argv[0]);
     return 2;
   }
   printf("%s: %lu checks passed, %lu failed\n", argv[1], g_pass, g_fail);
