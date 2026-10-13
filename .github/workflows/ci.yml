@@ -34,13 +34,6 @@
 # change entry under changes/, unless it carries the label no-changelog
 # (job `changelog`).
 #
-# jasmin-checksafety runs on pushes to main, on the schedule, on manual runs,
-# and on every pull request that changes a file it could depend on; it is
-# deferred only when every changed file is documentation, licensing,
-# benchmarks, the ACVP or differential tests, or proofs (job `scope`,
-# tools/ci/Makefile ci-safety-scope), and the job summary states the
-# deferral.
-#
 # The job `all-checks` succeeds only when every other job of this file
 # succeeded, and it checks that it depends on every other job of this file
 # (tools/ci/require-success.py). It is the status check that branch
@@ -48,7 +41,7 @@
 # otherwise count as passing.
 #
 # On a pull request, an expensive check (tests, analyses, the differential
-# test, regeneration, proofs) whose inputs are identical to those of
+# test, safety, regeneration, proofs) whose inputs are identical to those of
 # a recorded passing run reports that run in its job summary instead of
 # running again; its inputs are every file except a reviewed list of paths
 # it does not read (tools/ci/Makefile, Verdicts). Pushes to main, the
@@ -168,27 +161,6 @@ jobs:
           CI_NO_CHANGELOG: ${{ contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
         run: tools/ci/changelog.sh
 
-  scope:
-    name: scope
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    outputs:
-      safety: ${{ steps.scope.outputs.safety }}
-    steps:
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # The base of a pull request must be in the history to diff against.
-          fetch-depth: 0
-
-      - name: Decide whether this event runs the safety checker
-        id: scope
-        env:
-          CI_EVENT: ${{ github.event_name }}
-          CI_BASE: ${{ github.event.pull_request.base.sha }}
-        run: make -s -f tools/ci/Makefile ci-safety-scope
-
   vectors:
     name: vectors
     runs-on: ubuntu-24.04
@@ -237,32 +209,30 @@ jobs:
 
   linux-x86_64:
     name: linux-x86_64
-    needs: [lint, reuse, scope, source, vectors]
+    needs: [lint, reuse, source, vectors]
     uses: ./.github/workflows/platform.yml
     with:
       platform: linux-x86_64
       runner: ubuntu-24.04
       jobs: 4
-      safety: ${{ needs.scope.outputs.safety == 'run' }}
       cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
       reuse-verdicts: ${{ github.event_name == 'pull_request' }}
 
   linux-aarch64:
     name: linux-aarch64
-    needs: [lint, reuse, scope, source, vectors]
+    needs: [lint, reuse, source, vectors]
     uses: ./.github/workflows/platform.yml
     with:
       platform: linux-aarch64
       runner: ubuntu-24.04-arm
       jobs: 4
       toolchain-options: --no-easycrypt
-      safety: ${{ needs.scope.outputs.safety == 'run' }}
       cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
       reuse-verdicts: ${{ github.event_name == 'pull_request' }}
 
   macos-aarch64:
     name: macos-aarch64
-    needs: [lint, reuse, scope, source, vectors]
+    needs: [lint, reuse, source, vectors]
     uses: ./.github/workflows/platform.yml
     with:
       platform: macos-aarch64
@@ -270,7 +240,6 @@ jobs:
       # Three cores and 7 GB of memory. Two parallel jobs leave a margin for
       # memory; the build has not been measured on this runner.
       jobs: 2
-      safety: ${{ needs.scope.outputs.safety == 'run' }}
       cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
       reuse-verdicts: ${{ github.event_name == 'pull_request' }}
 
@@ -393,7 +362,7 @@ jobs:
   all-checks:
     name: all-checks
     if: always()
-    needs: [lint, reuse, changelog, scope, source, vectors, linux-x86_64, linux-aarch64, macos-aarch64, proofs, agree]
+    needs: [lint, reuse, changelog, source, vectors, linux-x86_64, linux-aarch64, macos-aarch64, proofs, agree]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

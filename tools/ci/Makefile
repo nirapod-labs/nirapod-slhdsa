@@ -27,9 +27,7 @@
 #                     them) are byte-identical
 #     ci-analysis     jasmin-ct and jasmin-ct --sct on every unit and kernel
 #                     set of this host's architecture; emitted-code policies
-#     ci-safety-scope whether this event runs the safety checker
-#     ci-safety       jasmin-checksafety (CI_SAFETY=run), or a NOT RUN
-#                     statement (CI_SAFETY=defer)
+#     ci-safety       jasmin-checksafety on every export
 #     ci-diff         differential test of the library against an
 #                     independent implementation, and its negative control
 #     ci-proofs       the EasyCrypt development and its admit scan, and the
@@ -272,7 +270,7 @@ CI_CORE_TRANSCRIPT := $(CI_BUILD)/$(CI_TARGET)/transcript-core.txt
 
 .PHONY: ci-source ci-components ci-hash-sets ci-vectors ci-vectors-key
 .PHONY: ci-test ci-test-hash ci-test-core ci-test-acvp ci-transcript ci-agree
-.PHONY: ci-analysis ci-analysis-core ci-analysis-hash ci-asm ci-safety ci-safety-scope ci-diff
+.PHONY: ci-analysis ci-analysis-core ci-analysis-hash ci-asm ci-safety ci-diff
 .PHONY: ci-proofs ci-generated ci-verdict-key
 
 # ---------------------------------------------------------------------------
@@ -472,56 +470,13 @@ else
 endif
 
 # Safety. jasmin-checksafety takes up to an hour per export today. It runs
-# on every event except a pull request whose every changed file is one it
-# cannot depend on (CI_SAFETY_SKIP_DIRS, CI_SAFETY_SKIP_FILES, and any
-# *.md): documentation, licences, benchmarks, the ACVP and differential
-# tests, and the proofs. Everything else runs it, including a path nobody
-# has classified yet, the top-level Makefile and its *.mk fragments (which
-# choose the units safety checks), the toolchain, and the CI. A rename
-# counts as a deletion plus an addition, so moving a file out of a watched
-# place runs safety too.
-#
-# ci-safety-scope decides, from the event and the files the pull request
-# changes against its base (CI_EVENT, CI_BASE), and writes safety=run or
-# safety=defer to $GITHUB_OUTPUT. A deferral is stated, in the log and in
-# the job summary, never left silent. Without the safety component there is
-# nothing to decide, and the answer is run (ci-safety then reports NOT
-# APPLICABLE).
-CI_SAFETY ?= run
-CI_SAFETY_SKIP_DIRS  := docs bench LICENSES .github/ISSUE_TEMPLATE \
-                        $(CI_DIRS_acvp) $(CI_DIRS_diff) $(CI_DIRS_proofs)
-CI_SAFETY_SKIP_FILES := AUTHORS NOTICE LICENSE CITATION.cff REUSE.toml \
-                        .github/CODEOWNERS .github/pull_request_template.md
-ci_alt = $(subst .,\.,$(subst $(eval) ,|,$(strip $(1))))
-CI_SAFETY_SKIP_RE := ^(($(call ci_alt,$(CI_SAFETY_SKIP_DIRS)))/|($(call ci_alt,$(CI_SAFETY_SKIP_FILES)))$$|.*\.md$$)
-CI_EVENT ?=
-CI_BASE  ?=
-
-ci-safety-scope:
-	@decide() { echo "safety=$$1"; echo "ci-safety-scope: $$2"; \
-	  if [ -n "$$GITHUB_OUTPUT" ]; then echo "safety=$$1" >> "$$GITHUB_OUTPUT"; fi; }; \
-	if [ "$(CI_EVENT)" != pull_request ]; then decide run "event '$(CI_EVENT)' always runs safety"; exit 0; fi; \
-	[ -n "$(CI_BASE)" ] || { echo "ci-safety-scope: a pull request needs CI_BASE"; exit 1; }; \
-	changed=$$(git -c core.quotePath=false diff --name-only --no-renames "$(CI_BASE)" HEAD) || { echo "ci-safety-scope: cannot diff against $(CI_BASE)"; exit 1; }; \
-	hits=$$(printf '%s\n' "$$changed" | grep -v '^$$' | grep -vE '$(CI_SAFETY_SKIP_RE)' || true); \
-	if [ -n "$$hits" ]; then \
-	  printf '%s\n' "$$hits" | head -20 | sed 's/^/  /'; \
-	  decide run "the pull request changes $$(printf '%s\n' "$$hits" | wc -l | tr -d ' ') file(s) safety may depend on (first 20 above)"; \
-	else \
-	  decide defer "every file the pull request changes is documentation, licensing, benchmarks, ACVP or differential tests, or proofs"; \
-	fi
-
+# on every event; on a pull request whose safety inputs match those of a
+# recorded pass (CI_VERDICT_SKIP_safety above), the workflow reports that
+# pass instead of running it again.
 ci-safety:
 ifneq ($(CI_SAFETY_DIRS),)
-ifeq ($(CI_SAFETY),run)
 	$(call CI_NEED_JASMINC,ci-safety)
 	$(MAKE) safety $(CI_CORE_VARS)
-else ifeq ($(CI_SAFETY),defer)
-	@msg="ci-safety: NOT RUN, this pull request changes only files safety cannot depend on; jasmin-checksafety runs on main, on the schedule, and on every other pull request"; \
-	echo "$$msg"; if [ -n "$$GITHUB_STEP_SUMMARY" ]; then echo "$$msg" >> "$$GITHUB_STEP_SUMMARY"; fi
-else
-	@echo "ci-safety: CI_SAFETY must be run or defer, not '$(CI_SAFETY)'"; exit 1
-endif
 else
 	$(call not_applicable,ci-safety,safety)
 endif

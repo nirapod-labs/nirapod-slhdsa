@@ -19,8 +19,7 @@
 #                 and the emitted-code policies
 #   differential  ci-diff: the library against an independent
 #                 implementation
-#   safety        ci-safety: jasmin-checksafety where the caller asks for
-#                 it, a stated deferral otherwise
+#   safety        ci-safety: jasmin-checksafety
 #   generated     ci-generated: shipped assembly against a regeneration
 #
 # Every job runs whatever it is given: none of them is skipped by a
@@ -80,10 +79,6 @@ on:
         description: "Options of toolchain/build.sh before its step, e.g. --no-easycrypt"
         type: string
         default: ""
-      safety:
-        description: "Run jasmin-checksafety (true) or state its deferral (false)"
-        type: boolean
-        default: false
       cold:
         description: "Build the toolchain from scratch and compare it with the cached build"
         type: boolean
@@ -431,32 +426,49 @@ jobs:
           key: ${{ steps.verdict.outputs.key }}
 
   # jasmin-checksafety loads the switch's libraries, so this job restores
-  # both caches instead of the packed compiler; on a deferring event it
-  # restores nothing and states the deferral.
+  # both caches instead of the packed compiler.
   safety:
     name: safety
     needs: toolchain
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 360
-    env:
-      CI_SAFETY: ${{ inputs.safety && 'run' || 'defer' }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      - name: Compute the verdict key
+        id: verdict
+        env:
+          CI_TOOL_KEY: ${{ needs.toolchain.outputs.compiler-key }}
+        run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=safety
+
+      - name: Restore a recorded verdict
+        id: recorded
+        if: inputs.reuse-verdicts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/safety
+          key: ${{ steps.verdict.outputs.key }}
+
+      - name: Report the recorded verdict
+        if: steps.recorded.outputs.cache-hit == 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh report safety "$KEY"
+
       - name: Install build dependencies
-        if: inputs.safety
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh deps build
 
       - name: Name the cache paths
         id: paths
-        if: inputs.safety
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh cache-paths
 
       - name: Restore the opam switch
-        if: inputs.safety
+        if: steps.recorded.outputs.cache-hit != 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.paths.outputs.switch }}
@@ -464,7 +476,7 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Restore the compiler
-        if: inputs.safety
+        if: steps.recorded.outputs.cache-hit != 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.paths.outputs.compiler }}
@@ -472,11 +484,25 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Put the cached tools on the PATH
-        if: inputs.safety
+        if: steps.recorded.outputs.cache-hit != 'true'
         run: tools/ci/toolchain.sh bin-path
 
       - name: Safety checks
-        run: make -f tools/ci/Makefile ci-safety
+        if: steps.recorded.outputs.cache-hit != 'true'
+        run: tools/ci/verdict.sh run safety make -f tools/ci/Makefile ci-safety
+
+      - name: Record the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        env:
+          KEY: ${{ steps.verdict.outputs.key }}
+        run: tools/ci/verdict.sh record safety "$KEY"
+
+      - name: Save the verdict
+        if: steps.recorded.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/verdict/safety
+          key: ${{ steps.verdict.outputs.key }}
 
   generated:
     name: generated
