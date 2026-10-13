@@ -40,6 +40,7 @@ Exposed for testing and validation only, never to applications.
 | Compiler proofs, extraction and tests, from scratch | PASS, `39acdf0` | PASS, `39acdf0` |
 | Same compiler and build records on every platform | PASS, `39acdf0` | PASS, `39acdf0` |
 
-AArch64 covers Linux and macOS. Both rows come from CI run
+AArch64 covers Linux and macOS; Linux AArch64 builds the compiler without EasyCrypt, so the
+EasyCrypt library check of the first row ran on macOS for that column. Both rows come from CI run
 [38333758447](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38333758447)
 on hosted runners; CI timings are not performance results.
