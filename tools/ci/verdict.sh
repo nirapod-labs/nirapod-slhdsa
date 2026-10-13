@@ -5,12 +5,12 @@
 # tools/ci/verdict.sh
 # ===================
 #
-# Recorded verdicts of the expensive checks. A check that passed is
-# recorded under a key computed from everything it reads; a pull request
-# whose key matches a recorded pass reports that pass, names the run that
-# recorded it, and does not run the check again. A check that fails is
-# never recorded, and pushes to main and scheduled runs never reuse a
-# verdict: they run every check (.github/workflows/ci.yml).
+# Recorded verdicts of the expensive checks. A check that passed in a run
+# on main is recorded under a key computed from everything it reads; a
+# pull request whose key matches such a record reports that pass, names
+# the run that recorded it, and does not run the check again. A check that
+# fails is never recorded, and pushes to main and scheduled runs never
+# reuse a verdict: they run every check (.github/workflows/ci.yml).
 #
 # The key of a check is the SHA-256 of
 #
@@ -31,42 +31,66 @@
 #
 # A verdict lives in build/verdict/<check>/: the record (PASS, the key, the
 # run, the commit, and the input tree, which `git ls-tree -r <tree>` lists),
-# the check's log, and the files later jobs need from it (files/). The
-# workflows save that directory to the Actions cache under the key.
+# the check's log, and the files later jobs need from it (files/).
+#
+# Where verdicts come from. Only runs on main record one: the workflows
+# upload the directory as an artifact of the run, named by the key. A pull
+# request takes a verdict only from a run that the API reports as a push,
+# a scheduled run or a manual run of ci.yml on main of this repository, and
+# downloads it from that run. A pull request's own runs record nothing, and
+# nothing they write is read back as a verdict. Verdicts are not kept in
+# the Actions cache: a pull request restores entries that its own earlier
+# commits saved, with workflows of their choosing, and restoring an entry
+# unpacks it with the paths it holds, wherever they point.
 #
 # Usage, from the repository root:
 #
 #   verdict.sh key CHECK PLATFORM TOOL_KEY PATHSPEC...
-#       print the key (and add key=... and key-CHECK=... to $GITHUB_OUTPUT);
-#       PATHSPEC... are the paths the check does not read. Every *.mk file
-#       stays an input: the top-level Makefile includes the fragments it
-#       finds, wherever they sit.
+#       print the key, keep it in build/verdict/CHECK.key and add key=...
+#       to $GITHUB_OUTPUT; PATHSPEC... are the paths the check does not
+#       read. Every *.mk file stays an input: the top-level Makefile
+#       includes the fragments it finds, wherever they sit.
 #   verdict.sh run CHECK COMMAND...
 #       run COMMAND, append its output to the check's log, and return its
 #       status
 #   verdict.sh record CHECK KEY [FILE...]
 #       record a pass, keeping FILE... (paths from the root). Run only after
-#       every step of the check has passed
-#   verdict.sh report CHECK KEY
-#       after a cache hit: check that the restored record is a pass under
-#       KEY, put its files back in place, and state the reuse, the run that
-#       recorded it and the end of its log in the log and the job summary
-#   verdict.sh toolchain REUSE COMPILER_KEY RECORD_FOUND CHECK=FOUND...
-#       whether the toolchain job has to restore (or build) the toolchain:
-#       not when verdicts are reused (REUSE is true), every CHECK of the
-#       platform has a recorded pass (FOUND is true), and the compiler's
-#       build record is cached for the cross-platform comparison. Writes
-#       toolchain=needed or toolchain=skipped to $GITHUB_OUTPUT, and the
-#       decision with the compiler key to the job summary. A check found
-#       here and evicted before its job restores it fails that job, which
-#       then has no compiler; the next run restores the toolchain.
+#       every step of the check has passed, and only on main
+#   verdict.sh toolchain REUSE COMPILER_KEY RECORD_FOUND
+#       for each check keyed in this job (build/verdict/*.key), the newest
+#       run on main that recorded a pass under its key, when REUSE is true;
+#       written to $GITHUB_OUTPUT as verdicts=CHECK=RUN ... (RUN empty when
+#       there is none). Then whether the toolchain job has to restore (or
+#       build) the toolchain: not when every check has such a run and the
+#       compiler's build record is cached for the cross-platform
+#       comparison. Writes toolchain=needed or toolchain=skipped, and the
+#       decision with the compiler key to the job summary. A verdict found
+#       here that is gone when its job downloads it fails that job, which
+#       then has no compiler.
+#   verdict.sh reuse CHECK KEY VERDICTS
+#       VERDICTS is the toolchain job's verdicts output. When it names a
+#       run for CHECK, download that run's verdict, check that it is a pass
+#       under KEY recorded on main, put its files back in place, and state
+#       the reuse, the run that recorded it and the end of its log in the
+#       log and the job summary. Writes reused=true, or reused=false when
+#       there is no verdict to reuse and the check has to run.
 
 set -euo pipefail
 
 FORMAT=1
 DIR=build/verdict
+# The runs a verdict is taken from: this repository's ci.yml, on main.
+MAIN=main
+WORKFLOW=.github/workflows/ci.yml
 
 die() { echo "verdict.sh: $*" >&2; exit 1; }
+warn() { echo "::warning::verdict.sh: $*"; }
+
+# output NAME=VALUE: print it, and add it to $GITHUB_OUTPUT in a workflow.
+output() {
+  echo "$1"
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "$1" >> "$GITHUB_OUTPUT"; fi
+}
 
 # The scratch directory of the command, if it made one; removed on exit,
 # failures included.
@@ -81,6 +105,39 @@ check_name() {
   case "$1" in
     ''|*[!a-z]*) die "check name '$1': expected lower-case letters" ;;
   esac
+}
+
+# A key as cmd_key makes it; it is also the name of the artifact, and goes
+# into API queries as is.
+key_name() {
+  printf '%s\n' "$1" | grep -Eqx 'verdict-[a-z]+-[a-z0-9_-]+-[0-9a-f]{64}' \
+    || die "'$1' is not a verdict key"
+}
+
+# main_run KEY: the newest run with an artifact named KEY that is a push, a
+# scheduled run or a manual run of $WORKFLOW on $MAIN of this repository;
+# nothing when there is none. Fails when the API cannot be read.
+main_run() {
+  local key=$1 repo=${GITHUB_REPOSITORY:-} found run what
+  [ -n "$repo" ] || die "GITHUB_REPOSITORY is not set"
+  key_name "$key"
+  # The artifact's own record of its run rules out most candidates without
+  # a further request: a fork's run, or a branch other than main.
+  found=$(gh api --paginate "repos/$repo/actions/artifacts?name=$key&per_page=100" --jq "
+    .artifacts[]
+    | select(.name == \"$key\" and (.expired | not)
+             and .workflow_run.head_branch == \"$MAIN\"
+             and .workflow_run.head_repository_id == .workflow_run.repository_id)
+    | \"\(.created_at) \(.workflow_run.id)\"") || return 1
+  for run in $(printf '%s\n' "$found" | sort -r | cut -d' ' -f2); do
+    what=$(gh api "repos/$repo/actions/runs/$run" \
+      --jq '"\(.event) \(.head_branch) \(.path) \(.head_repository.id == .repository.id)"') || return 1
+    case "$what" in
+      "push $MAIN $WORKFLOW true"|"schedule $MAIN $WORKFLOW true"|"workflow_dispatch $MAIN $WORKFLOW true")
+        echo "$run"
+        return 0 ;;
+    esac
+  done
 }
 
 cmd_key() {
@@ -112,14 +169,13 @@ cmd_key() {
     echo "inputs $tree"
   } > "$TMP/material"
   key="verdict-$check-$platform-$(sha256_of < "$TMP/material" | cut -d' ' -f1)"
+  key_name "$key"
   mkdir -p "$DIR"
   cp "$TMP/material" "$DIR/$check.material"
+  echo "$key" > "$DIR/$check.key"
   sed 's/^/  /' "$DIR/$check.material"
   echo "input set: $kept of $all tracked files (git ls-tree -r $tree)"
-  echo "key=$key"
-  if [ -n "${GITHUB_OUTPUT:-}" ]; then
-    { echo "key=$key"; echo "key-$check=$key"; } >> "$GITHUB_OUTPUT"
-  fi
+  output "key=$key"
 }
 
 cmd_run() {
@@ -165,15 +221,26 @@ cmd_record() {
   echo "verdict.sh: $check PASS recorded under $key"
 }
 
-cmd_report() {
-  [ $# -eq 2 ] || die "usage: verdict.sh report CHECK KEY"
-  local check=$1 key=$2 d f run commit
-  check_name "$check"
+# report CHECK KEY RUN: the verdict downloaded from RUN into $DIR/CHECK is
+# a pass under KEY, recorded on main by that run; put its files back and
+# state the reuse.
+report() {
+  local check=$1 key=$2 run=$3 d f url commit event
   d="$DIR/$check"
-  [ -f "$d/record" ] || die "report $check: the restored entry has no record"
-  grep -qx "verdict PASS" "$d/record" || die "report $check: the restored record is not a pass"
-  grep -qxF "key $key" "$d/record" || die "report $check: the restored record is not for $key"
-  [ -f "$d/log" ] || die "report $check: the restored entry has no log"
+  [ -f "$d/record" ] || die "reuse $check: the verdict of run $run has no record"
+  grep -qx "verdict PASS" "$d/record" || die "reuse $check: the record of run $run is not a pass"
+  grep -qxF "key $key" "$d/record" || die "reuse $check: the record of run $run is not for $key"
+  [ -f "$d/log" ] || die "reuse $check: the verdict of run $run has no log"
+  event=$(sed -n 's/^event //p' "$d/record")
+  case "$event" in
+    "push refs/heads/$MAIN"|"schedule refs/heads/$MAIN"|"workflow_dispatch refs/heads/$MAIN") ;;
+    *) die "reuse $check: the record of run $run was made on '$event', not by a run on $MAIN" ;;
+  esac
+  url=$(sed -n 's/^run //p' "$d/record")
+  case "$url" in
+    */actions/runs/"$run"" attempt "*) ;;
+    *) die "reuse $check: the record names '$url', not run $run" ;;
+  esac
   if [ -d "$d/files" ]; then
     (cd "$d/files" && find . -type f) | while read -r f; do
       f=${f#./}
@@ -181,12 +248,11 @@ cmd_report() {
       cp "$d/files/$f" "$f"
     done
   fi
-  run=$(sed -n 's/^run //p' "$d/record")
   commit=$(sed -n 's/^commit //p' "$d/record")
   {
-    echo "### $check: PASS, recorded with identical inputs"
+    echo "### $check: PASS, recorded on $MAIN with identical inputs"
     echo
-    echo "Not run again. Its inputs are those of the passing run $run at commit $commit."
+    echo "Not run again. Its inputs are those of the passing run $url at commit $commit."
     echo
     echo '```'
     cat "$d/record"
@@ -202,35 +268,83 @@ cmd_report() {
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then cat "$DIR/$check.report" >> "$GITHUB_STEP_SUMMARY"; fi
 }
 
-cmd_toolchain() {
-  [ $# -ge 4 ] || die "usage: verdict.sh toolchain REUSE COMPILER_KEY RECORD_FOUND CHECK=FOUND..."
-  local reuse=$1 compiler=$2 record=$3 pair missing="" decision reason
-  shift 3
-  [ -n "$compiler" ] || die "toolchain: no compiler key"
-  for pair in "$@"; do
+cmd_reuse() {
+  [ $# -eq 3 ] || die "usage: verdict.sh reuse CHECK KEY VERDICTS"
+  local check=$1 key=$2 verdicts=$3 pair run="" looked=false
+  check_name "$check"
+  key_name "$key"
+  for pair in $verdicts; do
     case "$pair" in
-      *=true) ;;
-      [a-z]*=*) missing="$missing ${pair%%=*}" ;;
-      *) die "toolchain: '$pair' is not CHECK=FOUND" ;;
+      "$check="*) run=${pair#*=} looked=true ;;
     esac
+  done
+  [ "$looked" = true ] \
+    || die "reuse $check: the toolchain job did not look $check up; is it in CI_VERDICT_PLATFORM_CHECKS (tools/ci/Makefile)?"
+  if [ -z "$run" ]; then
+    echo "verdict.sh: no pass of $check under $key recorded on $MAIN; the check runs"
+    output "reused=false"
+    return 0
+  fi
+  case "$run" in
+    *[!0-9]*) die "reuse $check: '$run' is not a run id" ;;
+  esac
+  TMP=$(mktemp -d)
+  if ! gh run download "$run" --repo "${GITHUB_REPOSITORY:?}" --name "$key" --dir "$TMP/verdict"; then
+    warn "reuse $check: the verdict of run $run could not be downloaded; the check runs"
+    output "reused=false"
+    return 0
+  fi
+  rm -rf "${DIR:?}/$check"
+  mkdir -p "$DIR"
+  mv "$TMP/verdict" "$DIR/$check"
+  report "$check" "$key" "$run"
+  output "reused=true"
+}
+
+cmd_toolchain() {
+  [ $# -eq 3 ] || die "usage: verdict.sh toolchain REUSE COMPILER_KEY RECORD_FOUND"
+  local reuse=$1 compiler=$2 record=$3 f check key run verdicts="" found="" missing="" decision reason
+  [ -n "$compiler" ] || die "toolchain: no compiler key"
+  set -- "$DIR"/*.key
+  [ -f "$1" ] || die "toolchain: no verdict keys in $DIR; run 'make -f tools/ci/Makefile ci-platform-verdict-keys' first"
+  for f in "$@"; do
+    check=$(basename "$f" .key)
+    key=$(cat "$f")
+    run=""
+    if [ "$reuse" = true ] && ! run=$(main_run "$key"); then
+      warn "toolchain: the recorded verdicts of $check could not be looked up; it runs"
+      run=""
+    fi
+    verdicts="$verdicts${verdicts:+ }$check=$run"
+    if [ -n "$run" ]; then
+      found="$found- $check: run $run"$'\n'
+    else
+      missing="$missing $check"
+    fi
   done
   if [ "$reuse" != true ]; then
     decision=needed reason="this event runs every check"
   elif [ -n "$missing" ]; then
-    decision=needed reason="no recorded pass for:$missing"
+    decision=needed reason="no pass recorded on $MAIN for:$missing"
   elif [ "$record" != true ]; then
     decision=needed reason="the compiler's build record is not cached"
   else
-    decision=skipped reason="every check of this platform has a recorded pass with this compiler"
+    decision=skipped reason="every check of this platform has a pass recorded on $MAIN with this compiler"
   fi
-  echo "toolchain=$decision"
-  if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "toolchain=$decision" >> "$GITHUB_OUTPUT"; fi
+  output "verdicts=$verdicts"
+  output "toolchain=$decision"
   {
     echo "### toolchain: $decision"
     echo
     echo "$reason."
     echo
     echo "Compiler key: \`$compiler\`"
+    if [ -n "$found" ]; then
+      echo
+      echo "Passes recorded on $MAIN under this platform's keys:"
+      echo
+      printf '%s' "$found"
+    fi
   } > "$DIR.toolchain"
   cat "$DIR.toolchain"
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then cat "$DIR.toolchain" >> "$GITHUB_STEP_SUMMARY"; fi
@@ -240,7 +354,7 @@ case "${1:-}" in
   key)    shift; cmd_key "$@" ;;
   run)    shift; cmd_run "$@" ;;
   record) shift; cmd_record "$@" ;;
-  report) shift; cmd_report "$@" ;;
+  reuse)  shift; cmd_reuse "$@" ;;
   toolchain) shift; cmd_toolchain "$@" ;;
-  *) die "usage: verdict.sh key|run|record|report|toolchain ..." ;;
+  *) die "usage: verdict.sh key|run|record|toolchain|reuse ..." ;;
 esac

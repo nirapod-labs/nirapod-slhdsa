@@ -28,22 +28,26 @@
 # component is not in the tree reports NOT APPLICABLE (tools/ci/Makefile).
 #
 # Recorded verdicts. Each check job first computes the key of its inputs
-# (tools/ci/verdict.sh). When the caller sets reuse-verdicts, which ci.yml
-# does for pull requests only, a recorded pass under that key is restored
+# (tools/ci/verdict.sh). When the caller sets record-verdicts, which ci.yml
+# does for runs on main only, a check whose every step has passed records
+# its verdict and uploads it as an artifact named by the key. When the
+# caller sets reuse-verdicts, which ci.yml does for pull requests only, a
+# pass recorded under that key by a run on main is downloaded from that run
 # and reported in the job summary, with the run and commit that recorded
 # it, and the job's remaining steps are skipped: the job succeeds without
-# running the check again. Otherwise the check runs, and only when every
-# step has passed is its verdict recorded and saved under the key. A failed
-# check is never saved, so it runs again on the next attempt.
+# running the check again. A failed check is never recorded, so it runs
+# again on the next attempt.
 #
 # The toolchain job computes the cache keys and the verdict keys first, and
-# looks the verdicts up without downloading them. When every check of the
-# platform (and the proofs, for the platform whose toolchain they use) has
-# a recorded pass, it restores neither the switch nor the compiler: it packs
-# the compiler's build record alone, from its own small cache entry, for
-# the cross-platform comparison, and the job summary names the compiler key
-# the recorded verdicts were made with. Otherwise, and on every event that
-# does not reuse verdicts, it restores or builds the toolchain as above.
+# looks up, through the API, the runs on main that recorded a pass under
+# each verdict key; the check jobs take the run from its verdicts output.
+# When every check of the platform (and the proofs, for the platform whose
+# toolchain they use) has one, it restores neither the switch nor the
+# compiler: it packs the compiler's build record alone, from its own small
+# cache entry, for the cross-platform comparison, and the job summary names
+# the compiler key the recorded verdicts were made with. Otherwise, and on
+# every event that does not reuse verdicts, it restores or builds the
+# toolchain as above.
 # The EasyCrypt proofs need the full prover set and run once, in ci.yml,
 # with the switch of linux-x86_64 (outputs below).
 #
@@ -93,7 +97,11 @@ on:
         type: boolean
         default: false
       reuse-verdicts:
-        description: "Report a recorded pass of a check whose inputs are unchanged instead of running it"
+        description: "Report a pass recorded on main of a check whose inputs are unchanged instead of running it"
+        type: boolean
+        default: false
+      record-verdicts:
+        description: "Upload the verdict of each check that passed, for pull requests to reuse (runs on main only)"
         type: boolean
         default: false
       proofs:
@@ -107,9 +115,15 @@ on:
       compiler-key:
         description: "Cache key of this platform's compiler"
         value: ${{ jobs.toolchain.outputs.compiler-key }}
+      verdicts:
+        description: "CHECK=RUN for each check of this platform: the run on main whose recorded pass it reuses, or none"
+        value: ${{ jobs.toolchain.outputs.verdicts }}
 
+# actions: read lets the jobs find and download the verdicts recorded by
+# runs on main (tools/ci/verdict.sh).
 permissions:
   contents: read
+  actions: read
 
 defaults:
   run:
@@ -131,6 +145,7 @@ jobs:
     outputs:
       switch-key: ${{ steps.keys.outputs.switch-key }}
       compiler-key: ${{ steps.keys.outputs.compiler-key }}
+      verdicts: ${{ steps.toolchain.outputs.verdicts }}
     env:
       JOBS: ${{ inputs.jobs }}
     steps:
@@ -157,60 +172,6 @@ jobs:
           PROOFS: ${{ inputs.proofs }}
         run: make -s -f tools/ci/Makefile ci-platform-verdict-keys
 
-      - name: Look up the recorded verdict of test
-        id: found-test
-        if: inputs.reuse-verdicts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/verdict/test
-          key: ${{ steps.verdicts.outputs.key-test }}
-          lookup-only: true
-
-      - name: Look up the recorded verdict of analysis
-        id: found-analysis
-        if: inputs.reuse-verdicts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/verdict/analysis
-          key: ${{ steps.verdicts.outputs.key-analysis }}
-          lookup-only: true
-
-      - name: Look up the recorded verdict of safety
-        id: found-safety
-        if: inputs.reuse-verdicts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/verdict/safety
-          key: ${{ steps.verdicts.outputs.key-safety }}
-          lookup-only: true
-
-      - name: Look up the recorded verdict of generated
-        id: found-generated
-        if: inputs.reuse-verdicts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/verdict/generated
-          key: ${{ steps.verdicts.outputs.key-generated }}
-          lookup-only: true
-
-      - name: Look up the recorded verdict of differential
-        id: found-differential
-        if: inputs.reuse-verdicts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/verdict/differential
-          key: ${{ steps.verdicts.outputs.key-differential }}
-          lookup-only: true
-
-      - name: Look up the recorded verdict of proofs
-        id: found-proofs
-        if: inputs.reuse-verdicts && inputs.proofs
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/verdict/proofs
-          key: ${{ steps.verdicts.outputs.key-proofs }}
-          lookup-only: true
-
       - name: Look up the compiler's build record
         id: found-record
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -219,22 +180,14 @@ jobs:
           key: ${{ steps.keys.outputs.record-key }}
           lookup-only: true
 
-      - name: Decide whether to restore the toolchain
+      - name: Look up the verdicts recorded on main, and decide whether to restore the toolchain
         id: toolchain
         env:
+          GH_TOKEN: ${{ github.token }}
           REUSE: ${{ inputs.reuse-verdicts }}
           COMPILER_KEY: ${{ steps.keys.outputs.compiler-key }}
           RECORD: ${{ steps.found-record.outputs.cache-hit == 'true' }}
-          TEST: ${{ steps.found-test.outputs.cache-hit == 'true' }}
-          ANALYSIS: ${{ steps.found-analysis.outputs.cache-hit == 'true' }}
-          SAFETY: ${{ steps.found-safety.outputs.cache-hit == 'true' }}
-          GENERATED: ${{ steps.found-generated.outputs.cache-hit == 'true' }}
-          DIFFERENTIAL: ${{ steps.found-differential.outputs.cache-hit == 'true' }}
-          PROOFS: ${{ !inputs.proofs || steps.found-proofs.outputs.cache-hit == 'true' }}
-        run: >-
-          tools/ci/verdict.sh toolchain "$REUSE" "$COMPILER_KEY" "$RECORD"
-          test="$TEST" analysis="$ANALYSIS" safety="$SAFETY" generated="$GENERATED"
-          differential="$DIFFERENTIAL" proofs="$PROOFS"
+        run: tools/ci/verdict.sh toolchain "$REUSE" "$COMPILER_KEY" "$RECORD"
 
       - name: Restore the opam switch
         id: switch
@@ -356,62 +309,59 @@ jobs:
           CI_TOOL_KEY: ${{ needs.toolchain.outputs.compiler-key }}
         run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=test
 
-      - name: Restore a recorded verdict
-        id: recorded
+      - name: Reuse a pass recorded on main
+        id: reuse
         if: inputs.reuse-verdicts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/verdict/test
-          key: ${{ steps.verdict.outputs.key }}
-
-      - name: Report the recorded verdict
-        if: steps.recorded.outputs.cache-hit == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           KEY: ${{ steps.verdict.outputs.key }}
-        run: tools/ci/verdict.sh report test "$KEY"
+          VERDICTS: ${{ needs.toolchain.outputs.verdicts }}
+        run: tools/ci/verdict.sh reuse test "$KEY" "$VERDICTS"
 
       - name: Install test dependencies
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh deps run
 
       - name: Download the compiler
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: toolchain-${{ inputs.platform }}
           path: ${{ runner.temp }}/artifact
 
       - name: Install the compiler
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh install "$RUNNER_TEMP/artifact/toolchain-$PLATFORM.tar.gz" "$RUNNER_TEMP/toolchain"
 
       - name: Download the test vectors
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: vectors
           path: build
 
       - name: Run the tests
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/verdict.sh run test make -f tools/ci/Makefile ci-test
 
       - name: Write the core transcript
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/verdict.sh run test make -f tools/ci/Makefile ci-transcript
 
       - name: Record the verdict
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: inputs.record-verdicts
         env:
           KEY: ${{ steps.verdict.outputs.key }}
         run: tools/ci/verdict.sh record test "$KEY" build/ci/transcript-*.txt
 
-      - name: Save the verdict
-        if: steps.recorded.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Upload the verdict
+        if: inputs.record-verdicts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: ${{ steps.verdict.outputs.key }}
           path: build/verdict/test
-          key: ${{ steps.verdict.outputs.key }}
+          if-no-files-found: error
+          retention-days: 90
 
       # After a reused verdict, the transcript is the recorded one.
       - name: Upload the core transcript
@@ -439,51 +389,48 @@ jobs:
           CI_TOOL_KEY: ${{ needs.toolchain.outputs.compiler-key }}
         run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=analysis
 
-      - name: Restore a recorded verdict
-        id: recorded
+      - name: Reuse a pass recorded on main
+        id: reuse
         if: inputs.reuse-verdicts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/verdict/analysis
-          key: ${{ steps.verdict.outputs.key }}
-
-      - name: Report the recorded verdict
-        if: steps.recorded.outputs.cache-hit == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           KEY: ${{ steps.verdict.outputs.key }}
-        run: tools/ci/verdict.sh report analysis "$KEY"
+          VERDICTS: ${{ needs.toolchain.outputs.verdicts }}
+        run: tools/ci/verdict.sh reuse analysis "$KEY" "$VERDICTS"
 
       - name: Install dependencies
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh deps run
 
       - name: Download the compiler
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: toolchain-${{ inputs.platform }}
           path: ${{ runner.temp }}/artifact
 
       - name: Install the compiler
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh install "$RUNNER_TEMP/artifact/toolchain-$PLATFORM.tar.gz" "$RUNNER_TEMP/toolchain"
 
       - name: Constant-time, speculative constant-time and emitted-code checks
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/verdict.sh run analysis make -f tools/ci/Makefile ci-analysis
 
       - name: Record the verdict
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: inputs.record-verdicts
         env:
           KEY: ${{ steps.verdict.outputs.key }}
         run: tools/ci/verdict.sh record analysis "$KEY"
 
-      - name: Save the verdict
-        if: steps.recorded.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Upload the verdict
+        if: inputs.record-verdicts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: ${{ steps.verdict.outputs.key }}
           path: build/verdict/analysis
-          key: ${{ steps.verdict.outputs.key }}
+          if-no-files-found: error
+          retention-days: 90
 
   differential:
     name: differential
@@ -502,51 +449,48 @@ jobs:
           CI_TOOL_KEY: ${{ needs.toolchain.outputs.compiler-key }}
         run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=differential
 
-      - name: Restore a recorded verdict
-        id: recorded
+      - name: Reuse a pass recorded on main
+        id: reuse
         if: inputs.reuse-verdicts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/verdict/differential
-          key: ${{ steps.verdict.outputs.key }}
-
-      - name: Report the recorded verdict
-        if: steps.recorded.outputs.cache-hit == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           KEY: ${{ steps.verdict.outputs.key }}
-        run: tools/ci/verdict.sh report differential "$KEY"
+          VERDICTS: ${{ needs.toolchain.outputs.verdicts }}
+        run: tools/ci/verdict.sh reuse differential "$KEY" "$VERDICTS"
 
       - name: Install dependencies
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh deps run
 
       - name: Download the compiler
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: toolchain-${{ inputs.platform }}
           path: ${{ runner.temp }}/artifact
 
       - name: Install the compiler
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh install "$RUNNER_TEMP/artifact/toolchain-$PLATFORM.tar.gz" "$RUNNER_TEMP/toolchain"
 
       - name: Differential test against an independent implementation
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/verdict.sh run differential make -f tools/ci/Makefile ci-diff
 
       - name: Record the verdict
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: inputs.record-verdicts
         env:
           KEY: ${{ steps.verdict.outputs.key }}
         run: tools/ci/verdict.sh record differential "$KEY"
 
-      - name: Save the verdict
-        if: steps.recorded.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Upload the verdict
+        if: inputs.record-verdicts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: ${{ steps.verdict.outputs.key }}
           path: build/verdict/differential
-          key: ${{ steps.verdict.outputs.key }}
+          if-no-files-found: error
+          retention-days: 90
 
   # jasmin-checksafety loads the switch's libraries, so this job restores
   # both caches instead of the packed compiler.
@@ -567,31 +511,26 @@ jobs:
           CI_TOOL_KEY: ${{ needs.toolchain.outputs.compiler-key }}
         run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=safety
 
-      - name: Restore a recorded verdict
-        id: recorded
+      - name: Reuse a pass recorded on main
+        id: reuse
         if: inputs.reuse-verdicts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/verdict/safety
-          key: ${{ steps.verdict.outputs.key }}
-
-      - name: Report the recorded verdict
-        if: steps.recorded.outputs.cache-hit == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           KEY: ${{ steps.verdict.outputs.key }}
-        run: tools/ci/verdict.sh report safety "$KEY"
+          VERDICTS: ${{ needs.toolchain.outputs.verdicts }}
+        run: tools/ci/verdict.sh reuse safety "$KEY" "$VERDICTS"
 
       - name: Install build dependencies
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh deps build
 
       - name: Name the cache paths
         id: paths
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh cache-paths
 
       - name: Restore the opam switch
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.paths.outputs.switch }}
@@ -599,7 +538,7 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Restore the compiler
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.paths.outputs.compiler }}
@@ -607,25 +546,27 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Put the cached tools on the PATH
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh bin-path
 
       - name: Safety checks
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/verdict.sh run safety make -f tools/ci/Makefile ci-safety
 
       - name: Record the verdict
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: inputs.record-verdicts
         env:
           KEY: ${{ steps.verdict.outputs.key }}
         run: tools/ci/verdict.sh record safety "$KEY"
 
-      - name: Save the verdict
-        if: steps.recorded.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Upload the verdict
+        if: inputs.record-verdicts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: ${{ steps.verdict.outputs.key }}
           path: build/verdict/safety
-          key: ${{ steps.verdict.outputs.key }}
+          if-no-files-found: error
+          retention-days: 90
 
   generated:
     name: generated
@@ -644,48 +585,45 @@ jobs:
           CI_TOOL_KEY: ${{ needs.toolchain.outputs.compiler-key }}
         run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=generated
 
-      - name: Restore a recorded verdict
-        id: recorded
+      - name: Reuse a pass recorded on main
+        id: reuse
         if: inputs.reuse-verdicts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/verdict/generated
-          key: ${{ steps.verdict.outputs.key }}
-
-      - name: Report the recorded verdict
-        if: steps.recorded.outputs.cache-hit == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           KEY: ${{ steps.verdict.outputs.key }}
-        run: tools/ci/verdict.sh report generated "$KEY"
+          VERDICTS: ${{ needs.toolchain.outputs.verdicts }}
+        run: tools/ci/verdict.sh reuse generated "$KEY" "$VERDICTS"
 
       - name: Install dependencies
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh deps run
 
       - name: Download the compiler
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: toolchain-${{ inputs.platform }}
           path: ${{ runner.temp }}/artifact
 
       - name: Install the compiler
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh install "$RUNNER_TEMP/artifact/toolchain-$PLATFORM.tar.gz" "$RUNNER_TEMP/toolchain"
 
       - name: Regenerate the shipped assembly and compare
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/verdict.sh run generated make -f tools/ci/Makefile ci-generated
 
       - name: Record the verdict
-        if: steps.recorded.outputs.cache-hit != 'true'
+        if: inputs.record-verdicts
         env:
           KEY: ${{ steps.verdict.outputs.key }}
         run: tools/ci/verdict.sh record generated "$KEY"
 
-      - name: Save the verdict
-        if: steps.recorded.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Upload the verdict
+        if: inputs.record-verdicts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: ${{ steps.verdict.outputs.key }}
           path: build/verdict/generated
-          key: ${{ steps.verdict.outputs.key }}
+          if-no-files-found: error
+          retention-days: 90
