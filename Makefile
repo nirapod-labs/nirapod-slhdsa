@@ -11,8 +11,8 @@
 #     make            build/<target>/lib/libnirapod_slhdsa.a
 #                     build/<target>/lib/libnirapod_slhdsa_testing.a
 #     make check      check the symbols of the application library, run the
-#                     ACVP known answers and the core tests on this host;
-#                     writes build/<target>/transcript-core.txt
+#                     ACVP known answers, the core and negative tests on this
+#                     host; writes build/<target>/transcript-core.txt
 #     make asm        only the Jasmin assembly
 #     make gen        write the assembly of every target and its manifest
 #                     into gen/ (this tree does not carry gen/)
@@ -287,11 +287,16 @@ $(EXPORTS_CONTROL): $(LIB_OBJ)
 
 # Every test links the testing library.
 
-CORE_TESTS := $(OUT)/tests/test_core $(OUT)/tests/test_acvp
+CORE_TESTS := $(OUT)/tests/test_core $(OUT)/tests/test_negative \
+              $(OUT)/tests/test_acvp
 
 TEST_CC = $(CC) $(CPPFLAGS) $(TESTING_DEF) $(CWARN) $(CFLAGS)
 
 $(OUT)/tests/test_core: $(TESTS_DIR)/core/test_core.c $(TESTING_LIB)
+	@mkdir -p $(@D)
+	$(TEST_CC) -o $@ $< $(TESTING_LIB)
+
+$(OUT)/tests/test_negative: $(TESTS_DIR)/negative/test_negative.c $(TESTING_LIB)
 	@mkdir -p $(@D)
 	$(TEST_CC) -o $@ $< $(TESTING_LIB)
 
@@ -327,6 +332,7 @@ check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
 	  echo "check-exports: the negative control was accepted" >&2; exit 1; fi
 	@echo "check-exports: negative control rejected ($$(head -n 1 $(OUT)/exports-control.log))"
 	$(OUT)/tests/test_acvp $(ACVP_SUBSET)
+	$(OUT)/tests/test_negative
 	$(OUT)/tests/test_core $(TEST_CORE_FLAGS) --transcript $(OUT)/transcript-core.txt
 
 # --------------------------------------------------------------------
