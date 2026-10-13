@@ -9,11 +9,13 @@
 #
 # A pull request that changes what users build, call or rely on records the
 # change in CHANGELOG.md, under "## Unreleased", in the same pull request.
-# This check fails a pull request that changes a file under one of
+# This check fails a pull request that changes
 #
-#   src/ toolchain/ proofs/ include/ capi/
+#   a file under src/ toolchain/ proofs/ third_party/ analysis/ include/,
+#   the top-level Makefile, or a *.mk fragment anywhere
 #
-# and leaves CHANGELOG.md untouched, unless the pull request carries the
+# and adds or edits nothing in CHANGELOG.md (deleting it is no entry),
+# unless the pull request carries the
 # label `no-changelog` (for a change with nothing to tell a user, such as a
 # comment fix). Whether an entry says the right thing is for review; this
 # only makes a missing one visible.
@@ -41,7 +43,9 @@
 
 set -euo pipefail
 
-PATHS="src toolchain proofs include capi"
+# Pathspecs of the changes that need an entry, and the same in words.
+WATCHED=(src toolchain proofs third_party analysis include Makefile ':(glob)**/*.mk')
+WATCHED_TEXT="src/, toolchain/, proofs/, third_party/, analysis/, include/, the top-level Makefile or *.mk files"
 
 die() { echo "changelog.sh: $*" >&2; exit 1; }
 
@@ -68,24 +72,24 @@ head=$(git rev-parse --verify -q 'HEAD^2^{commit}') \
 [ "$head" = "$(git rev-parse --verify "$CI_HEAD^{commit}")" ] \
   || die "the second parent of HEAD is $head, not the pull request head $CI_HEAD"
 
-# Read in the main shell, where a failing git stops the script; a pipeline
-# inside a command substitution would hide it.
-changed=$(git diff --name-only "$base" HEAD)
+# git selects the files by pathspec, so no file name is parsed here.
+# Without rename detection a move is a deletion plus an addition, and a
+# file moved out of a watched place counts. An assignment from a failing
+# git stops the script.
+DIFF=(git -c core.quotePath=false diff --name-only --no-renames)
+hits=$("${DIFF[@]}" "$base" HEAD -- "${WATCHED[@]}")
+logged=$("${DIFF[@]}" --diff-filter=AM "$base" HEAD -- CHANGELOG.md)
 
-# Paths are compared as text: git quotes unusual file names, and every
-# path of interest starts with a plain directory name.
-hits=$(printf '%s\n' "$changed" | grep -E "^($(echo "$PATHS" | tr ' ' '|'))/" || true)
-logged=$(printf '%s\n' "$changed" | grep -Fx CHANGELOG.md || true)
-
+n=$(printf '%s\n' "$hits" | wc -l | tr -d ' ')
 if [ -z "$hits" ]; then
-  say "PASS: nothing changed under $PATHS"
+  say "PASS: no change to $WATCHED_TEXT"
 elif [ -n "$logged" ]; then
-  say "PASS: $(printf '%s\n' "$hits" | wc -l | tr -d ' ') file(s) changed under $PATHS, and CHANGELOG.md too"
+  say "PASS: $n file(s) changed in $WATCHED_TEXT, with an entry in CHANGELOG.md"
 elif [ "$CI_NO_CHANGELOG" = true ]; then
-  say "PASS: $(printf '%s\n' "$hits" | wc -l | tr -d ' ') file(s) changed under $PATHS, labelled no-changelog, no entry needed"
+  say "PASS: $n file(s) changed in $WATCHED_TEXT, labelled no-changelog, no entry needed"
 else
   printf '%s\n' "$hits" | sed 's/^/  /'
-  say "FAIL: the files above change under $PATHS, and CHANGELOG.md does not." \
+  say "FAIL: the files above change $WATCHED_TEXT, and CHANGELOG.md has no new entry." \
       "Add an entry under \"## Unreleased\" in CHANGELOG.md, or, if users have" \
       "nothing to learn from the change, label the pull request no-changelog and push again."
   exit 1
