@@ -70,7 +70,8 @@
 #
 # Contract. A check of an absent component prints NOT APPLICABLE, with the
 # directories it looked for, and passes; this is the state of a tree into
-# which that component has not been merged. A check of a present component
+# which that component has not been merged (once it has, CI_REQUIRED below
+# makes its absence an error). A check of a present component
 # is mandatory: a missing Makefile, target, tool or input fails it, nothing
 # in it is skipped, and its suites must reach their minimum case counts
 # (tools/ci/counts.py). In particular:
@@ -124,6 +125,21 @@ CI_OTHER_ROOTS := .git .github LICENSES docs toolchain tools build
 
 present = $(strip $(foreach d,$(CI_DIRS_$(1)),$(wildcard $(d))))
 not_applicable = @echo "$(1): NOT APPLICABLE, the $(2) component is absent (none of: $(CI_DIRS_$(2)))"
+
+# Components that have landed on main. The pull request that lands a
+# component adds it here; from then on a tree without any of its
+# directories fails every target, so deleting a component cannot turn its
+# checks into NOT APPLICABLE. Only the toolchain, which is not a component,
+# has landed so far.
+CI_REQUIRED :=
+CI_REQUIRED_UNKNOWN := $(filter-out $(CI_COMPONENTS),$(CI_REQUIRED))
+CI_REQUIRED_MISSING := $(strip $(foreach c,$(CI_REQUIRED),$(if $(call present,$(c)),,$(c))))
+ifneq ($(CI_REQUIRED_UNKNOWN),)
+$(error CI_REQUIRED names unknown components: $(CI_REQUIRED_UNKNOWN))
+endif
+ifneq ($(CI_REQUIRED_MISSING),)
+$(error required components are absent: $(foreach c,$(CI_REQUIRED_MISSING),$(c) (none of: $(CI_DIRS_$(c)))))
+endif
 
 CI_HASH   := $(call present,hash)
 CI_CORE   := $(call present,core)
