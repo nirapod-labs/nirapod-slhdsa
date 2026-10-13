@@ -133,9 +133,9 @@ each of the twelve parameter sets of Table 2, as `SLH_DSA_<SET>.<lemma>`:
 
 The terms of the bound:
 
-- PRF advantage of PRF on the 32-byte address, and of PRF_msg on
-  (opt_rand, M') with opt_rand of n bytes, under uniformly drawn n-byte
-  keys;
+- PRF advantage of PRF on (PK.seed, ADRS), with PK.seed chosen by the
+  adversary, and of PRF_msg on (opt_rand, M') with opt_rand of n bytes,
+  under uniformly drawn n-byte keys;
 - interleaved target subset resilience of H_msg on (PK.seed, PK.root, M'),
   with the FIPS 205 split of the digest into FORS indices and instance;
 - the multi-target TCR, UD, PRE and DSPR terms of the imported proof, for

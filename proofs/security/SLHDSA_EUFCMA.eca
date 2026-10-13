@@ -57,8 +57,9 @@
  * tweakable-hash terms are properties of an extension of F, H and T_l to
  * all bit strings, described after the list. The terms:
  *
- *  - PRF of PRF on the 32-byte ADRS and of PRF_msg on (opt_rand, M') with
- *    opt_rand an n-byte string, keyed by n-byte keys drawn uniformly;
+ *  - PRF of PRF on (PK.seed, ADRS), with PK.seed chosen by the adversary,
+ *    and of PRF_msg on (opt_rand, M') with opt_rand an n-byte string,
+ *    keyed by n-byte keys drawn uniformly;
  *  - interleaved target subset resilience of H_msg on (PK.seed, PK.root,
  *    M') with n-byte PK.seed and PK.root, keyed by the randomizer, with
  *    the index function that maps a digest to its FORS indices and
