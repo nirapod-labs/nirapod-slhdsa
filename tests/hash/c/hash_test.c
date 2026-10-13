@@ -1248,6 +1248,7 @@ static void diff_sha2_multi(unsigned long iter)
   rnd_bytes(blocks, sizeof blocks);
   rnd_bytes(ina, sizeof ina);
   rnd_bytes(inb, sizeof inb);
+  rnd_bytes(buf, sizeof buf);
 
   {
     uint32_t h8[64], one[8];
