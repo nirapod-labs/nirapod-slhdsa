@@ -56,7 +56,8 @@ this implementation:
 - MGF1 at the six FIPS 205 sizes, against MGF1 composed in C from
   libcrypto SHA-2;
 - every array instance, after a random prefix absorbed through the memory
-  form and, for squeezing, after a random number of bytes already output;
+  form and, for squeezing, after a random number of bytes already output
+  and followed by more output from the position it returns.
 
 Message lengths concentrate on every rate and block boundary. The seed and
 the libcrypto version are printed; a failure prints its inputs.

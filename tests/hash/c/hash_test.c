@@ -1046,22 +1046,27 @@ static void diff_arrays(unsigned long iter, uint8_t *msg)
 {
   const struct array_case *ac = &ARRAYS[rnd_below(sizeof ARRAYS / sizeof ARRAYS[0])];
   const struct keccak_mode *km = &KMODES[4 + rnd_below(2)];
-  size_t pre = rnd_below(400), skip = rnd_below(400);
-  uint8_t want[1024], got[256];
+  size_t pre = rnd_below(400), skip = rnd_below(400), more = 1 + rnd_below(200);
+  uint8_t want[1024], got[512];
   uint64_t st[25], pos;
   char what[160];
 
-  /* Keccak absorb: prefix (memory form) || array, then squeeze from skip. */
-  ossl_digest(km->ossl, msg, pre + ac->len, want, skip + ac->len, 1);
+  /*
+   * Keccak absorb: prefix (memory form) || array, then squeeze from skip;
+   * the memory form continues from the position the array instance
+   * returns.
+   */
+  ossl_digest(km->ossl, msg, pre + ac->len, want, skip + ac->len + more, 1);
   memset(st, 0, sizeof st);
   pos = HT(keccak_absorb)(st, 0, km->rate, msg, pre);
   pos = ac->kabs(st, pos, km->rate, msg + pre);
   HT(keccak_finalize)(st, pos, km->rate, km->ds);
   pos = HT(keccak_squeeze)(st, 0, km->rate, got, skip);
   pos = ac->ksqz(got, st, pos, km->rate);
-  snprintf(what, sizeof what, "diff iter %lu %s array L=%zu prefix=%zu skip=%zu", iter, km->ossl,
-           ac->len, pre, skip);
-  check(what, got, want + skip, ac->len);
+  HT(keccak_squeeze)(st, pos, km->rate, got + ac->len, more);
+  snprintf(what, sizeof what, "diff iter %lu %s array L=%zu prefix=%zu skip=%zu more=%zu", iter,
+           km->ossl, ac->len, pre, skip, more);
+  check(what, got, want + skip, ac->len + more);
 
   /* SHA-256 and SHA-512: prefix (memory form) || array. */
   {
