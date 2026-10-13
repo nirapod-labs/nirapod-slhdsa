@@ -396,7 +396,7 @@ cmd_install() {
   mkdir -p "$dir"
   dir=$(cd "$dir" && pwd)
   tar -C "$dir" --strip-components=1 -xzf "$file"
-  [ ! -e "$dir/RECORD-ONLY" ] || die "the archive holds the build record but no compiler: the toolchain job found a recorded verdict for every check and did not restore the compiler, but this check has none now (evicted since?); run the workflow again"
+  [ ! -e "$dir/RECORD-ONLY" ] || die "the archive holds the build record but no compiler: the toolchain job found a pass recorded on main for every check and did not restore the compiler, but this job could not reuse its own (deleted or expired since?). Re-run all jobs: re-running only the failed ones reuses this archive and fails the same way"
   [ "$(cat "$dir/PLATFORM")" = "$PLATFORM" ] \
     || die "the archive was built on $(cat "$dir/PLATFORM"), this host is $PLATFORM"
   check_record "$dir"

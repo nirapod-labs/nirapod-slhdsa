@@ -69,7 +69,8 @@
 #       comparison. Writes toolchain=needed or toolchain=skipped, and the
 #       decision with the compiler key to the job summary. A verdict found
 #       here that is gone when its job downloads it fails that job, which
-#       then has no compiler.
+#       then has no compiler; re-running all jobs, not only the failed one,
+#       looks the verdicts up again and restores the toolchain.
 #   verdict.sh reuse CHECK KEY VERDICTS
 #       VERDICTS is the toolchain job's verdicts output. When it names a
 #       run for CHECK, download that run's verdict, check that it is a pass
