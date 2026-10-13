@@ -534,8 +534,12 @@ jasmin_provenance() {
 }
 
 # The extracted OCaml, as hashes of its files.
+#
+# This record and the two scans below are compared byte for byte across
+# hosts, so each is sorted with LC_ALL=C: the shell's glob order follows
+# its locale, and grep -r lists files in the file system's directory order.
 cil_hashes() {
-  (cd "$TREE/compiler/src/CIL" && LC_ALL=C sha256_of ./*.ml ./*.mli)
+  (cd "$TREE/compiler/src/CIL" && sha256_of ./*.ml ./*.mli) | LC_ALL=C sort -k2
 }
 
 # Print Assumptions of the end-to-end compiler theorem and of the two
@@ -596,7 +600,7 @@ jasmin_admit_scan() {
   declared+='(Axiom|Axioms|Parameter|Parameters|Hypothesis|Hypotheses|Conjecture)'
   declared+='[[:space:]]'
   (cd "$TREE" && grep -rnE "$unfinished|$declared" --include='*.v' proofs || true) \
-    > "$LOG/admit-scan.log"
+    | LC_ALL=C sort -t: -k1,1 -k2,2n > "$LOG/admit-scan.log"
   got=$(sed -E 's/^([^:]+):[0-9]+:[[:space:]]*(.*)$/\1: \2/' "$LOG/admit-scan.log" \
         | awk '{ s = $1 " " $2; if (NF >= 3) s = s " " $3; print s }' | LC_ALL=C sort)
   echo "Rocq declarations found: $(wc -l < "$LOG/admit-scan.log" | tr -d ' ')"
@@ -612,7 +616,7 @@ jasmin_eclib_scan() {
   axiom='^[[:space:]]*(declare[[:space:]]+)?axiom[[:space:]]'
   admitted='(^|[^A-Za-z_])(admit|admitted)([^A-Za-z_]|$)'
   (cd "$TREE" && grep -rnE "$axiom|$admitted" --include='*.ec' eclib || true) \
-    > "$LOG/eclib-axioms.log"
+    | LC_ALL=C sort -t: -k1,1 -k2,2n > "$LOG/eclib-axioms.log"
   got=$(sed -E 's/^([^:]+):[0-9]+:[[:space:]]*(.*)$/\1: \2/' "$LOG/eclib-axioms.log" \
         | awk '{ kw = $2; name = $3
                  if (kw == "declare") { kw = $3; name = $4 }

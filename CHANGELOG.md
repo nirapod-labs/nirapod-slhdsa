@@ -16,3 +16,10 @@ Initial development. No release yet.
   semantics are transcribed from the Arm manual and trusted, and their
   data-independent timing holds only while the caller sets PSTATE.DIT; see
   `toolchain/jasmin/PATCHES-SIMD.md`.
+
+### Fixed
+
+- `toolchain/build.sh` writes `cil.sha256`, `admit-scan.log` and
+  `eclib-axioms.log` sorted, so that builds of the same compiler on different
+  hosts produce byte-identical records. They used to follow the shell's locale
+  and the file system's directory order.
