@@ -45,6 +45,7 @@ replaces.
 | 0024 | this project | safety checker: abstract values and environments shared when unchanged; relational constraints printed sorted | safety checker (trusted) |
 | 0025 | this project | safety checker option `array_track_max_bytes` | safety checker (trusted) |
 | 0026 | this project | safety checker option `congruence_reduction` | safety checker (trusted) |
+| 0027 | this project | ARMv8-A: x29 never allocated | calling convention proved; register allocation checked by the proved development |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -262,6 +263,22 @@ default, 2, keeps the behaviour of the pin. Passing a fact on only refines
 the numerical state, so lower values can only add alarms. Test: the cram
 test `compiler/tests/safety/congruence.t`. Upstream status: not yet
 proposed.
+
+### 0027, x29 never allocated (this project)
+
+x29 is the frame pointer. AAPCS64 lets each platform decide whether it must
+address a valid frame record at all times, and Apple platforms require it;
+a function may leave its caller's record in place by not writing x29. At
+the pin, register allocation could assign x29 to a variable, which breaks
+stack traces taken while the function runs on macOS. The patch reserves
+x29 on every platform: the OCaml register allocator never assigns it, and
+`armv8a_decl.v` removes it from the registers of the internal calling
+convention, so the compiler correctness theorem is checked again with the
+smaller set. The allocator's result is checked by the proved development,
+as before. Test: the cram test `compiler/tests/armv8a_x29.t` compiles a
+function whose variables fit in the registers and one that spills, for
+Linux and macOS, and finds no use of x29 or w29 in the output. Upstream
+status: not yet proposed.
 
 ## Assembly checks
 

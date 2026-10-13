@@ -1,0 +1,304 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Mon, 12 Oct 2026 19:51:28 +0600
+Subject: [PATCH] armv8a: keep x29, the frame pointer, out of register
+ allocation
+
+AAPCS64 lets each platform decide whether the frame pointer must address a
+valid frame record at all times. Apple platforms require it, allowing a
+function not to create a record of its own. Register allocation could assign
+x29 to a variable, which breaks stack traces taken while the function runs.
+Reserve x29 on every platform: a function that never writes it leaves its
+caller's frame record in place. x29 is also removed from the registers of
+the internal calling convention.
+
+Signed-off-by: athexweb3 <athexweb3@nirapod.org>
+---
+ compiler/src/arch_full.ml               |  8 +++-
+ compiler/src/arch_full.mli              |  4 ++
+ compiler/src/arm_arch_full.ml           |  3 ++
+ compiler/src/armv8a_arch_full.ml        |  9 ++++
+ compiler/src/riscv_arch_full.ml         |  3 ++
+ compiler/src/x86_arch_full.ml           |  3 ++
+ compiler/tests/armv8a_x29.t/fits.jazz   | 61 ++++++++++++++++++++++++
+ compiler/tests/armv8a_x29.t/run.t       | 14 ++++++
+ compiler/tests/armv8a_x29.t/spills.jazz | 63 +++++++++++++++++++++++++
+ proofs/compiler/armv8a_decl.v           |  4 +-
+ 10 files changed, 169 insertions(+), 3 deletions(-)
+ create mode 100644 compiler/tests/armv8a_x29.t/fits.jazz
+ create mode 100644 compiler/tests/armv8a_x29.t/run.t
+ create mode 100644 compiler/tests/armv8a_x29.t/spills.jazz
+
+diff --git a/compiler/src/arch_full.ml b/compiler/src/arch_full.ml
+index d90488a18..868e848a0 100644
+--- a/compiler/src/arch_full.ml
++++ b/compiler/src/arch_full.ml
+@@ -54,6 +54,10 @@ module type Core_arch = sig
+   val is_ct_asm_extra : extra_op -> bool
+ 
+   val internal_call_conv : (reg, regx, xreg, rflag, cond) internal_calling_convention
++
++  (* Registers the register allocator never assigns, besides the stack
++     pointer: registers the platform ABI reserves for its own use. *)
++  val reserved_regs : reg list
+ end
+ 
+ module type Arch = sig
+@@ -158,8 +162,8 @@ module Arch_from_Core_arch (A : Core_arch) :
+ 
+   let allocatable =
+     let good_order = mk_allocatable (Arch_decl.registers arch_decl) callee_save_reg in
+-    (* be sure that rsp is not used *)
+-    List.filter (fun r -> r <> rsp) good_order
++    (* be sure that rsp and the reserved registers are not used *)
++    List.filter (fun r -> r <> rsp && not (List.mem r reserved_regs)) good_order
+ 
+   let extra_allocatable =
+     mk_allocatable (Arch_decl.registerxs arch_decl) callee_save_regx
+diff --git a/compiler/src/arch_full.mli b/compiler/src/arch_full.mli
+index 7ce1119b7..020aeedb6 100644
+--- a/compiler/src/arch_full.mli
++++ b/compiler/src/arch_full.mli
+@@ -50,6 +50,10 @@ module type Core_arch = sig
+   val is_ct_asm_extra : extra_op -> bool
+ 
+   val internal_call_conv : (reg, regx, xreg, rflag, cond) internal_calling_convention
++
++  (* Registers the register allocator never assigns, besides the stack
++     pointer: registers the platform ABI reserves for its own use. *)
++  val reserved_regs : reg list
+ end
+ 
+ module type Arch = sig
+diff --git a/compiler/src/arm_arch_full.ml b/compiler/src/arm_arch_full.ml
+index 174c0ca6a..85e1e4869 100644
+--- a/compiler/src/arm_arch_full.ml
++++ b/compiler/src/arm_arch_full.ml
+@@ -66,4 +66,7 @@ module Arm (Lowering_params : Arm_input) : Arch_full.Core_arch
+   let max_store_size = Wsize.U32
+ 
+   let internal_call_conv = Arm_decl.arm_internal_call_conv
++
++
++  let reserved_regs = []
+ end
+diff --git a/compiler/src/armv8a_arch_full.ml b/compiler/src/armv8a_arch_full.ml
+index 8d49ca5fc..a5b1b089b 100644
+--- a/compiler/src/armv8a_arch_full.ml
++++ b/compiler/src/armv8a_arch_full.ml
+@@ -60,5 +60,14 @@ module Armv8a (Lowering_params : Armv8a_input) = struct
+ 
+   let internal_call_conv = Armv8a_decl.armv8a_internal_call_conv
+ 
++  (* x29 is the frame pointer. AAPCS64 ("The Frame Pointer") lets each
++     platform decide whether it must always address a valid frame record;
++     Apple platforms require it, allowing a function not to create a record
++     of its own ("Writing ARM64 code for Apple platforms"). A function that
++     never writes x29 leaves its caller's frame record there, which meets
++     that rule, so x29 is kept out of register allocation on every
++     platform. *)
++  let reserved_regs = [ Armv8a_decl.R29 ]
++
+   include Lowering_params
+ end
+diff --git a/compiler/src/riscv_arch_full.ml b/compiler/src/riscv_arch_full.ml
+index 8f10aea30..2435ee48c 100644
+--- a/compiler/src/riscv_arch_full.ml
++++ b/compiler/src/riscv_arch_full.ml
+@@ -63,4 +63,7 @@ module Riscv (Lowering_params : Riscv_input) : Arch_full.Core_arch
+   let max_store_size = Wsize.U32
+ 
+   let internal_call_conv = Riscv_decl.riscv_internal_call_conv
++
++
++  let reserved_regs = []
+ end
+diff --git a/compiler/src/x86_arch_full.ml b/compiler/src/x86_arch_full.ml
+index 06e10c1c3..af3d495b2 100644
+--- a/compiler/src/x86_arch_full.ml
++++ b/compiler/src/x86_arch_full.ml
+@@ -73,4 +73,7 @@ module X86 (Lowering_params : X86_input) :
+   include Lowering_params
+ 
+   let internal_call_conv = X86_decl.x86_internal_call_conv
++
++
++  let reserved_regs = []
+ end
+diff --git a/compiler/tests/armv8a_x29.t/fits.jazz b/compiler/tests/armv8a_x29.t/fits.jazz
+new file mode 100644
+index 000000000..b6bcf2261
+--- /dev/null
++++ b/compiler/tests/armv8a_x29.t/fits.jazz
+@@ -0,0 +1,61 @@
++/* 28 values live at once, and the pointer they are loaded through. */
++export fn fits(reg u64 p) -> reg u64 {
++  reg u64 x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 x14 x15 x16 x17 x18 x19 x20 x21 x22 x23 x24 x25 x26 x27 r;
++  x0 = [:u64 p + 0];
++  x1 = [:u64 p + 8];
++  x2 = [:u64 p + 16];
++  x3 = [:u64 p + 24];
++  x4 = [:u64 p + 32];
++  x5 = [:u64 p + 40];
++  x6 = [:u64 p + 48];
++  x7 = [:u64 p + 56];
++  x8 = [:u64 p + 64];
++  x9 = [:u64 p + 72];
++  x10 = [:u64 p + 80];
++  x11 = [:u64 p + 88];
++  x12 = [:u64 p + 96];
++  x13 = [:u64 p + 104];
++  x14 = [:u64 p + 112];
++  x15 = [:u64 p + 120];
++  x16 = [:u64 p + 128];
++  x17 = [:u64 p + 136];
++  x18 = [:u64 p + 144];
++  x19 = [:u64 p + 152];
++  x20 = [:u64 p + 160];
++  x21 = [:u64 p + 168];
++  x22 = [:u64 p + 176];
++  x23 = [:u64 p + 184];
++  x24 = [:u64 p + 192];
++  x25 = [:u64 p + 200];
++  x26 = [:u64 p + 208];
++  x27 = [:u64 p + 216];
++  r = x0;
++  r ^= x1;
++  r ^= x2;
++  r ^= x3;
++  r ^= x4;
++  r ^= x5;
++  r ^= x6;
++  r ^= x7;
++  r ^= x8;
++  r ^= x9;
++  r ^= x10;
++  r ^= x11;
++  r ^= x12;
++  r ^= x13;
++  r ^= x14;
++  r ^= x15;
++  r ^= x16;
++  r ^= x17;
++  r ^= x18;
++  r ^= x19;
++  r ^= x20;
++  r ^= x21;
++  r ^= x22;
++  r ^= x23;
++  r ^= x24;
++  r ^= x25;
++  r ^= x26;
++  r ^= x27;
++  return r;
++}
+diff --git a/compiler/tests/armv8a_x29.t/run.t b/compiler/tests/armv8a_x29.t/run.t
+new file mode 100644
+index 000000000..12032c2f7
+--- /dev/null
++++ b/compiler/tests/armv8a_x29.t/run.t
+@@ -0,0 +1,14 @@
++On ARMv8-A, x29 is the frame pointer (AAPCS64; macOS requires it to hold a
++valid frame record) and is never allocated. fits has 28 values and the
++pointer live at once; spills needs every other allocatable register.
++
++  $ for s in linux macosx; do
++  >   for f in fits spills; do
++  >     ../../jasminc -arch armv8a -system $s $f.jazz -o $f-$s.s || echo "$f $s: failed"
++  >     if grep -q -w -e x29 -e w29 $f-$s.s; then echo "$f $s: uses x29"; else echo "$f $s: x29 free"; fi
++  >   done
++  > done
++  fits linux: x29 free
++  spills linux: x29 free
++  fits macosx: x29 free
++  spills macosx: x29 free
+diff --git a/compiler/tests/armv8a_x29.t/spills.jazz b/compiler/tests/armv8a_x29.t/spills.jazz
+new file mode 100644
+index 000000000..be1e7f6b1
+--- /dev/null
++++ b/compiler/tests/armv8a_x29.t/spills.jazz
+@@ -0,0 +1,63 @@
++/* 29 values live at once, and the pointer they are loaded through. */
++export fn spills(reg u64 p) -> reg u64 {
++  reg u64 x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 x14 x15 x16 x17 x18 x19 x20 x21 x22 x23 x24 x25 x26 x27 x28 r;
++  x0 = [:u64 p + 0];
++  x1 = [:u64 p + 8];
++  x2 = [:u64 p + 16];
++  x3 = [:u64 p + 24];
++  x4 = [:u64 p + 32];
++  x5 = [:u64 p + 40];
++  x6 = [:u64 p + 48];
++  x7 = [:u64 p + 56];
++  x8 = [:u64 p + 64];
++  x9 = [:u64 p + 72];
++  x10 = [:u64 p + 80];
++  x11 = [:u64 p + 88];
++  x12 = [:u64 p + 96];
++  x13 = [:u64 p + 104];
++  x14 = [:u64 p + 112];
++  x15 = [:u64 p + 120];
++  x16 = [:u64 p + 128];
++  x17 = [:u64 p + 136];
++  x18 = [:u64 p + 144];
++  x19 = [:u64 p + 152];
++  x20 = [:u64 p + 160];
++  x21 = [:u64 p + 168];
++  x22 = [:u64 p + 176];
++  x23 = [:u64 p + 184];
++  x24 = [:u64 p + 192];
++  x25 = [:u64 p + 200];
++  x26 = [:u64 p + 208];
++  x27 = [:u64 p + 216];
++  x28 = [:u64 p + 224];
++  r = x0;
++  r ^= x1;
++  r ^= x2;
++  r ^= x3;
++  r ^= x4;
++  r ^= x5;
++  r ^= x6;
++  r ^= x7;
++  r ^= x8;
++  r ^= x9;
++  r ^= x10;
++  r ^= x11;
++  r ^= x12;
++  r ^= x13;
++  r ^= x14;
++  r ^= x15;
++  r ^= x16;
++  r ^= x17;
++  r ^= x18;
++  r ^= x19;
++  r ^= x20;
++  r ^= x21;
++  r ^= x22;
++  r ^= x23;
++  r ^= x24;
++  r ^= x25;
++  r ^= x26;
++  r ^= x27;
++  r ^= x28;
++  return r;
++}
+diff --git a/proofs/compiler/armv8a_decl.v b/proofs/compiler/armv8a_decl.v
+index 8cc20775e..467059987 100644
+--- a/proofs/compiler/armv8a_decl.v
++++ b/proofs/compiler/armv8a_decl.v
+@@ -384,13 +384,15 @@ Definition armv8a_call_conv : calling_convention :=
+    ; call_reg_ret_uniq := erefl true
+    |}.
+ 
++(* R29 (x29), the frame pointer, is never allocated (see reserved_regs in
++   compiler/src/armv8a_arch_full.ml), so it carries no argument either. *)
+ Definition armv8a_internal_call_conv : internal_calling_convention :=
+   {| icall_reg   :=
+       [:: R0; R1; R2; R3; R4; R5; R6; R7;
+           R8; R9; R10; R11; R12; R13; R14; R15;
+           R16; R17;
+           R19; R20; R21; R22; R23; R24;
+-          R25; R26; R27; R28; R29 ]
++          R25; R26; R27; R28 ]
+    ; icall_regx  := [::]
+    ; icall_xreg  := [::]
+    ; icall_rflag := [:: CF; NF; ZF; VF ]
