@@ -1,0 +1,222 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Mon, 12 Oct 2026 21:06:21 +0600
+Subject: [PATCH] safetylib: options to keep fewer loop variables relational
+
+With static packing, the variables of every while loop condition, with the
+variables they depend on and those that depend on them, are in the
+relational domain, whose operations cost far more than those of the
+interval domain. With "relational_loop_vars": false, only those of the
+functions listed in "relational_loop_vars_in" are, closed over the
+variables of the same functions. Fewer relational variables can only add
+alarms.
+
+Signed-off-by: athexweb3 <athexweb3@nirapod.org>
+---
+ compiler/safetylib/domains/safetyProduct.ml | 21 +++++++++--
+ compiler/safetylib/safetyConfig.ml          | 39 ++++++++++++++++++++-
+ compiler/safetylib/safetyConfig.mli         |  2 ++
+ compiler/tests/safety/loopvars.t/none.json  |  1 +
+ compiler/tests/safety/loopvars.t/run.t      | 16 +++++++++
+ compiler/tests/safety/loopvars.t/scan.jazz  | 20 +++++++++++
+ compiler/tests/safety/loopvars.t/sum.json   |  1 +
+ 7 files changed, 96 insertions(+), 4 deletions(-)
+ create mode 100644 compiler/tests/safety/loopvars.t/none.json
+ create mode 100644 compiler/tests/safety/loopvars.t/run.t
+ create mode 100644 compiler/tests/safety/loopvars.t/scan.jazz
+ create mode 100644 compiler/tests/safety/loopvars.t/sum.json
+
+diff --git a/compiler/safetylib/domains/safetyProduct.ml b/compiler/safetylib/domains/safetyProduct.ml
+index d6012bcbc..4e85e4005 100644
+--- a/compiler/safetylib/domains/safetyProduct.ml
++++ b/compiler/safetylib/domains/safetyProduct.ml
+@@ -507,11 +507,26 @@ module PIMake (Arch : SafetyArch.SafetyArch) (PW : ProgWrap with type extended_o
+       List.filter (fun v -> List.mem v.v_name v_rel) PW.main.f_args
+       |> Sv.of_list
+ 
++  (* The loop variables in [vs], with the variables they depend on and those
++     that depend on them. *)
++  let loop_closure vs = Sv.union (flow_to dp vs) (leads_to dp vs)
++
++  (* The variables of the functions named [names]. *)
++  let vars_of_funs names =
++    List.fold_left (fun acc f ->
++        if List.mem f.f_name.fn_name names then Sv.union acc (vars_fc f)
++        else acc)
++      Sv.empty (snd PW.prog)
++
+   let v_rel : Sv.t =
+     let v_rel = flow_to dp sv_ini in
+-    let v_while = flow_to dp pa_res.while_vars in
+-    let v_while = Sv.union (leads_to dp pa_res.while_vars) v_while in
+-    (* let v_while = pa_res.while_vars in *)
++    let v_while =
++      if Config.sc_relational_loop_vars () then loop_closure pa_res.while_vars
++      else match Config.sc_relational_loop_vars_in () with
++        | [] -> Sv.empty
++        | names ->
++          let fv = vars_of_funs names in
++          Sv.inter fv (loop_closure (Sv.inter pa_res.while_vars fv)) in
+     Sv.union v_rel v_while
+ 
+   (* v is a pointer variable iff there is a direct flow from the intersection
+diff --git a/compiler/safetylib/safetyConfig.ml b/compiler/safetylib/safetyConfig.ml
+index 494940bb7..48ff423f8 100644
+--- a/compiler/safetylib/safetyConfig.ml
++++ b/compiler/safetylib/safetyConfig.ml
+@@ -99,6 +99,7 @@ type pvalue = | Bool        of bool
+               | CallPolicy  of call_policy
+               | CompPass    of Compiler.compiler_step
+               | InputRanges of input_range list
++              | Strings     of string list
+ 
+ type param = { 
+   p     : pvalue;
+@@ -176,6 +177,24 @@ let default =
+             the set of variables in the relational domain).";
+   } ::
+ 
++  { p    = Bool true;
++    name = "relational_loop_vars";
++    desc = `String "With static packing, the variables of while loop \
++            conditions, with the variables they depend on and those that \
++            depend on them, are in the relational domain. If false, only \
++            those of the functions named in relational_loop_vars_in are. \
++            Keeping fewer variables in the relational domain makes each \
++            operation cheaper and can only add alarms.";
++  } ::
++
++  { p    = Strings [];
++    name = "relational_loop_vars_in";
++    desc = `String "When relational_loop_vars is false: the functions whose \
++            while loop variables stay in the relational domain, together \
++            with the variables of the same functions that they depend on or \
++            that depend on them.";
++  } ::
++
+   { p    = Bool false;
+     name = "dynamic_packing";
+     desc = `String "Dynamic variable packing. Particularly useful if the analysis \
+@@ -315,6 +334,12 @@ let find_callpolicy name () =
+     | _ -> None in
+   List.find_map f !config
+ 
++let find_strings name () =
++  let f param = match param.p with
++    | Strings l when param.name = name -> Some l
++    | _ -> None in
++  List.find_map f !config
++
+ let find_initprint name () =
+   let f param = match param.p with
+     | InitPrint i when param.name = name -> Some i
+@@ -336,6 +361,8 @@ let sc_if_disj                 = find_bool       "if_disjunction"
+ let sc_pif_movecc_as_if        = find_bool       "pif_movecc_as_if"
+ let sc_while_flags_setfrom_dep = find_bool       "while_flags_setfrom_dep"
+ let sc_dynamic_packing         = find_bool       "dynamic_packing"
++let sc_relational_loop_vars    = find_bool       "relational_loop_vars"
++let sc_relational_loop_vars_in = find_strings    "relational_loop_vars_in"
+ let sc_print_program           = find_bool       "print_program"
+ let sc_print_stats             = find_bool       "print_stats"
+ let sc_arr_no_print            = find_bool       "arr_no_print"
+@@ -399,6 +426,15 @@ let change param (t : Json.Basic.t) = match param.p, t with
+   | InputRanges _, _ ->
+     raise (BadSafetyConfig (param.name ^ " must be a dictionary"))
+ 
++  | Strings _, `List l ->
++    let str = function
++      | `String s -> s
++      | _ -> raise (BadSafetyConfig (param.name ^ " must be a list of strings"))
++    in
++    { param with p = Strings (List.map str l) }
++  | Strings _, _ ->
++    raise (BadSafetyConfig (param.name ^ " must be a list of strings"))
++
+ 
+ (* -------------------------------------------------------------------- *)
+ let rec of_json config (data : Json.Basic.t) =
+@@ -439,7 +475,8 @@ let rec to_json_gen f config : Json.Basic.t =
+       | InitPrint i -> `String (ip_to_string i)
+       | CallPolicy p -> `String (pol_to_string p)
+       | CompPass p -> `String (fst (Glob_options.print_strings p))
+-      | InputRanges irs -> `Assoc (irs_to_json irs) in
++      | InputRanges irs -> `Assoc (irs_to_json irs)
++      | Strings l -> `List (List.map (fun s -> `String s) l) in
+     param.name, (f param t) in
+ 
+   let data = List.map doit config in
+diff --git a/compiler/safetylib/safetyConfig.mli b/compiler/safetylib/safetyConfig.mli
+index 61e735658..7e119029d 100644
+--- a/compiler/safetylib/safetyConfig.mli
++++ b/compiler/safetylib/safetyConfig.mli
+@@ -28,6 +28,8 @@ val sc_if_disj                 : unit -> bool
+ val sc_pif_movecc_as_if        : unit -> bool
+ val sc_while_flags_setfrom_dep : unit -> bool
+ val sc_dynamic_packing         : unit -> bool
++val sc_relational_loop_vars    : unit -> bool
++val sc_relational_loop_vars_in : unit -> string list
+ val sc_call_policy             : unit -> call_policy
+   
+ (* Printing parameters *)
+diff --git a/compiler/tests/safety/loopvars.t/none.json b/compiler/tests/safety/loopvars.t/none.json
+new file mode 100644
+index 000000000..0a9b76816
+--- /dev/null
++++ b/compiler/tests/safety/loopvars.t/none.json
+@@ -0,0 +1 @@
++{ "relational_loop_vars": false }
+diff --git a/compiler/tests/safety/loopvars.t/run.t b/compiler/tests/safety/loopvars.t/run.t
+new file mode 100644
+index 000000000..3f7bb1a90
+--- /dev/null
++++ b/compiler/tests/safety/loopvars.t/run.t
+@@ -0,0 +1,16 @@
++The loop in sum reads p[0 .. n-1] with n <= 8. Kept relational, its counter
++bounds the memory range to 64 bytes. With "relational_loop_vars" false, the
++counter loses its relation to n and the range is much wider; naming sum in
++"relational_loop_vars_in" restores the bound for that function only.
++
++  $ ../../../jasmin-checksafety scan.jazz 2>&1 | grep -e Violation -e "mem_p:"
++  *** No Safety Violation
++    mem_p: [0; 64]
++
++  $ ../../../jasmin-checksafety --config none.json scan.jazz 2>&1 | grep -e Violation -e "mem_p:"
++  *** No Safety Violation
++    mem_p: [0; 65535]
++
++  $ ../../../jasmin-checksafety --config sum.json scan.jazz 2>&1 | grep -e Violation -e "mem_p:"
++  *** No Safety Violation
++    mem_p: [0; 64]
+diff --git a/compiler/tests/safety/loopvars.t/scan.jazz b/compiler/tests/safety/loopvars.t/scan.jazz
+new file mode 100644
+index 000000000..9e2db9975
+--- /dev/null
++++ b/compiler/tests/safety/loopvars.t/scan.jazz
+@@ -0,0 +1,20 @@
++// The loop reads p[0 .. n-1] for n <= 8: bounding the accesses needs the
++// relation between the counter and the loop bound.
++inline fn sum(reg u64 p n) -> reg u64 {
++  reg u64 i s t;
++  s = 0;
++  i = 0;
++  while (i < n) {
++    t = [:u64 p + 8 * i];
++    s += t;
++    i += 1;
++  }
++  return s;
++}
++
++export fn scan(reg u64 p n) -> reg u64 {
++  reg u64 s;
++  s = 0;
++  if (n <= 8) { s = sum(p, n); }
++  return s;
++}
+diff --git a/compiler/tests/safety/loopvars.t/sum.json b/compiler/tests/safety/loopvars.t/sum.json
+new file mode 100644
+index 000000000..dff00e232
+--- /dev/null
++++ b/compiler/tests/safety/loopvars.t/sum.json
+@@ -0,0 +1 @@
++{ "relational_loop_vars": false, "relational_loop_vars_in": ["sum"] }

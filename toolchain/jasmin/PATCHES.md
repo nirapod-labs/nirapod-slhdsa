@@ -46,6 +46,7 @@ replaces.
 | 0025 | this project | safety checker option `array_track_max_bytes` | safety checker (trusted) |
 | 0026 | this project | safety checker option `congruence_reduction` | safety checker (trusted) |
 | 0027 | this project | ARMv8-A: x29 never allocated | calling convention proved; register allocation checked by the proved development |
+| 0028 | this project | safety checker options `relational_loop_vars`, `relational_loop_vars_in` | safety checker (trusted) |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -279,6 +280,20 @@ as before. Test: the cram test `compiler/tests/armv8a_x29.t` compiles a
 function whose variables fit in the registers and one that spills, for
 Linux and macOS, and finds no use of x29 or w29 in the output. Upstream
 status: not yet proposed.
+
+### 0028, `relational_loop_vars` (this project)
+
+With static packing, the variables of every while-loop condition, with the
+variables they depend on and those that depend on them, are in the
+relational domain, whose operations cost far more than those of the
+interval domain. With the configuration option `"relational_loop_vars":
+false`, only those of the functions listed in `"relational_loop_vars_in"`
+are, closed over the variables of the same functions. The default, true,
+keeps the behaviour of the pin. Fewer relational variables can only add
+alarms. Test: the cram test `compiler/tests/safety/loopvars.t`: a scan
+whose memory range is [0; 64] by default, [0; 65535] with the option false,
+and [0; 64] again when its function is listed. Upstream status: not yet
+proposed.
 
 ## Assembly checks
 
