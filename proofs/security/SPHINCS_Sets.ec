@@ -8,10 +8,13 @@
  * The EUF-CMA theorems of SLHDSA_EUFCMA and SLHDSA_Hedged for each
  * parameter set of FIPS 205 Table 2: SLH_DSA_<SET>.slhdsa_euf_cma
  * (deterministic signing) and SLH_DSA_<SET>.slhdsa_euf_cma_hedged (hedged
- * signing). Each clone discharges the one assumption of the abstract
- * theory, that P is a row of the table, so every result of
- * SPHINCS_Instance, SPHINCS_Refinement, SLHDSA_EUFCMA and SLHDSA_Hedged
- * holds for every set.
+ * signing), and the same bounds stated on the specification's own scheme,
+ * SLH_DSA_<SET>.slhdsa_euf_cma_spec and
+ * SLH_DSA_<SET>.slhdsa_euf_cma_hedged_spec (the module SLH_DSA of
+ * FIPS205_External.ec with the set's parameters). Each clone discharges
+ * the one assumption of the abstract theory, that P is a row of the
+ * table, so every result of SPHINCS_Instance, SPHINCS_Refinement,
+ * SLHDSA_EUFCMA and SLHDSA_Hedged holds for every set.
  *)
 
 require import List FIPS205_Params.
