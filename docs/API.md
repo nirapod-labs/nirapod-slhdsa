@@ -153,6 +153,10 @@ The published fault attacks on SPHINCS+ signing corrupt the computation of a
 tree root inside the hypertree, so that the WOTS+ key one layer up signs a
 second value; collecting such faulty signatures leads to forgeries. A faulty
 signature of that kind does not verify, so the check withholds it.
+`tests/negative/test_fault.c` injects such faults (a flipped bit in the FORS
+public key, or in a layer-0 XMSS root) and shows the signature withheld, and,
+with the check switched off through the testing library, released and not
+verifying.
 
 Not covered:
 

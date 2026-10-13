@@ -11,8 +11,8 @@
 #     make            build/<target>/lib/libnirapod_slhdsa.a
 #                     build/<target>/lib/libnirapod_slhdsa_testing.a
 #     make check      check the symbols of the application library, run the
-#                     ACVP known answers, the core and negative tests on this
-#                     host; writes build/<target>/transcript-core.txt
+#                     ACVP known answers, the core, negative and fault tests
+#                     on this host; writes build/<target>/transcript-core.txt
 #     make asm        only the Jasmin assembly
 #     make gen        write the assembly of every target and its manifest
 #                     into gen/ (this tree does not carry gen/)
@@ -123,7 +123,7 @@ VARIANT_KX = $(or $(KX_$(UNIT_VARIANT)),$(HASH_SRC)/keccak)
 VARIANT_S1 = $(or $(S1_$(UNIT_VARIANT)),$(HASH_SRC)/sha2)
 
 # Fault hooks (src/slhdsa/hook/hook.jinc): the identity for every
-# library unit; the fault tests use another version.
+# library unit; only the fault test units below use another version.
 VARIANT_HOOK = $(JASMIN_SRC)/slhdsa/hook
 
 # Include roots: the FIPS 205 modules, and the hash layer with its
@@ -307,6 +307,29 @@ $(OUT)/tests/test_acvp: $(TESTS_DIR)/core/test_acvp.c $(TESTING_LIB)
 	@mkdir -p $(@D)
 	$(TEST_CC) -o $@ $< $(TESTING_LIB)
 
+# The fault check of the C layer (tests/negative/test_fault.c): units whose
+# hooks flip a bit of the FORS public key (faultfors) or of the layer-0
+# XMSS root (faultht) during signing.
+
+FAULT_SETS := sha2_128f shake_128f
+FAULT_OBJ  := $(foreach s,$(FAULT_SETS),$(OUT)/fault/$(s)-faultfors.o $(OUT)/fault/$(s)-faultht.o)
+FAULT_DEPS := $(wildcard $(TESTS_DIR)/negative/fault/*/hook.jinc)
+
+$(OUT)/fault/%-faultfors.s: VARIANT_HOOK = $(TESTS_DIR)/negative/fault/fors
+$(OUT)/fault/%-faultht.s:   VARIANT_HOOK = $(TESTS_DIR)/negative/fault/ht
+
+$(OUT)/fault/%.s: $(OUT)/units/%.jazz $(JASMIN_DEPS) $(FAULT_DEPS)
+	@mkdir -p $(@D)
+	@test -n "$(JASMINC)" || { echo "JASMINC is not set: needed to compile $<" >&2; exit 1; }
+	$(JASMINC) $(JASMIN_FLAGS) $(JASMIN_INCLUDES) -o $@ $<
+
+$(OUT)/fault/%.o: $(OUT)/fault/%.s
+	$(CC) -c -o $@ $<
+
+$(OUT)/tests/test_fault: $(TESTS_DIR)/negative/test_fault.c $(FAULT_OBJ) $(TESTING_LIB)
+	@mkdir -p $(@D)
+	$(TEST_CC) -o $@ $< $(FAULT_OBJ) $(TESTING_LIB)
+
 # --------------------------------------------------------------------
 # Entry points
 # --------------------------------------------------------------------
@@ -323,7 +346,11 @@ lib: $(LIB) $(TESTING_LIB)
 # compiled variant (tests/core/test_core.c).
 TEST_CORE_FLAGS ?=
 
+ifeq ($(strip $(JASMINC)),)
 CHECK_TESTS := $(CORE_TESTS)
+else
+CHECK_TESTS := $(CORE_TESTS) $(OUT)/tests/test_fault
+endif
 
 check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
 	$(CHECK_EXPORTS) check $(INCLUDE_DIR)/nirapod_slhdsa.h $(LIB) $(SYM_PREFIX)
@@ -334,6 +361,11 @@ check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
 	$(OUT)/tests/test_acvp $(ACVP_SUBSET)
 	$(OUT)/tests/test_negative
 	$(OUT)/tests/test_core $(TEST_CORE_FLAGS) --transcript $(OUT)/transcript-core.txt
+ifeq ($(strip $(JASMINC)),)
+	@echo "test_fault: NOT RUN (needs JASMINC)"
+else
+	$(OUT)/tests/test_fault
+endif
 
 # --------------------------------------------------------------------
 # Generated assembly (gen/)

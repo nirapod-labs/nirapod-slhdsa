@@ -1,0 +1,30 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * hook.jinc (fault test, ht)
+ * ===========================
+ *
+ * Test version of src/slhdsa/hook/hook.jinc, for the fault test
+ * units only (tests/negative/test_fault.c); no library unit is built with
+ * it. It flips bit 0 of byte 0 of the root of the layer-0 XMSS tree,
+ * the value a fault attack corrupts, and leaves the other hook as the
+ * identity.
+ */
+
+inline fn __hook_fors_pk(reg mut ptr u8[SLH_N] pk) -> reg ptr u8[SLH_N]
+{
+  return pk;
+}
+
+inline fn __hook_ht_root(reg mut ptr u8[SLH_N] root, reg u32 layer) -> reg ptr u8[SLH_N]
+{
+  reg u32 t;
+
+  if (layer == 0) {
+    t = (32u) root[0];
+    t ^= 1;
+    root[0] = (8u) t;
+  }
+  return root;
+}

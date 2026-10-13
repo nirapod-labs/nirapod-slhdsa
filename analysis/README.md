@@ -40,6 +40,16 @@ Scope and limits:
   platform's responsibility (`capi/timing.c`). The stricter `--doit` policy
   has not been run.
 
+## Fault check (`tests/negative/test_fault.c`)
+
+Run by `make check` when the Jasmin compiler is available. Test units built
+with the hooks of `tests/negative/fault/` flip one bit of the FORS public key
+or of a layer-0 XMSS root during signing. PASS means: the faulty signature
+departs from the correct one exactly at the layer whose message was
+corrupted; released without the check it does not verify; with the check,
+pure, pre-hash and internal signing return `NIRAPOD_SLHDSA_ERROR_FAULT` and
+leave the output zero. `docs/API.md` states what the check does not cover.
+
 ## Memory safety
 
 Not checked by a tool yet. The Jasmin toolchain's safety checker,
