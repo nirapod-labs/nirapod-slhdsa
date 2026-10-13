@@ -11,7 +11,7 @@ handled as below.
 In scope:
 
 - the Jasmin implementation of SLH-DSA and its hash primitives
-- the C API and wrapper in `include/` and `src/c/`
+- the C API and wrapper in `include/` and `capi/`
 - the generated assembly shipped in this repository
 - the toolchain patch series under `toolchain/`, where a defect could change
   generated code or weaken an analysis result

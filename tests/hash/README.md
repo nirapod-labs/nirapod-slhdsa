@@ -1,6 +1,6 @@
 # Hash primitive tests
 
-Tests for the Jasmin hash primitives of `src/jasmin/hash`. They run the
+Tests for the Jasmin hash primitives of `src/hash`. They run the
 production code paths natively through test exports, compare their output
 with NIST vectors and an independent implementation, and check the source
 with the Jasmin constant-time type checkers.
@@ -100,7 +100,7 @@ a buffer byte the current hash has not written.
 
 **CT and SCT** (`make ct`, `make sct`). `jasmin-ct` and `jasmin-ct --sct`
 over the whole test unit, which covers every export and, through them,
-every library function in `src/jasmin/hash`. Both checkers assume program
+every library function in `src/hash`. Both checkers assume program
 safety, which these targets do not establish. They type-check the source
 before compilation; the connection to emitted code is the compiler's.
 

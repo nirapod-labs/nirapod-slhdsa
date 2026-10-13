@@ -62,7 +62,7 @@ inline fn __rotl64(reg u64 x, inline int r) -> reg u64
  * C and D are kept in stack scratch, not in registers, so the round's
  * register working set is B (five lanes), two temporaries and the two state
  * pointers. The registers the emitted code of each target uses are recorded
- * with the kernel notes in src/jasmin/hash/README.md.
+ * with the kernel notes in src/hash/README.md.
  */
 inline fn __keccak_round(reg mut ptr u64[25] e, reg const ptr u64[25] a) -> reg ptr u64[25]
 {

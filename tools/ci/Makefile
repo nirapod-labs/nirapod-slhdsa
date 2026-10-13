@@ -109,8 +109,8 @@ CI_COUNTS  := $(CI_PYTHON) -I tools/ci/counts.py
 
 CI_COMPONENTS := hash core acvp diff safety asm proofs gen bench
 
-CI_DIRS_hash   := src/jasmin/hash tests/hash
-CI_DIRS_core   := include src/jasmin/slhdsa src/c tests/core tests/negative \
+CI_DIRS_hash   := src/hash tests/hash
+CI_DIRS_core   := include src/slhdsa capi tests/core tests/negative \
                   tests/abi analysis/ct
 CI_DIRS_acvp   := tests/acvp tests/vectors
 CI_DIRS_diff   := tests/diff
@@ -120,7 +120,7 @@ CI_DIRS_proofs := proofs third_party/crypto-specs third_party/formosa-slhdsa
 CI_DIRS_gen    := gen
 CI_DIRS_bench  := bench
 
-CI_CONTAINERS  := src src/jasmin tests analysis third_party
+CI_CONTAINERS  := src tests analysis third_party
 CI_OTHER_ROOTS := .git .github LICENSES changes docs toolchain tools build
 
 present = $(strip $(foreach d,$(CI_DIRS_$(1)),$(wildcard $(d))))
@@ -187,7 +187,7 @@ endif
 #   differential  the library, tests/diff, and bench/ for the pinned
 #                 independent implementation; not ACVP or the proofs
 #   proofs        proofs/, the imported theories of third_party, and the
-#                 Jasmin sources it extracts (src/jasmin); not the C layer,
+#                 Jasmin sources it extracts (src); not the C layer,
 #                 the tests, the analyses, gen/ or the benchmarks
 #
 # CI_VERDICT_SKIP holds what no check reads: documentation, change entries,
@@ -212,7 +212,7 @@ CI_VERDICT_SKIP_analysis     := bench $(CI_DIRS_proofs) $(CI_DIRS_acvp) $(CI_DIR
 CI_VERDICT_SKIP_safety       := $(CI_VERDICT_SKIP_analysis)
 CI_VERDICT_SKIP_generated    := $(CI_VERDICT_SKIP_analysis)
 CI_VERDICT_SKIP_differential := $(CI_DIRS_proofs) $(CI_DIRS_acvp)
-CI_VERDICT_SKIP_proofs       := bench tests include src/c analysis gen
+CI_VERDICT_SKIP_proofs       := bench tests include capi analysis gen
 
 # Host. The names follow the top-level Makefile: <arch>-<format> is the
 # directory of its build, build/<arch>-<format>/.
@@ -253,7 +253,7 @@ CI_HASH_SETS := scalar $(if $(CI_HASH_VARS_$(CI_ARCH)),$(CI_ARCH))
 # SHA2* select sha2/.
 ci_selected = $(foreach a,$(1),$(if $(filter KECCAK%,$(a)),keccak,sha2)/$(word 2,$(subst =, ,$(a))))
 CI_HASH_SELECTED := $(sort $(call ci_selected,$(CI_HASH_VARS_x86_64) $(CI_HASH_VARS_aarch64)))
-CI_HASH_VARIANTS := $(sort $(patsubst src/jasmin/hash/%,%,$(call subdirs,$(call subdirs,$(call subdirs,src/jasmin/hash)))))
+CI_HASH_VARIANTS := $(sort $(patsubst src/hash/%,%,$(call subdirs,$(call subdirs,$(call subdirs,src/hash)))))
 
 # Core variants: test_core runs with --require-variants, so a variant built
 # for the architecture that cannot run on this CPU fails the test.

@@ -112,7 +112,7 @@ Every patch has its provenance, purpose, test and upstream status in
 <summary><b>Repository layout</b></summary>
 
 ```text
-src/jasmin/hash/  SHA-2, SHA-3, SHAKE, HMAC and MGF1 in Jasmin
+src/hash/         SHA-2, SHA-3, SHAKE, HMAC and MGF1 in Jasmin
 tests/hash/       CAVP, differential and negative tests of the hash layer
 toolchain/        pinned Jasmin and EasyCrypt, the patch series, build.sh
 tools/            CI checks and release tooling

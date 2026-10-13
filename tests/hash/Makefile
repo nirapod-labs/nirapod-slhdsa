@@ -27,16 +27,16 @@
 #   JASMINC, JASMIN_CT  Jasmin tools (default: from PATH)
 #   ARCH                x86_64 | aarch64 (default: this machine)
 #   SYSTEM              linux | macosx (default: this machine)
-#   KECCAK_VARIANT      single-way Keccak kernel directory under src/jasmin/hash/keccak
+#   KECCAK_VARIANT      single-way Keccak kernel directory under src/hash/keccak
 #   KECCAKX_VARIANT     4-way Keccak kernel directory, same tree
-#   SHA2_VARIANT        single-way SHA-2 kernel directory under src/jasmin/hash/sha2
+#   SHA2_VARIANT        single-way SHA-2 kernel directory under src/hash/sha2
 #   SHA2X_VARIANT       multi-way SHA-2 kernel directory, same tree
 #                       (each empty: the shared scalar kernels)
 #   VECTORS             extracted CAVP directory (default: build/hash/vectors)
 #   DIFF_SEED, DIFF_ITERS   differential test seed and iteration count
 
 ROOT     := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
-HASH     := $(ROOT)/src/jasmin/hash
+HASH     := $(ROOT)/src/hash
 TESTS    := $(ROOT)/tests/hash
 
 JASMINC    ?= jasminc

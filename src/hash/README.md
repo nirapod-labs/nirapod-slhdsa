@@ -86,26 +86,26 @@ Six include roots:
 
 | Root | Points at | Provides |
 |---|---|---|
-| `Hash` | `src/jasmin/hash` | everything below |
-| `HashWord` | `src/jasmin/hash/<arch>` (`x86_64`, `aarch64`) | `word.jinc` |
-| `KeccakKernel` | `src/jasmin/hash/keccak` or a single-way variant directory | `keccakf1600.jinc` |
-| `KeccakKernelX` | `src/jasmin/hash/keccak` or a multi-way variant directory | `keccakf1600_x4.jinc` |
-| `Sha2Kernel` | `src/jasmin/hash/sha2` or a single-way variant directory | `sha256_compress.jinc`, `sha512_compress.jinc` |
-| `Sha2KernelX` | `src/jasmin/hash/sha2` or a multi-way variant directory | `sha256_x8_compress.jinc`, `sha512_x4_compress.jinc` |
+| `Hash` | `src/hash` | everything below |
+| `HashWord` | `src/hash/<arch>` (`x86_64`, `aarch64`) | `word.jinc` |
+| `KeccakKernel` | `src/hash/keccak` or a single-way variant directory | `keccakf1600.jinc` |
+| `KeccakKernelX` | `src/hash/keccak` or a multi-way variant directory | `keccakf1600_x4.jinc` |
+| `Sha2Kernel` | `src/hash/sha2` or a single-way variant directory | `sha256_compress.jinc`, `sha512_compress.jinc` |
+| `Sha2KernelX` | `src/hash/sha2` or a multi-way variant directory | `sha256_x8_compress.jinc`, `sha512_x4_compress.jinc` |
 
 Single-way and multi-way kernels have separate roots so that a target can
 combine, for example, SHA-NI for single hashes with AVX2 for batches.
 
 ```sh
-jasminc -arch armv8a -I Hash=src/jasmin/hash -I HashWord=src/jasmin/hash/aarch64 \
-        -I KeccakKernel=src/jasmin/hash/keccak/aarch64/scalar \
-        -I KeccakKernelX=src/jasmin/hash/keccak \
-        -I Sha2Kernel=src/jasmin/hash/sha2/aarch64/scalar -I Sha2KernelX=src/jasmin/hash/sha2 ...
+jasminc -arch armv8a -I Hash=src/hash -I HashWord=src/hash/aarch64 \
+        -I KeccakKernel=src/hash/keccak/aarch64/scalar \
+        -I KeccakKernelX=src/hash/keccak \
+        -I Sha2Kernel=src/hash/sha2/aarch64/scalar -I Sha2KernelX=src/hash/sha2 ...
 
-jasminc -arch x86-64 -I Hash=src/jasmin/hash -I HashWord=src/jasmin/hash/x86_64 \
-        -I KeccakKernel=src/jasmin/hash/keccak \
-        -I KeccakKernelX=src/jasmin/hash/keccak/x86_64/avx2 \
-        -I Sha2Kernel=src/jasmin/hash/sha2/x86_64/shani -I Sha2KernelX=src/jasmin/hash/sha2/x86_64/avx2 ...
+jasminc -arch x86-64 -I Hash=src/hash -I HashWord=src/hash/x86_64 \
+        -I KeccakKernel=src/hash/keccak \
+        -I KeccakKernelX=src/hash/keccak/x86_64/avx2 \
+        -I Sha2Kernel=src/hash/sha2/x86_64/shani -I Sha2KernelX=src/hash/sha2/x86_64/avx2 ...
 ```
 
 ```
