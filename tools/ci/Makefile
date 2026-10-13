@@ -27,7 +27,8 @@
 #                     them) are byte-identical
 #     ci-analysis     jasmin-ct and jasmin-ct --sct on every unit and kernel
 #                     set of this host's architecture; emitted-code policies
-#     ci-safety       jasmin-checksafety on every export
+#     ci-safety       jasmin-checksafety on every export; NOT RUN while
+#                     the tree has Jasmin code but no safety component
 #     ci-diff         differential test of the library against an
 #                     independent implementation, and its negative control
 #     ci-proofs       the EasyCrypt development and its admit scan, and the
@@ -71,8 +72,10 @@
 # Contract. A check of an absent component prints NOT APPLICABLE, with the
 # directories it looked for, and passes; this is the state of a tree into
 # which that component has not been merged (once it has, CI_REQUIRED below
-# makes its absence an error). A check of a present component
-# is mandatory: a missing Makefile, target, tool or input fails it, nothing
+# makes its absence an error). The exception is safety: while Jasmin code
+# is in the tree without the safety component, ci-safety reports NOT RUN
+# (below), since that code is unchecked rather than absent. A check of a
+# present component is mandatory: a missing Makefile, target, tool or input fails it, nothing
 # in it is skipped, and its suites must reach their minimum case counts
 # (tools/ci/counts.py). In particular:
 #
@@ -479,10 +482,27 @@ endif
 # on every event; on a pull request whose safety inputs match those of a
 # recorded pass (CI_VERDICT_SKIP_safety above), the workflow reports that
 # pass instead of running it again.
+#
+# Without the safety component, the Jasmin code of the hash layer and the
+# core has no safety verdict, and the constant-time results are conditional
+# on one. The target then says NOT RUN, in its log, as a workflow warning
+# and in the job summary, and passes: there is nothing in the tree to run,
+# and failing would block every change until the component lands. A
+# verdict recorded from such a run is reported as NOT RUN when a pull
+# request reuses it (tools/ci/verdict.sh).
+CI_SAFETY_NOT_RUN := no Jasmin export of this tree has been checked by jasmin-checksafety: \
+                     the safety component is absent (none of: $(CI_DIRS_safety)); \
+                     the constant-time results are conditional on memory safety
+
 ci-safety:
 ifneq ($(CI_SAFETY_DIRS),)
 	$(call CI_NEED_JASMINC,ci-safety)
 	$(MAKE) safety $(CI_CORE_VARS)
+else ifneq ($(CI_HASH)$(CI_CORE),)
+	@echo "ci-safety: NOT RUN: $(CI_SAFETY_NOT_RUN)"
+	@echo "::warning title=safety NOT RUN::$(CI_SAFETY_NOT_RUN)"
+	@if [ -n "$$GITHUB_STEP_SUMMARY" ]; then \
+	  printf '### safety: NOT RUN\n\n%s.\n' "$(CI_SAFETY_NOT_RUN)" >> "$$GITHUB_STEP_SUMMARY"; fi
 else
 	$(call not_applicable,ci-safety,safety)
 endif

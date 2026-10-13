@@ -19,7 +19,8 @@
 #                 and the emitted-code policies
 #   differential  ci-diff: the library against an independent
 #                 implementation
-#   safety        ci-safety: jasmin-checksafety
+#   safety        ci-safety: jasmin-checksafety, or NOT RUN with its reason
+#                 while the tree has no safety component
 #   generated     ci-generated: shipped assembly against a regeneration
 #
 # Every job runs whatever it is given: none of them is skipped by a

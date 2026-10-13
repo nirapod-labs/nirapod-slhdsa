@@ -36,10 +36,10 @@
 # drift shows there.
 #
 # A verdict lives in build/verdict/<check>/: the record (PASS, the key, the
-# run, the commit, the input tree, which `git ls-tree -r <tree>` lists, and
-# the names of the files kept), the check's log, and the files later jobs
-# need from it (files/). Reuse puts back the files the record names, and
-# nothing else.
+# run, the commit, the input tree, which `git ls-tree -r <tree>` lists, the
+# names of the files kept, and NOT RUN for a check that passed without
+# running), the check's log, and the files later jobs need from it
+# (files/). Reuse puts back the files the record names, and nothing else.
 #
 # Where verdicts come from. Only runs on main record one: the workflows
 # upload the directory as an artifact of the run, named by the key. A pull
@@ -231,15 +231,28 @@ cmd_record() {
     echo "event ${GITHUB_EVENT_NAME:-local} ${GITHUB_REF:-}"
     echo "recorded $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     for f in "$@"; do echo "file $f"; done
+    # A check that passed without running (its log says NOT RUN) is
+    # recorded as such, so the record itself does not read as a pass of
+    # the check.
+    if not_run "$d/log"; then echo "status NOT RUN"; fi
   } > "$d/record"
-  echo "verdict.sh: $check PASS recorded under $key"
+  if not_run "$d/log"; then
+    echo "verdict.sh: $check recorded under $key as NOT RUN (its log says so)"
+  else
+    echo "verdict.sh: $check PASS recorded under $key"
+  fi
+}
+
+# not_run LOG: the check whose log this is passed without running.
+not_run() {
+  grep -q '^ci-[a-z-]*: NOT RUN' "$1"
 }
 
 # report CHECK KEY RUN: the verdict downloaded from RUN into $DIR/CHECK is
 # a pass under KEY, made from the inputs this job keyed, and recorded on
 # main by that run; put its files back and state the reuse.
 report() {
-  local check=$1 key=$2 run=$3 d f n url commit event
+  local check=$1 key=$2 run=$3 d f n url commit event heading what
   d="$DIR/$check"
   [ -f "$d/record" ] || die "reuse $check: the verdict of run $run has no record"
   [ -f "$DIR/$check.material" ] || die "reuse $check: no key material; run 'verdict.sh key' first"
@@ -271,10 +284,21 @@ report() {
     cp "$d/files/$f" "$f"
   done < <(sed -n 's/^file //p' "$d/record")
   commit=$(sed -n 's/^commit //p' "$d/record")
+  # A check can pass without running, when the tree has nothing it could
+  # run (ci-safety without its component); its log says NOT RUN, and the
+  # reuse says so too rather than PASS.
+  if not_run "$d/log"; then
+    echo "::warning title=$check NOT RUN::the run on $MAIN with identical inputs did not run $check; see its log"
+    heading="NOT RUN, as recorded on $MAIN with identical inputs"
+    what="Not run here either. Its inputs are those of run $url at commit $commit, which did not run it."
+  else
+    heading="PASS, recorded on $MAIN with identical inputs"
+    what="Not run again. Its inputs are those of the passing run $url at commit $commit."
+  fi
   {
-    echo "### $check: PASS, recorded on $MAIN with identical inputs"
+    echo "### $check: $heading"
     echo
-    echo "Not run again. Its inputs are those of the passing run $url at commit $commit."
+    echo "$what"
     echo
     echo '```'
     cat "$d/record"
