@@ -40,6 +40,7 @@ replaces.
 | 0018 | this project | safety checker for ARMv8-A | safety checker (trusted) |
 | 0019-0020 | PR #1632, head `c0006367ca98`; 0019 differs in one generated line | located error for an instruction argument the target cannot express | `check_rexpr`, `check_lexpr`, `check_fexpr` return the new error; same accepted arguments; theorem statements and proofs unchanged |
 | 0021 | this project | ARMv8-A: `a & !b` lowered to BIC | lowering proved |
+| 0022 | this project | ARMv8-A: store of an immediate through a scratch register | lowering proved |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -180,6 +181,21 @@ shifted operands, a complemented constant `a & !C`), and
 operands complemented (`!a & !b`) one complement remains an expression, and
 the program is rejected at assembly generation rather than compiled to a
 different operation. Upstream status: not yet proposed.
+
+### 0022, store of an immediate (this project)
+
+A64 has no store of an immediate. At the pin, assigning a constant to memory
+or to a stack array on ARMv8-A (`buf[i] = 0x80;`, `[:u64 p + 8] = 0;`, any
+access size) remained after lowering and was rejected at linearization. The
+lowering now moves the constant to a fresh 64-bit variable, `__wtmp__`, that
+the program cannot name, and stores its low bytes with STR, STRH or STRB. In
+the lowering proof, the lemma `sem_lower_store_imm` states that the two
+instructions end in a state equal to the one the source assignment reaches,
+except for that variable; `lower_cassgn_wordP` uses it for this case.
+Every such store materializes its constant (a MOVZ/MOVK sequence); a
+constant stored many times is cheaper held in a register by the source. Test:
+`compiler/tests/success/armv8a/store_imm.jazz`. Upstream status: not yet
+proposed.
 
 ## Assembly checks
 
