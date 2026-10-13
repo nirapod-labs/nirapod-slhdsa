@@ -17,7 +17,7 @@
 #
 #     python3 -I tests/hash/tools/gen_test_arrays.py > tests/hash/jasmin/test_arrays.jinc
 #
-# The output depends only on this script. The `check` target of
+# The output depends only on this script. The `generated` target of
 # tests/hash/Makefile regenerates it and fails if the committed file differs.
 
 import sys

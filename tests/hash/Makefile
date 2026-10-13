@@ -135,10 +135,7 @@ generated:
 	  { echo "tests/hash/jasmin/test_arrays.jinc is stale: regenerate it"; exit 1; }
 
 # Mutates one round constant per kernel family in a copy of the sources and
-# requires the tests on that copy to fail in every family below. The
-# multi-way families are the checks against libcrypto: the multi-way
-# kernels read the same mutated tables as the single-way ones, so
-# comparisons between the two cannot detect the mutation.
+# requires the tests on that copy to fail in every family below.
 NEG_FAMILIES := SHA3_256 SHA256Short SHA512Short
 NEG_WORK     := $(OUT)/negative-control
 
