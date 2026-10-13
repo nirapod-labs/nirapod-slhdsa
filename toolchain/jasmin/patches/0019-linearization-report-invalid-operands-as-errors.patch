@@ -1,0 +1,249 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Mon, 12 Oct 2026 21:19:52 +0600
+Subject: [PATCH] linearization: report invalid operands as errors
+
+---
+ compiler/tests/fail/common/bug_1126.jazz      |   5 +
+ .../tests/fail/common/bug_1126_condition.jazz |   5 +
+ .../tests/fail/common/bug_1126_store.jazz     |   4 +
+ compiler/tests/negative.expected              | 131 +++++++++++++++++-
+ proofs/compiler/linearization.v               |  28 +++-
+ 5 files changed, 164 insertions(+), 9 deletions(-)
+ create mode 100644 compiler/tests/fail/common/bug_1126.jazz
+ create mode 100644 compiler/tests/fail/common/bug_1126_condition.jazz
+ create mode 100644 compiler/tests/fail/common/bug_1126_store.jazz
+
+diff --git a/compiler/tests/fail/common/bug_1126.jazz b/compiler/tests/fail/common/bug_1126.jazz
+new file mode 100644
+index 000000000..e7e7035b6
+--- /dev/null
++++ b/compiler/tests/fail/common/bug_1126.jazz
+@@ -0,0 +1,5 @@
++export fn entry(reg ptr u8[2] p) -> reg u32 {
++  reg u32 v;
++  v = (32u) p[0] + (32u) p[1];
++  return v;
++}
+diff --git a/compiler/tests/fail/common/bug_1126_condition.jazz b/compiler/tests/fail/common/bug_1126_condition.jazz
+new file mode 100644
+index 000000000..1120193c4
+--- /dev/null
++++ b/compiler/tests/fail/common/bug_1126_condition.jazz
+@@ -0,0 +1,5 @@
++export fn entry(reg ptr u32[2] p, reg u32 x) -> reg u32 {
++  reg u32 r;
++  if ((p[0] == x) || (p[1] <s x)) { r = 1; } else { r = 2; }
++  return r;
++}
+diff --git a/compiler/tests/fail/common/bug_1126_store.jazz b/compiler/tests/fail/common/bug_1126_store.jazz
+new file mode 100644
+index 000000000..fa8d44ed9
+--- /dev/null
++++ b/compiler/tests/fail/common/bug_1126_store.jazz
+@@ -0,0 +1,4 @@
++export fn entry(reg ptr u32[2] p, reg u32 x) -> reg ptr u32[2] {
++  p[(uint) p[0]] = x;
++  return p;
++}
+diff --git a/compiler/tests/negative.expected b/compiler/tests/negative.expected
+index 4b97c3fd4..878bfc5ef 100644
+--- a/compiler/tests/negative.expected
++++ b/compiler/tests/negative.expected
+@@ -662,6 +662,126 @@ compilation error in function main:
+ stack allocation: argument a is used with 32-bit alignment at:
+ "fail/common/alignment_internal.jazz", line 10 (2-23)
+ 
++fail/common/bug_1126.jazz:
++
++"fail/common/bug_1126.jazz", line 3 (2-30):
++compilation error in function entry:
++linearization: The argument
++(32u) [:u8 RDI +64u (64u) 0]
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
++fail/common/bug_1126.jazz:
++
++"fail/common/bug_1126.jazz", line 3 (2-30):
++compilation error in function entry:
++linearization: The argument
++(32u) [:u8 r0 +32u (32u) 0]
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
++fail/common/bug_1126.jazz:
++
++"fail/common/bug_1126.jazz", line 3 (2-30):
++compilation error in function entry:
++linearization: The argument
++(32u) [:u8 x0 +64u (64u) 0]
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
++fail/common/bug_1126.jazz:
++
++"fail/common/bug_1126.jazz", line 3 (2-30):
++compilation error in function entry:
++linearization: The argument
++(32u) [:u8 x10 +32u (32u) 0]
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
++fail/common/bug_1126_condition.jazz:
++
++"fail/common/bug_1126_condition.jazz", line 3 (2-60):
++compilation error in function entry:
++linearization: The condition
++[:u32 RDI +64u (64u) 0] ==32u RSI || [:u32 RDI +64u (64u) 4] <s RSI
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
++fail/common/bug_1126_condition.jazz:
++
++"fail/common/bug_1126_condition.jazz", line 3 (2-60):
++compilation error in function entry:
++linearization: The condition
++[:u32 r0 +32u (32u) 0] ==32u r1 || [:u32 r0 +32u (32u) 4] <s r1
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
++fail/common/bug_1126_condition.jazz:
++
++"fail/common/bug_1126_condition.jazz", line 3 (2-60):
++compilation error in function entry:
++linearization: The condition
++[:u32 x0 +64u (64u) 0] ==32u x1 || [:u32 x0 +64u (64u) 4] <s x1
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
++fail/common/bug_1126_condition.jazz:
++
++"fail/common/bug_1126_condition.jazz", line 3 (2-60):
++compilation error in function entry:
++linearization: The condition
++[:u32 x10 +32u (32u) 0] ==32u x11 || [:u32 x10 +32u (32u) 4] <s x11
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
++fail/common/bug_1126_store.jazz:
++
++"fail/common/bug_1126_store.jazz", line 2 (2-21):
++compilation error in function entry:
++linearization: The destination
++[:u32 RDI +64u ((64u) 4 *64u (64u) (uint) [:u32 RDI +64u (64u) 0] +64u (64u) 0)]
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
++fail/common/bug_1126_store.jazz:
++
++"fail/common/bug_1126_store.jazz", line 2 (2-21):
++compilation error in function entry:
++linearization: The destination
++[:u32 r0 +32u ((32u) 4 *32u [:u32 r0 +32u (32u) 0] +32u (32u) 0)]
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
++fail/common/bug_1126_store.jazz:
++
++"fail/common/bug_1126_store.jazz", line 2 (2-21):
++compilation error in function entry:
++linearization: The destination
++[:u32 x0 +64u ((64u) 4 *64u (64u) (uint) [:u32 x0 +64u (64u) 0] +64u (64u) 0)]
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
++fail/common/bug_1126_store.jazz:
++
++"fail/common/bug_1126_store.jazz", line 2 (2-21):
++compilation error in function entry:
++linearization: The destination
++[:u32 x10 +32u ((32u) 4 *32u [:u32 x10 +32u (32u) 0] +32u (32u) 0)]
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
++
+ fail/common/bug_1214.jazz:
+ 
+ "fail/common/bug_1214.jazz", line 13 (6-7):
+@@ -1535,9 +1655,12 @@ stack allocation: cannot access the subarray [16; 32[ of a[0; 24[, the access ov
+ fail/stack_allocation/x86-64/reg_var_expected.jazz:
+ 
+ "fail/stack_allocation/x86-64/reg_var_expected.jazz", line 6 (2-12):
+-internal compilation error in function main:
+-  linearization: check_rexpr
+-Please report at https://github.com/jasmin-lang/jasmin/issues
++compilation error in function main:
++linearization: The argument
++[:u64 [#aligned :u64 RSP +64u (64u) 0]]
++of this instruction cannot be expressed in the target architecture.
++The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:
++load it into a register variable first.
+ 
+ fail/stack_allocation/x86-64/regions_not_equal_array.jazz:
+ 
+@@ -1966,4 +2089,4 @@ Statistics:
+ 	Pretyping:  65
+ 	Parsing:     5
+ 	Typing:      5
+-	Compile:   235
++	Compile:   247
+diff --git a/proofs/compiler/linearization.v b/proofs/compiler/linearization.v
+index 6b1305758..4accf56c9 100644
+--- a/proofs/compiler/linearization.v
++++ b/proofs/compiler/linearization.v
+@@ -54,6 +54,20 @@ Definition assign_remains (ii : instr_info) (lv: lval) (e: pexpr) :=
+       pp_s "More information may be found online: https://jasmin-lang.readthedocs.io/en/stable/misc/faq.html#linearization"
+   ]).
+ 
++(* An argument, destination or condition of an instruction that the target
++   architecture cannot take as it is. After stack allocation, this is usually
++   a memory access nested in a larger expression, such as the zero-extension
++   of a byte load, or in the address of another access; stack variables and
++   globals are memory accesses by then. *)
++Definition invalid_operand (ii : instr_info) (what: string) (e: pp_error) :=
++  gen_error false (Some ii)
++    (pp_nobox [:: pp_s what; PPEbreak;
++      e; PPEbreak;
++      pp_s "of this instruction cannot be expressed in the target architecture."; PPEbreak;
++      pp_s "The usual cause is a memory access (for instance to a stack variable, a global or an array element) inside a larger expression:"; PPEbreak;
++      pp_s "load it into a register variable first."
++  ]).
++
+ End E.
+ 
+ 
+@@ -349,13 +363,17 @@ Section EXPR.
+   Definition to_fexpr (e: pexpr) : fexpr :=
+     if fexpr_of_pexpr e is Some r then r else Fconst 0.
+ 
+-  Let error msg := E.gen_error true (Some ii) (pp_s msg).
+-
+-  Definition check_fexpr := check_Some error fexpr_of_pexpr "check_fexpr".
++  Definition check_fexpr (e: pexpr) :=
++    check_Some (fun what => E.invalid_operand ii what (pp_e e))
++      fexpr_of_pexpr "The condition" e.
+ 
+-  Definition check_rexpr := check_Some error rexpr_of_pexpr "check_rexpr".
++  Definition check_rexpr (e: pexpr) :=
++    check_Some (fun what => E.invalid_operand ii what (pp_e e))
++      rexpr_of_pexpr "The argument" e.
+ 
+-  Definition check_lexpr := check_Some error lexpr_of_lval "check_lexpr".
++  Definition check_lexpr (x: lval) :=
++    check_Some (fun what => E.invalid_operand ii what (pp_lv x))
++      lexpr_of_lval "The destination" x.
+ 
+ End EXPR.
+ 

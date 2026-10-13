@@ -29,3 +29,5 @@ patches/0015-safetylib-faster-start-up-with-large-global-tables.patch 38a2770730
 patches/0016-changes-changelog-entry-for-the-safety-checker-fixes.patch eb9173fed3d99cb7c7d001d74953a9ef1f117a9f8a92f7010139115b1e34f240
 patches/0017-armv8a-add-EXTR-and-the-bit-field-instructions.patch b825ee2e4a91386396f4c9a393945815959b1a07ed314d75570e69b1b88d9380
 patches/0018-safetylib-implement-the-safety-checker-for-ARMv8-A.patch f74fcc3a734c6adefac99953aad45e5e5a00499b60eed2396ad536ba673e0602
+patches/0019-linearization-report-invalid-operands-as-errors.patch a3d9681575d77c56fdd33cf99cb599192eac66d0d28e2ba25b6aaf958ba6a844
+patches/0020-linearization-changelog-entry-for-invalid-operands.patch a57bbb8505eac5e3bde89677663d44477d4bd6c715991056d4b8b1883eb291ea

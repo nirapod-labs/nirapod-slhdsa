@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Tue, 13 Oct 2026 06:42:21 +0600
+Subject: [PATCH] linearization: changelog entry for invalid operands
+
+---
+ changes/02-bugfix/1632-invalid-operand.md | 6 ++++++
+ 1 file changed, 6 insertions(+)
+ create mode 100644 changes/02-bugfix/1632-invalid-operand.md
+
+diff --git a/changes/02-bugfix/1632-invalid-operand.md b/changes/02-bugfix/1632-invalid-operand.md
+new file mode 100644
+index 000000000..fcf60a905
+--- /dev/null
++++ b/changes/02-bugfix/1632-invalid-operand.md
+@@ -0,0 +1,6 @@
++- An argument, destination or condition of an instruction that the target
++  cannot express, such as a memory access nested in a larger expression, is
++  reported as an error located at the instruction instead of an internal
++  error of linearization
++  ([PR #1632](https://github.com/jasmin-lang/jasmin/pull/1632);
++  fixes [#1126](https://github.com/jasmin-lang/jasmin/issues/1126)).
