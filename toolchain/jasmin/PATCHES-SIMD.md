@@ -22,6 +22,7 @@ upstream.
 |---|---|---|
 | 0001 | SIMD&FP registers V0-V31 as 128-bit vector registers; calling convention; MOV (vector), LDR/STR of a Q register, AND, BIC, ORR, EOR, NOT, ADD, SUB, SHL, USHR, SRI, SLI; lowering of u128 moves, loads, stores and operators; saving of callee-saved vector registers | lowering, linearization and assembly generation proved; instruction semantics trusted |
 | 0002 | SHA256H, SHA256H2, SHA256SU0, SHA256SU1, SHA512H, SHA512H2, SHA512SU0, SHA512SU1; lemmas relating them to FIPS 180-4; a known-answer test of whole SHA-256 and SHA-512 digests | instruction semantics trusted; the FIPS 180-4 lemmas are proved about those semantics; the known-answer test checks the semantics against published digests |
+| 0003 | EOR3, BCAX, RAX1, XAR | instruction semantics trusted |
 
 Intrinsic names: the bitwise instructions, moves and Q-register loads and
 stores take no suffix (`#VEOR`, `#VLDR`); the element-wise instructions take
