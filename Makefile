@@ -6,10 +6,13 @@
 #
 # Single entry point of the build. It compiles the parameter-set units with
 # the Jasmin compiler, assembles them with the C wrapper into two static
-# libraries:
+# libraries, and builds and runs the core tests:
 #
 #     make            build/<target>/lib/libnirapod_slhdsa.a
 #                     build/<target>/lib/libnirapod_slhdsa_testing.a
+#     make check      check the symbols of the application library, run the
+#                     ACVP known answers and the core tests on this host;
+#                     writes build/<target>/transcript-core.txt
 #     make asm        only the Jasmin assembly
 #     make gen        write the assembly of every target and its manifest
 #                     into gen/ (this tree does not carry gen/)
@@ -19,7 +22,7 @@
 #     make clean      remove build/
 #
 # <target> is <arch>-<format>: aarch64-macho, aarch64-elf or x86_64-elf,
-# detected from the host for the libraries. `make gen` builds
+# detected from the host for the library and the tests. `make gen` builds
 # the assembly of all three, which needs no target hardware.
 #
 # Tools: JASMINC (and JASMIN_CT for analysis targets) must be the Jasmin
@@ -199,6 +202,9 @@ $(OUT)/obj/%.o: $(ASM_DIR)/%.s
 #     libnirapod_slhdsa_testing.a  the testing objects and the same Jasmin
 #                                  units, every symbol as compiled; for tests
 #                                  only, and the only library they link
+#
+# `make check` runs tests/abi/check-exports.sh on the first, with a
+# negative control (one extra global symbol) that must fail.
 
 CFLAGS ?= -O2
 CWARN  := -std=c99 -Wall -Wextra -Wpedantic -Wshadow -Wmissing-prototypes \
@@ -263,17 +269,65 @@ $(TESTING_LIB): $(TCOBJ) $(JOBJ)
 	rm -f $@
 	$(AR) rcs $@ $^
 
+# Negative control of the symbol check: the production object plus one
+# object defining one more global function.
+EXPORTS_CONTROL := $(OUT)/lib/exports-control.a
+
+$(EXPORTS_CONTROL): $(LIB_OBJ)
+	@mkdir -p $(OUT)/obj/exports-control
+	printf 'int nirapod_slhdsa_extra(void);\nint nirapod_slhdsa_extra(void) { return 0; }\n' \
+	  > $(OUT)/obj/exports-control/extra.c
+	$(CC) -c -o $(OUT)/obj/exports-control/extra.o $(OUT)/obj/exports-control/extra.c
+	rm -f $@
+	$(AR) rcs $@ $(LIB_OBJ) $(OUT)/obj/exports-control/extra.o
+
+# --------------------------------------------------------------------
+# Tests
+# --------------------------------------------------------------------
+
+# Every test links the testing library.
+
+CORE_TESTS := $(OUT)/tests/test_core $(OUT)/tests/test_acvp
+
+TEST_CC = $(CC) $(CPPFLAGS) $(TESTING_DEF) $(CWARN) $(CFLAGS)
+
+$(OUT)/tests/test_core: $(TESTS_DIR)/core/test_core.c $(TESTING_LIB)
+	@mkdir -p $(@D)
+	$(TEST_CC) -o $@ $< $(TESTING_LIB)
+
+# Known answers from the NIST ACVP vectors (tests/core/acvp-subset.txt).
+ACVP_SUBSET := $(TESTS_DIR)/core/acvp-subset.txt
+
+$(OUT)/tests/test_acvp: $(TESTS_DIR)/core/test_acvp.c $(TESTING_LIB)
+	@mkdir -p $(@D)
+	$(TEST_CC) -o $@ $< $(TESTING_LIB)
+
 # --------------------------------------------------------------------
 # Entry points
 # --------------------------------------------------------------------
 
-.PHONY: all asm lib clean
+.PHONY: all asm lib check clean
 
 all: lib
 
 asm: $(ASM)
 
 lib: $(LIB) $(TESTING_LIB)
+
+# TEST_CORE_FLAGS: e.g. --require-variants on a host that must run every
+# compiled variant (tests/core/test_core.c).
+TEST_CORE_FLAGS ?=
+
+CHECK_TESTS := $(CORE_TESTS)
+
+check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
+	$(CHECK_EXPORTS) check $(INCLUDE_DIR)/nirapod_slhdsa.h $(LIB) $(SYM_PREFIX)
+	@if $(CHECK_EXPORTS) check $(INCLUDE_DIR)/nirapod_slhdsa.h $(EXPORTS_CONTROL) $(SYM_PREFIX) \
+	    > $(OUT)/exports-control.log; then \
+	  echo "check-exports: the negative control was accepted" >&2; exit 1; fi
+	@echo "check-exports: negative control rejected ($$(head -n 1 $(OUT)/exports-control.log))"
+	$(OUT)/tests/test_acvp $(ACVP_SUBSET)
+	$(OUT)/tests/test_core $(TEST_CORE_FLAGS) --transcript $(OUT)/transcript-core.txt
 
 # --------------------------------------------------------------------
 # Generated assembly (gen/)

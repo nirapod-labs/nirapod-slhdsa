@@ -9,3 +9,8 @@ SPDX-License-Identifier = "Apache-2.0"
 path = ["CODE_OF_CONDUCT.md"]
 SPDX-FileCopyrightText = "Contributor Covenant contributors"
 SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = ["tests/core/acvp-subset.txt"]
+SPDX-FileCopyrightText = "National Institute of Standards and Technology (ACVP-Server); not subject to copyright in the United States"
+SPDX-License-Identifier = "NIST-Software"
