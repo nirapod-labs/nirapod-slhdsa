@@ -121,7 +121,7 @@ CI_DIRS_gen    := gen
 CI_DIRS_bench  := bench
 
 CI_CONTAINERS  := src src/jasmin tests analysis third_party
-CI_OTHER_ROOTS := .git .github LICENSES docs toolchain tools build
+CI_OTHER_ROOTS := .git .github LICENSES changes docs toolchain tools build
 
 present = $(strip $(foreach d,$(CI_DIRS_$(1)),$(wildcard $(d))))
 not_applicable = @echo "$(1): NOT APPLICABLE, the $(2) component is absent (none of: $(CI_DIRS_$(2)))"
