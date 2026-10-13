@@ -1,0 +1,19 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha2_256s.jinc
+ * ==============
+ *
+ * SLH-DSA-SHA2-256s (FIPS 205 Table 2): security category 5,
+ * 29792-byte signatures.
+ */
+
+param int SLH_N        = 32;
+param int SLH_H        = 64;
+param int SLH_D        = 8;
+param int SLH_HP       = 8;
+param int SLH_A        = 14;
+param int SLH_K        = 22;
+param int SLH_M        = 47;
+param int SLH_CATEGORY = 5;

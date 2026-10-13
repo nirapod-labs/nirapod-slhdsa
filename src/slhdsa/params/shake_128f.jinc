@@ -1,0 +1,19 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * shake_128f.jinc
+ * ===============
+ *
+ * SLH-DSA-SHAKE-128f (FIPS 205 Table 2): security category 1,
+ * 17088-byte signatures.
+ */
+
+param int SLH_N        = 16;
+param int SLH_H        = 66;
+param int SLH_D        = 22;
+param int SLH_HP       = 3;
+param int SLH_A        = 6;
+param int SLH_K        = 33;
+param int SLH_M        = 34;
+param int SLH_CATEGORY = 1;
