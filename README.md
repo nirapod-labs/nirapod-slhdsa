@@ -61,7 +61,7 @@ flowchart TB
   end
   spec -. "equivalence, open" .- core
   classDef planned stroke-dasharray: 5 4
-  class api,core,hash,sec,spec planned
+  class api,core,hash,asm,sec,spec planned
 ```
 
 Dashed boxes are not on this branch yet; dotted links are proofs still open. Only the
