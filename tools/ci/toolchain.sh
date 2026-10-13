@@ -68,6 +68,11 @@
 #
 # This script is not part of either key: what it changes on the host is in
 # the host identity, and an edit to its text alone does not force a rebuild.
+# The one exception is what `prune` removes from a saved switch
+# (PRUNE_ROOT, PRUNE_SWITCH), which is part of the switch key: a restored
+# switch is never pruned again, so a change to that list must produce a new
+# entry, built and pruned under it, rather than restore one pruned the old
+# way.
 #
 # The workflow saves an entry only after the steps that produce it have
 # passed: the switch after `build.sh switch` and its checks, the compiler
@@ -120,6 +125,11 @@ WORK=${WORK:-$TOOLCHAIN/work}
 TREE=$WORK/jasmin
 export OPAMROOT=${OPAMROOT:-$WORK/opam}
 PACKED_TOOLS="jasminc jasmin-ct jasmin2ec"
+# What `prune` removes before the switch is saved: PRUNE_ROOT relative to
+# the opam root, PRUNE_SWITCH relative to the switch. Both are in the
+# switch key.
+PRUNE_ROOT="download-cache"
+PRUNE_SWITCH=".opam-switch/sources .opam-switch/build doc man"
 SWITCH_PATHS="toolchain/work/opam
 toolchain/work/logs/switch.txt
 toolchain/work/logs/easycrypt-config.txt"
@@ -281,6 +291,7 @@ cmd_keys() {
   toolchain_files compiler > "$tmp/compiler-files"
   { cat "$tmp/host"
     echo "options ${TOOLCHAIN_OPTIONS:-}"
+    echo "prune root: $PRUNE_ROOT; switch: $PRUNE_SWITCH"
     while read -r f; do digest_files "$f"; done < "$tmp/switch-files"
   } > "$tmp/switch"
   switch=$(sha256_of "$tmp/switch" | cut -d' ' -f1)
@@ -480,12 +491,12 @@ cmd_agree() {
 # libraries, binaries, provers, its configuration and the opam repository
 # state that `opam env` and `opam exec` read.
 cmd_prune() {
-  local root prefix
+  local root prefix p
   root=$(opam var root)
   prefix=$(opam var prefix --switch="$SWITCH")
   [ -d "$prefix/.opam-switch" ] || die "$prefix is not an opam switch"
-  rm -rf "${root:?}/download-cache" "${prefix:?}/.opam-switch/sources" \
-         "${prefix:?}/.opam-switch/build" "${prefix:?}/doc" "${prefix:?}/man"
+  for p in $PRUNE_ROOT; do rm -rf "${root:?}/$p"; done
+  for p in $PRUNE_SWITCH; do rm -rf "${prefix:?}/$p"; done
   du -sh "$root" | sed 's/^/opam root after pruning: /'
 }
 
