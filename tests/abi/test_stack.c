@@ -46,11 +46,16 @@
  *
  *     The same calls give the stack depth of each public function, C
  *     frames included: the deepest over all sets is printed per function.
+ *     docs/API.md records those of test_stack_production.
  *
  * Builds
  *
  *     test_stack          the testing library: every export of every
  *                         variant, then the public functions
+ *     test_stack_production (NIRAPOD_SLHDSA_STACK_PRODUCTION)
+ *                         the application library alone: the public
+ *                         functions only, so that the scan and the depths
+ *                         are those of the code applications link
  *     test_stack_control (NIRAPOD_SLHDSA_STACK_CONTROL)
  *                         two units built without stack zeroization, the
  *                         negative control below
@@ -71,10 +76,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "nirapod_slhdsa.h"
+#if !defined(NIRAPOD_SLHDSA_STACK_PRODUCTION)
 #include "internal.h"
 #include "jasmin.h"
-#include "nirapod_slhdsa.h"
 #include "nirapod_slhdsa_testing.h"
+#endif
 
 #define REGION (512u * 1024u)
 #define CANARY 0x5Au
@@ -83,6 +90,8 @@
 #else
 #define TOP    16u
 #endif
+
+#if !defined(NIRAPOD_SLHDSA_STACK_PRODUCTION)
 
 typedef struct {
     const char *name;
@@ -162,6 +171,8 @@ typedef struct {
     size_t residue;
 } probe_result;
 
+#endif
+
 static uint8_t pk[64], sk[128], seeds[96], sig[NIRAPOD_SLHDSA_MAX_SIGNATURE_BYTES];
 static uint8_t domain[257], opt_rand[32], msg[64];
 
@@ -177,6 +188,8 @@ static uintptr_t stack_pointer(void)
 #endif
     return sp;
 }
+
+#if !defined(NIRAPOD_SLHDSA_STACK_PRODUCTION)
 
 /*
  * One painted call. noinline keeps the frame of this function, and so sp,
@@ -221,6 +234,8 @@ static probe_result probe(const unit *u, int op)
     }
     return r;
 }
+
+#endif
 
 #if !defined(NIRAPOD_SLHDSA_STACK_CONTROL)
 
@@ -331,10 +346,12 @@ static secret_result secret_probe(nirapod_slhdsa_set set, int op)
         r.status = nirapod_slhdsa_hash_verify(set, NIRAPOD_SLHDSA_PREHASH_SHA2_512, sig, sig_len,
                                               msg, sizeof(msg), NULL, 0, pk, pk_len);
         break;
+#if !defined(NIRAPOD_SLHDSA_STACK_PRODUCTION)
     case API_SIGN_GIVEN:
         r.status = nirapod_slhdsa_testing_sign(NULL, set, 0, sig, sig_len, msg, sizeof(msg), NULL, 0,
                                                sk, sk_len, given_opt_rand, n);
         break;
+#endif
     default:
         leave_copy(sk + n, n);
         break;
@@ -378,6 +395,11 @@ static int secret_scan(void)
         for (op = API_KEYGEN; op < API_COUNT; op++) {
             secret_result r;
 
+#if defined(NIRAPOD_SLHDSA_STACK_PRODUCTION)
+            if (op == API_SIGN_GIVEN) {
+                continue;
+            }
+#endif
             r = secret_probe(API_SETS[s], op);
             printf("%-20s %-14s %8zu %s\n", name, API_NAMES[op], r.depth, r.found ? "yes" : "no");
             if (op == API_LEAK_CONTROL ? !r.found : r.found) {
@@ -419,6 +441,7 @@ int main(int argc, char **argv)
     memset(opt_rand, 0x42, sizeof(opt_rand));
     memset(domain, 0, sizeof(domain));
 
+#if !defined(NIRAPOD_SLHDSA_STACK_PRODUCTION)
     {
         size_t total_residue = 0, u;
         int op;
@@ -456,12 +479,22 @@ int main(int argc, char **argv)
             failures++;
         }
     }
+#else
+    (void)expect_residue;
+    (void)domain;
+    (void)opt_rand;
+    (void)seeds;
+#endif
 
 #if !defined(NIRAPOD_SLHDSA_STACK_CONTROL)
     failures += secret_scan();
 #endif
 
+#if defined(NIRAPOD_SLHDSA_STACK_PRODUCTION)
+    printf("test_stack (application library): %s\n", failures == 0 ? "PASS" : "FAIL");
+#else
     printf("test_stack%s: %s\n", expect_residue ? " (negative control)" : "",
            failures == 0 ? "PASS" : "FAIL");
+#endif
     return failures == 0 ? 0 : 1;
 }

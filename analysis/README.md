@@ -49,8 +49,10 @@ without stack zeroization is the negative control: it must report residue,
 otherwise the probe could not detect any. A second scan runs the public
 functions on the painted stack and searches it, C frames included, for any
 8 consecutive bytes of SK.seed or SK.prf, and of opt_rand where the test
-gives it; a copy the test leaves on purpose must be found. The method and
-its limits are in the test's header.
+gives it; a copy the test leaves on purpose must be found. A third binary
+runs that scan on the application library alone (`test_stack_production`),
+so that it judges the code applications link. The method and its limits are
+in the test's header.
 
 ## Registers after return (`tests/abi/test_registers.c`)
 

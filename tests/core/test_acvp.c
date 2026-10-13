@@ -24,10 +24,15 @@
  *             additionalRandomness as opt_rand reproduces the expected
  *             signature, and slh_verify_internal accepts it
  *
- * The test links the testing library and runs every case; key generation
- * runs nirapod_slhdsa_testing_keygen with a test random source that
- * returns the case's seeds, so it takes the same path as
- * nirapod_slhdsa_keygen with only the source replaced.
+ * The file is built twice. test_acvp links the testing library and runs
+ * every case; key generation runs nirapod_slhdsa_testing_keygen with a
+ * test random source that returns the case's seeds, so it takes the same
+ * path as nirapod_slhdsa_keygen with only the source replaced.
+ * test_acvp_production (NIRAPOD_SLHDSA_ACVP_PRODUCTION) links the
+ * application library alone and runs the siggen and sigver cases through
+ * the functions of nirapod_slhdsa.h; it cannot inject seeds or opt_rand,
+ * and has no internal interface, so it reports the keygen, hsiggen and
+ * isiggen cases as not run.
  *
  * usage: test_acvp <acvp-subset.txt>. Exit status 0 when every case run
  * passes, every parameter set had a keygen, siggen and sigver case, and
@@ -39,7 +44,9 @@
 #include <string.h>
 
 #include "nirapod_slhdsa.h"
+#if !defined(NIRAPOD_SLHDSA_ACVP_PRODUCTION)
 #include "nirapod_slhdsa_testing.h"
+#endif
 
 static int failures;
 
@@ -143,6 +150,7 @@ static int prehash_by_name(const char *name)
     return -1;
 }
 
+#if !defined(NIRAPOD_SLHDSA_ACVP_PRODUCTION)
 /* A test random source that returns the case's seeds, once. */
 typedef struct seed_source {
     const uint8_t *seeds;
@@ -161,6 +169,7 @@ static int give_seeds(void *state, uint8_t *buf, size_t len)
     memcpy(buf, src->seeds, len);
     return 0;
 }
+#endif
 
 static void run_keygen(nirapod_slhdsa_set set, const char *tc, char **f)
 {
@@ -177,6 +186,12 @@ static void run_keygen(nirapod_slhdsa_set set, const char *tc, char **f)
     if (failures != before) {
         return;
     }
+#if defined(NIRAPOD_SLHDSA_ACVP_PRODUCTION)
+    (void)pk_len;
+    (void)sk_len;
+    printf("%-20s keygen tcId %-4s NOT RUN (seeds cannot be injected into the application library)\n",
+           name, tc);
+#else
     {
         seed_source src = { seeds, 3 * n, 0 };
         nirapod_slhdsa_testing_config config = { NULL, give_seeds, NULL, 0 };
@@ -189,6 +204,7 @@ static void run_keygen(nirapod_slhdsa_set set, const char *tc, char **f)
         CHECK(memcmp(sk, expect_sk, sk_len) == 0, "%s keygen tcId %s: secret key differs", name, tc);
         printf("%-20s keygen tcId %-4s %s\n", name, tc, failures == before ? "PASS" : "FAIL");
     }
+#endif
     seen[set - 1][KIND_KEYGEN]++;
 }
 
@@ -245,7 +261,6 @@ static void run_given(nirapod_slhdsa_set set, const char *tc, const char *kind, 
     size_t sk_len = nirapod_slhdsa_secret_key_bytes(set);
     size_t sig_len = nirapod_slhdsa_signature_bytes(set);
     size_t n = sk_len / 4, msg_len, ctx_len;
-    nirapod_slhdsa_status st, vst;
 
     msg_len = unhex(f[1], message, sizeof(message));
     ctx_len = unhex(f[2], context, sizeof(context));
@@ -257,23 +272,32 @@ static void run_given(nirapod_slhdsa_set set, const char *tc, const char *kind, 
     if (failures != before) {
         return;
     }
-    if (internal) {
-        st = nirapod_slhdsa_testing_sign_internal(NULL, set, sig, sig_len, message, msg_len,
-                                                  sk, sk_len, opt_rand, n);
-        vst = nirapod_slhdsa_testing_verify_internal(NULL, set, expect_sig, sig_len, message,
-                                                     msg_len, sk + 2 * n, 2 * n);
-    } else {
-        st = nirapod_slhdsa_testing_sign(NULL, set, 0, sig, sig_len, message, msg_len,
-                                         context, ctx_len, sk, sk_len, opt_rand, n);
-        vst = nirapod_slhdsa_verify(set, expect_sig, sig_len, message, msg_len,
-                                    context, ctx_len, sk + 2 * n, 2 * n);
+#if defined(NIRAPOD_SLHDSA_ACVP_PRODUCTION)
+    printf("%-20s %s tcId %-4s NOT RUN (opt_rand cannot be given to the application library)\n",
+           name, kind, tc);
+#else
+    {
+        nirapod_slhdsa_status st, vst;
+
+        if (internal) {
+            st = nirapod_slhdsa_testing_sign_internal(NULL, set, sig, sig_len, message, msg_len,
+                                                      sk, sk_len, opt_rand, n);
+            vst = nirapod_slhdsa_testing_verify_internal(NULL, set, expect_sig, sig_len, message,
+                                                         msg_len, sk + 2 * n, 2 * n);
+        } else {
+            st = nirapod_slhdsa_testing_sign(NULL, set, 0, sig, sig_len, message, msg_len,
+                                             context, ctx_len, sk, sk_len, opt_rand, n);
+            vst = nirapod_slhdsa_verify(set, expect_sig, sig_len, message, msg_len,
+                                        context, ctx_len, sk + 2 * n, 2 * n);
+        }
+        CHECK(st == NIRAPOD_SLHDSA_OK, "%s %s tcId %s: status %d", name, kind, tc, st);
+        CHECK(memcmp(sig, expect_sig, sig_len) == 0, "%s %s tcId %s: signature differs",
+              name, kind, tc);
+        CHECK(vst == NIRAPOD_SLHDSA_OK, "%s %s tcId %s: expected signature does not verify: %d",
+              name, kind, tc, vst);
+        printf("%-20s %s tcId %-4s %s\n", name, kind, tc, failures == before ? "PASS" : "FAIL");
     }
-    CHECK(st == NIRAPOD_SLHDSA_OK, "%s %s tcId %s: status %d", name, kind, tc, st);
-    CHECK(memcmp(sig, expect_sig, sig_len) == 0, "%s %s tcId %s: signature differs",
-          name, kind, tc);
-    CHECK(vst == NIRAPOD_SLHDSA_OK, "%s %s tcId %s: expected signature does not verify: %d",
-          name, kind, tc, vst);
-    printf("%-20s %s tcId %-4s %s\n", name, kind, tc, failures == before ? "PASS" : "FAIL");
+#endif
     if (internal) {
         seen_internal++;
     } else {
@@ -404,7 +428,12 @@ int main(int argc, char **argv)
     }
     CHECK(seen_hedged != 0 && seen_internal != 0, "no hsiggen or no isiggen case");
 
+#if defined(NIRAPOD_SLHDSA_ACVP_PRODUCTION)
+    printf("test_acvp (application library): %s (%d cases read, keygen, hsiggen and isiggen "
+           "not run, %d failures)\n", failures == 0 ? "PASS" : "FAIL", cases, failures);
+#else
     printf("test_acvp (testing library): %s (%d cases, %d failures)\n",
            failures == 0 ? "PASS" : "FAIL", cases, failures);
+#endif
     return failures == 0 ? 0 : 1;
 }

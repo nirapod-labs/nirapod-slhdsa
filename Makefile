@@ -286,11 +286,21 @@ $(EXPORTS_CONTROL): $(LIB_OBJ)
 # Tests
 # --------------------------------------------------------------------
 
-# Every test links the testing library.
+# Every test links the testing library alone, except those that link the
+# application library alone: test_production (key generation, hedged and
+# deterministic signing and verification for every set),
+# test_acvp_production (the known answers below run once on each library),
+# test_stack_production (the secret scan and the stack depth of the public
+# functions) and test_entropy (the operating system's random source made to
+# fail).
 
 CORE_TESTS := $(OUT)/tests/test_core $(OUT)/tests/test_negative \
               $(OUT)/tests/test_stack $(OUT)/tests/test_registers \
-              $(OUT)/tests/test_acvp
+              $(OUT)/tests/test_acvp $(OUT)/tests/test_acvp_production \
+              $(OUT)/tests/test_production $(OUT)/tests/test_stack_production \
+              $(OUT)/tests/test_entropy
+
+PRODUCTION_TEST_CC = $(CC) -I$(INCLUDE_DIR) $(CWARN) $(CFLAGS)
 
 TEST_CC = $(CC) $(CPPFLAGS) $(TESTING_DEF) $(CWARN) $(CFLAGS)
 
@@ -308,6 +318,27 @@ ACVP_SUBSET := $(TESTS_DIR)/core/acvp-subset.txt
 $(OUT)/tests/test_acvp: $(TESTS_DIR)/core/test_acvp.c $(TESTING_LIB)
 	@mkdir -p $(@D)
 	$(TEST_CC) -o $@ $< $(TESTING_LIB)
+
+$(OUT)/tests/test_acvp_production: $(TESTS_DIR)/core/test_acvp.c $(LIB)
+	@mkdir -p $(@D)
+	$(PRODUCTION_TEST_CC) -DNIRAPOD_SLHDSA_ACVP_PRODUCTION -o $@ $< $(LIB)
+
+# Negative control of the known-answer test (tests/core/acvp-control.sh).
+ACVP_CONTROL := $(TESTS_DIR)/core/acvp-control.sh
+
+$(OUT)/tests/test_production: $(TESTS_DIR)/core/test_production.c $(LIB)
+	@mkdir -p $(@D)
+	$(PRODUCTION_TEST_CC) -o $@ $< $(LIB)
+
+$(OUT)/tests/test_stack_production: $(TESTS_DIR)/abi/test_stack.c $(LIB)
+	@mkdir -p $(@D)
+	$(PRODUCTION_TEST_CC) -DNIRAPOD_SLHDSA_STACK_PRODUCTION -o $@ $< $(LIB)
+
+# test_entropy defines the random-source function the library calls, so it
+# must link the library as an archive (tests/negative/test_entropy.c).
+$(OUT)/tests/test_entropy: $(TESTS_DIR)/negative/test_entropy.c $(LIB)
+	@mkdir -p $(@D)
+	$(PRODUCTION_TEST_CC) -o $@ $< $(LIB)
 
 # Stack depth and residue of the exports (tests/abi/test_stack.c), and its
 # negative control: two units compiled without stack zeroization, which
@@ -388,11 +419,16 @@ check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
 	    > $(OUT)/exports-control.log; then \
 	  echo "check-exports: the negative control was accepted" >&2; exit 1; fi
 	@echo "check-exports: negative control rejected ($$(head -n 1 $(OUT)/exports-control.log))"
+	$(OUT)/tests/test_production
+	$(OUT)/tests/test_acvp_production $(ACVP_SUBSET)
+	$(ACVP_CONTROL) $(OUT)/tests/test_acvp_production $(ACVP_SUBSET) $(OUT)/acvp-control
 	$(OUT)/tests/test_acvp $(ACVP_SUBSET)
 	$(OUT)/tests/test_negative
 	$(OUT)/tests/test_core $(TEST_CORE_FLAGS) --transcript $(OUT)/transcript-core.txt
 	$(OUT)/tests/test_stack
+	$(OUT)/tests/test_stack_production
 	$(OUT)/tests/test_registers
+	$(OUT)/tests/test_entropy
 ifeq ($(strip $(JASMINC)),)
 	@echo "test_stack (negative control): NOT RUN (needs JASMINC)"
 	@echo "test_fault: NOT RUN (needs JASMINC)"

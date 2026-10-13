@@ -37,10 +37,19 @@ chosen hash variant or with a test source of randomness. FIPS 205 section 9
 says the internal functions should not be made available to applications; do
 not link the testing library into one.
 
-The tests link the testing library, whose public functions are compiled from
-the same source as the application library's. The ACVP known answers
-(`tests/core/test_acvp.c`) check a subset of the NIST vectors,
-`tests/core/acvp-subset.txt`, on it.
+Most tests link the testing library, whose public functions are compiled from
+the same source as the application library's. Four link the application
+library alone. `tests/core/test_production.c` runs key generation, hedged and
+deterministic signing, pure and pre-hash, and verification for every set,
+including the fault check's refusal of a key whose PK.root does not belong to
+its seeds. The ACVP known answers (`tests/core/test_acvp.c`, from the subset
+`tests/core/acvp-subset.txt`) run on both libraries; in the application
+library key generation cannot take given seeds, nor signing a given opt_rand,
+and those cases are not run. A negative control (`tests/core/acvp-control.sh`)
+requires the known-answer test to reject a case whose expected signature or
+verdict was changed. The stack scan below runs on the application library too,
+and `tests/negative/test_entropy.c` makes the operating system's random source
+fail behind it.
 
 ## Hash variants
 
@@ -203,6 +212,23 @@ Apple M4 (macOS) and an AMD Ryzen 7 7700X (Linux, WSL2 guest). The figures
 change with the Jasmin sources and the compiler, and must be measured again
 when either changes; `make check` prints them for the build at hand, one line
 per export in the output of `test_stack`.
+
+For the public functions, C frames included, the same test built against the
+application library (`test_stack_production`) runs every function on the
+painted stack. The deepest stack, in bytes, over all parameter sets, with the
+variant this host selects:
+
+| Function | AArch64 (macOS) | x86-64 (Linux) | Deepest set |
+|---|---:|---:|---|
+| `keygen` | 18160 | 18216 | SLH-DSA-SHA2-256s |
+| `sign`, `sign_deterministic` | 19248 | 19240 | SLH-DSA-SHA2-256s |
+| `hash_sign`, `hash_sign_deterministic` | 19264 | 19256 | SLH-DSA-SHA2-256s |
+| `verify` | 6464 | 6520 | SLH-DSA-SHA2-256f |
+| `hash_verify` | 6480 | 6520 | SLH-DSA-SHA2-256f |
+
+Measured on the same hosts, where the x86-64 figures are those of the `shani`
+variant; `make check` prints the figures of the build at hand in the lines
+starting with `public-depth`.
 
 ## What is cleared
 
