@@ -23,18 +23,18 @@ it. A dash means no result yet.
 
 | Parameter set     | Tests, AArch64 | Tests, x86-64 | Constant time | Speculative CT | Memory safety | Proof |
 | :---------------- | :------------: | :-----------: | :-----------: | :------------: | :-----------: | :---: |
-| `SLH-DSA-SHA2-128s`  | — | — | — | — | — | — |
-| `SLH-DSA-SHA2-128f`  | — | — | — | — | — | — |
-| `SLH-DSA-SHA2-192s`  | — | — | — | — | — | — |
-| `SLH-DSA-SHA2-192f`  | — | — | — | — | — | — |
-| `SLH-DSA-SHA2-256s`  | — | — | — | — | — | — |
-| `SLH-DSA-SHA2-256f`  | — | — | — | — | — | — |
-| `SLH-DSA-SHAKE-128s` | — | — | — | — | — | — |
-| `SLH-DSA-SHAKE-128f` | — | — | — | — | — | — |
-| `SLH-DSA-SHAKE-192s` | — | — | — | — | — | — |
-| `SLH-DSA-SHAKE-192f` | — | — | — | — | — | — |
-| `SLH-DSA-SHAKE-256s` | — | — | — | — | — | — |
-| `SLH-DSA-SHAKE-256f` | — | — | — | — | — | — |
+| `SLH-DSA-SHA2-128s`  | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
+| `SLH-DSA-SHA2-128f`  | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
+| `SLH-DSA-SHA2-192s`  | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
+| `SLH-DSA-SHA2-192f`  | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
+| `SLH-DSA-SHA2-256s`  | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
+| `SLH-DSA-SHA2-256f`  | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
+| `SLH-DSA-SHAKE-128s` | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
+| `SLH-DSA-SHAKE-128f` | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
+| `SLH-DSA-SHAKE-192s` | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
+| `SLH-DSA-SHAKE-192f` | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
+| `SLH-DSA-SHAKE-256s` | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
+| `SLH-DSA-SHAKE-256f` | — | — | PASS, `ee70fee` | PASS, `ee70fee` | — | — |
 
 Tests means NIST ACVP vectors, differential tests against independent implementations,
 and negative tests, run natively on that architecture. Per-interface detail is in
@@ -76,7 +76,7 @@ not shipped.
 | EUF-CMA security of the FIPS 205 specification | not yet in this repository | — |
 | The Jasmin implementation is equivalent to the specification | open | — |
 | Hash primitives match FIPS 180-4 and FIPS 202 | open | — |
-| Constant time and speculative constant time on every secret-dependent path | checked by `jasmin-ct` and `jasmin-ct --sct` on every parameter-set unit (`make ct`, run by CI on both architectures); no result recorded yet, see the status table | the Jasmin source, under the security types of its exports; conditional on memory safety, which is not checked yet; declassifications argued in [`docs/DECLASSIFICATION.md`](docs/DECLASSIFICATION.md) |
+| Constant time and speculative constant time on every secret-dependent path | checked by `jasmin-ct` and `jasmin-ct --sct` on every parameter-set unit (`make ct`, run by CI on both architectures); passes on every unit of both architectures, see the status table | the Jasmin source, under the security types of its exports; conditional on memory safety, which is not checked yet; declassifications argued in [`docs/DECLASSIFICATION.md`](docs/DECLASSIFICATION.md) |
 | Memory safety of every export | not run on this branch | — |
 | The compiler preserves the semantics of safe programs | proved in Rocq; `toolchain/build.sh` re-checks the proofs | from the Jasmin AST to the assembly semantics, per target; the front end, assembly printer, assembler and linker are outside it; assumptions in [`toolchain/jasmin/ASSUMPTIONS`](toolchain/jasmin/ASSUMPTIONS) |
 

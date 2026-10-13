@@ -29,9 +29,14 @@ Exposed for testing and validation only, never to applications.
 
 | Analysis | AArch64 | x86-64 |
 | :------- | :-----: | :----: |
-| Constant time, every secret-dependent export | — | — |
-| Speculative constant time, every secret-dependent export | — | — |
+| Constant time, every secret-dependent export | PASS, `ee70fee` | PASS, `ee70fee` |
+| Speculative constant time, every secret-dependent export | PASS, `ee70fee` | PASS, `ee70fee` |
 | Memory safety, every export | — | — |
+
+The constant-time rows come from CI run
+[38404907277](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38404907277):
+`jasmin-ct` and `jasmin-ct --sct` on all 12 units for AArch64 Linux and macOS and all 24 units
+for x86-64 Linux. They assume memory safety, which no tool has checked on these exports yet.
 
 ## Toolchain
 
