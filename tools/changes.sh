@@ -100,8 +100,11 @@ check_release_args() {
 
 # linked FILE: the list items of the entry FILE, each closed by the link
 # to the pull request in the name of FILE. An item runs from its "- " line
-# to the next one; its lines are kept as written, without trailing blank
-# lines, and the link is indented as a continuation of the item.
+# to the next one outside a fenced code block (``` or ~~~, closed by the
+# same character); its lines are kept as
+# written, without trailing blank lines, and the link is indented as a
+# continuation of the item. A single final full stop moves after the link;
+# an ellipsis stays whole.
 linked() {
   local n=${1##*/}
   n=${n%%-*}
@@ -111,12 +114,16 @@ linked() {
       if (k == 0) return
       sub(/[ \t]+$/, "", buf[k])
       tail = link
-      if (sub(/\.$/, "", buf[k])) tail = tail "."
+      if (buf[k] ~ /(^|[^.])\.$/) { sub(/\.$/, "", buf[k]); tail = tail "." }
       for (i = 1; i <= k; i++) print buf[i]
       print "  " tail
       k = 0
     }
-    /^- / { flush() }
+    fence == "" && /^- / { flush() }
+    /^[ \t]*(```|~~~)/ {
+      m = $0; sub(/^[ \t]*/, "", m); m = substr(m, 1, 1)
+      if (fence == "") fence = m; else if (m == fence) fence = ""
+    }
     { buf[++k] = $0 }
     END { flush() }
   ' "$1"
