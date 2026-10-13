@@ -29,6 +29,10 @@
 # (tools/ci/Makefile). So this workflow protects every change from the
 # toolchain onwards, before the other components have been merged.
 #
+# A pull request that changes src, toolchain, proofs, include or capi
+# also changes CHANGELOG.md, unless it carries the label no-changelog (job
+# `changelog`).
+#
 # jasmin-checksafety runs on pushes to main, on the schedule, on manual runs,
 # and on pull requests that change the Jasmin sources, the toolchain, the
 # safety configuration or the CI (job `scope`, tools/ci/Makefile
@@ -121,6 +125,30 @@ jobs:
 
       - name: Component map, kernel sets, constant tables, generated sources, proof holes
         run: make -f tools/ci/Makefile ci-source
+
+  # A pull request that changes the sources, the toolchain, the proofs or
+  # the public interface records the change in CHANGELOG.md, unless it is
+  # labelled no-changelog (tools/ci/changelog.sh). On other events the job
+  # states that the check does not apply, and succeeds.
+  changelog:
+    name: changelog
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The merge commit and both its parents: the change is the merge
+          # against its first parent, the base branch.
+          fetch-depth: 2
+
+      - name: Changes under src, toolchain, proofs, include or capi have a changelog entry
+        env:
+          CI_EVENT: ${{ github.event_name }}
+          CI_HEAD: ${{ github.event.pull_request.head.sha }}
+          CI_NO_CHANGELOG: ${{ contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
+        run: tools/ci/changelog.sh
 
   scope:
     name: scope
@@ -301,7 +329,7 @@ jobs:
   all-checks:
     name: all-checks
     if: always()
-    needs: [lint, reuse, scope, source, vectors, linux-x86_64, linux-aarch64, macos-aarch64, proofs, agree]
+    needs: [lint, reuse, changelog, scope, source, vectors, linux-x86_64, linux-aarch64, macos-aarch64, proofs, agree]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
