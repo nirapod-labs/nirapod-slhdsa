@@ -1,0 +1,179 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Thu, 8 Oct 2026 19:09:38 +0600
+Subject: [PATCH] safetylib: report unbounded memory ranges
+
+The memory ranges printed with the result are the regions the input
+pointers must point to; a program could be reported safe with a range
+such as [-1/0; inf].
+
+(cherry picked from commit d9f2ff4cb9d625cd6c5b2976cdae5576f6e4c2c6)
+---
+ compiler/safetylib/safetyInterpreter.ml       | 16 ++++++++++-
+ .../tests/safety/ptroffset.t/const_left.jazz  |  9 ++++++
+ .../safety/ptroffset.t/counter_left.jazz      |  8 ++++++
+ .../tests/safety/ptroffset.t/counter_sub.jazz |  8 ++++++
+ compiler/tests/safety/ptroffset.t/mask.jazz   | 15 ++++++++++
+ .../tests/safety/ptroffset.t/nothreshold.json |  1 +
+ compiler/tests/safety/ptroffset.t/run.t       | 28 +++++++++++++++++++
+ 7 files changed, 84 insertions(+), 1 deletion(-)
+ create mode 100644 compiler/tests/safety/ptroffset.t/const_left.jazz
+ create mode 100644 compiler/tests/safety/ptroffset.t/counter_left.jazz
+ create mode 100644 compiler/tests/safety/ptroffset.t/counter_sub.jazz
+ create mode 100644 compiler/tests/safety/ptroffset.t/mask.jazz
+ create mode 100644 compiler/tests/safety/ptroffset.t/nothreshold.json
+ create mode 100644 compiler/tests/safety/ptroffset.t/run.t
+
+diff --git a/compiler/safetylib/safetyInterpreter.ml b/compiler/safetylib/safetyInterpreter.ml
+index b010ad661..218af246e 100644
+--- a/compiler/safetylib/safetyInterpreter.ml
++++ b/compiler/safetylib/safetyInterpreter.ml
+@@ -106,6 +106,7 @@ type safe_cond =
+   | InRange of expr * expr * expr (* InRange a b c ≡ c ∈ [a; b] *)
+ 
+   | Valid       of wsize * expr (* allocated memory region *)
++  | BoundedRange of var (* bounded range of the accesses through an input pointer *)
+   | AlignedPtr  of wsize * expr (* aligned pointer *)
+   | AlignedExpr of wsize * expr (* aligned expression *)
+ 
+@@ -164,6 +165,8 @@ let rec pp_safety_cond fmt = function
+ 
+   | Valid (sz, e) ->
+     Format.fprintf fmt "is_valid %a u%a" pp_expr e pp_ws sz
++  | BoundedRange x ->
++    Format.fprintf fmt "bounded memory range of %a" pp_var x
+ 
+   | AlignedPtr (sz, e) ->
+     Format.fprintf fmt "aligned pointer %a u%a" pp_expr e pp_ws sz
+@@ -814,7 +817,7 @@ end = struct
+       end
+ 
+     (* These are checked elsewhere *)
+-    | AlignedPtr _ | AlignedExpr _ | Valid _ | Termination _ -> true
++    | AlignedPtr _ | AlignedExpr _ | Valid _ | BoundedRange _ | Termination _ -> true
+ 
+   let is_safe state cond =
+     let res = is_safe state cond in
+@@ -2010,6 +2013,17 @@ end = struct
+       let conds = safe_return main_decl in
+       let final_st = check_safety final_st (InReturn main_decl.f_name) conds in
+ 
++      (* The memory ranges are the regions that the input pointers must
++         point to: no memory region satisfies an unbounded range. *)
++      let final_st =
++        List.filter_map (fun (MemLoc x as m) ->
++            let itv = AbsDom.bound_variable final_st.abs (MmemRange m) in
++            if Scalar.is_infty itv.inf = 0 && Scalar.is_infty itv.sup = 0
++            then None
++            else Some (InReturn main_decl.f_name, BoundedRange x))
++          final_st.env.m_locs
++        |> add_violations final_st in
++
+       debug(fun () -> Format.eprintf "%a" pp_violations final_st.violations);
+       print_mem_ranges final_st;
+ 
+diff --git a/compiler/tests/safety/ptroffset.t/const_left.jazz b/compiler/tests/safety/ptroffset.t/const_left.jazz
+new file mode 100644
+index 000000000..615a5c137
+--- /dev/null
++++ b/compiler/tests/safety/ptroffset.t/const_left.jazz
+@@ -0,0 +1,9 @@
++// The offset of p is lost: it is added to a constant.
++export fn g(reg u64 pkp) -> reg u64 {
++  reg u64 p v;
++  v = 1;
++  p = 32;
++  p += pkp;
++  [p + 8] = v;
++  return v;
++}
+diff --git a/compiler/tests/safety/ptroffset.t/counter_left.jazz b/compiler/tests/safety/ptroffset.t/counter_left.jazz
+new file mode 100644
+index 000000000..7a3538a02
+--- /dev/null
++++ b/compiler/tests/safety/ptroffset.t/counter_left.jazz
+@@ -0,0 +1,8 @@
++// The offset of p is lost: it is added to a multiple of the loop counter.
++export fn g(reg u64 pkp) -> reg u64 {
++  inline int i;
++  reg u64 p v;
++  v = 1;
++  for i = 0 to 4 { p = 32 * i; p += pkp; [p + 8] = v; }
++  return v;
++}
+diff --git a/compiler/tests/safety/ptroffset.t/counter_sub.jazz b/compiler/tests/safety/ptroffset.t/counter_sub.jazz
+new file mode 100644
+index 000000000..fcf101624
+--- /dev/null
++++ b/compiler/tests/safety/ptroffset.t/counter_sub.jazz
+@@ -0,0 +1,8 @@
++// The offset of p is lost: the loop counter is subtracted.
++export fn g(reg u64 pkp) -> reg u64 {
++  inline int i;
++  reg u64 p v;
++  v = 1;
++  for i = 0 to 3 { p = pkp; p -= 32 * i; [p + 0] = v; }
++  return v;
++}
+diff --git a/compiler/tests/safety/ptroffset.t/mask.jazz b/compiler/tests/safety/ptroffset.t/mask.jazz
+new file mode 100644
+index 000000000..bb049dee5
+--- /dev/null
++++ b/compiler/tests/safety/ptroffset.t/mask.jazz
+@@ -0,0 +1,15 @@
++// Every access is within [0; 64] of p.
++export fn g(reg u64 p) -> reg u64 {
++  reg u64 v o;
++  stack u8[1] c;
++  v = 1;
++  o = 0;
++  while {
++    c = #randombytes(c);
++  } (c[0] != 0) {
++    [p + 8 * o] = v;
++    o += 1;
++    o &= 7;
++  }
++  return v;
++}
+diff --git a/compiler/tests/safety/ptroffset.t/nothreshold.json b/compiler/tests/safety/ptroffset.t/nothreshold.json
+new file mode 100644
+index 000000000..9d2bdfe87
+--- /dev/null
++++ b/compiler/tests/safety/ptroffset.t/nothreshold.json
+@@ -0,0 +1 @@
++{ "more_threshold": false, "zero_threshold": false, "param_threshold": false }
+diff --git a/compiler/tests/safety/ptroffset.t/run.t b/compiler/tests/safety/ptroffset.t/run.t
+new file mode 100644
+index 000000000..727001c65
+--- /dev/null
++++ b/compiler/tests/safety/ptroffset.t/run.t
+@@ -0,0 +1,28 @@
++The memory accesses through an input pointer must lie in a bounded range.
++
++  $ ../../../jasmin-checksafety const_left.jazz 2>&1 | grep -e Violation -e line -e return -e safe -e "mem_pkp:"
++  *** Possible Safety Violation(s):
++    g return: bounded memory range of pkp
++    mem_pkp: [-1/0; inf]
++  Program is not safe!
++
++  $ ../../../jasmin-checksafety counter_left.jazz 2>&1 | grep -e Violation -e line -e return -e safe -e "mem_pkp:"
++  *** Possible Safety Violation(s):
++    "counter_left.jazz", line 6 (41-53): is_valid p +64u (64u) 8 u64
++    mem_pkp: [0; 0]
++  Program is not safe!
++
++  $ ../../../jasmin-checksafety counter_sub.jazz 2>&1 | grep -e Violation -e line -e return -e safe -e "mem_pkp:"
++  *** Possible Safety Violation(s):
++    "counter_sub.jazz", line 6 (41-53): is_valid p +64u (64u) 0 u64
++    mem_pkp: [0; 0]
++  Program is not safe!
++
++Without widening thresholds, the range of the accesses in this loop is
++unbounded, although each access is bounded.
++
++  $ ../../../jasmin-checksafety --config nothreshold.json mask.jazz 2>&1 | grep -e Violation -e line -e return -e safe -e "mem_p:"
++  *** Possible Safety Violation(s):
++    g return: bounded memory range of p
++    mem_p: [0; inf]
++  Program is not safe!

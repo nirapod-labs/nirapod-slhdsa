@@ -35,6 +35,7 @@ replaces.
 |---|---|---|---|
 | 0001-0006 | PR #1624, head `282fcaa4192e` | LDP and STP; architecture-specific conditions on memory arguments | assembly generation and global-load lowering proved; instruction semantics trusted |
 | 0007-0008 | PR #1594, head `a30c006246fc` | Mach-O relocation operators in ARMv8-A assembly | printer only (trusted) |
+| 0009-0016 | PR #1625, head `02a2330a04c9` | safety checker: unsound verdicts, false alarms, CallTopHeuristic | safety checker (trusted) |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -76,6 +77,20 @@ read constant tables, which are globals. The pull request also adds the
 Reproducer: `compiler/tests/success/armv8a/global_read.jazz` with
 `jasminc -arch armv8a -system macosx`, then
 `clang -c -x assembler -target arm64-apple-macos` on the output.
+
+### #1625, safety checker fixes
+
+The verdicts of `jasmin-checksafety` are evidence for this project, so its
+known defects are fixed before any verdict is used:
+
+- unsound verdicts: a copy at an unknown slice offset kept the destination
+  cells initialized although the source cells read may not be; a loop could
+  be found stable before an initialization change was propagated; a memory
+  range such as `[-1/0; inf]` was reported with a "safe" verdict;
+- false alarms on slices of global tables and on pointers offset by a `for`
+  counter;
+- the CallTopHeuristic call policy aborted on its first use;
+- start-up time quadratic in the size of the global tables.
 
 ## Assembly checks
 

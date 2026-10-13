@@ -1,0 +1,264 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Thu, 8 Oct 2026 19:09:38 +0600
+Subject: [PATCH] safetylib: make the CallTopHeuristic call policy usable
+
+With "call_policy": "CallTopHeuristic", the checker failed with
+"Assertion failed" on the first callee analysed from top (alignment left
+as `assert false` in top_ni), when reusing a callee abstraction
+(top_no_disj kept the congruences of the calling context), and on callees
+with a conditional (disjunctions returned to to_shape).
+
+(cherry picked from commit fb5c512ac4820562d29c9d022216ed033e517094)
+---
+ compiler/safetylib/domains/safetyBoolean.ml   |  5 +++-
+ .../safetylib/domains/safetyDisjunctive.ml    |  4 ++-
+ compiler/safetylib/safetyInterpreter.ml       |  6 ++--
+ compiler/tests/safety/calltop.t/calltop.json  |  1 +
+ compiler/tests/safety/calltop.t/cmov.jazz     | 15 ++++++++++
+ compiler/tests/safety/calltop.t/div.jazz      | 14 +++++++++
+ .../tests/safety/calltop.t/first_call.jazz    | 12 ++++++++
+ compiler/tests/safety/calltop.t/if.jazz       | 12 ++++++++
+ compiler/tests/safety/calltop.t/index.jazz    | 17 +++++++++++
+ compiler/tests/safety/calltop.t/reuse.jazz    | 21 +++++++++++++
+ compiler/tests/safety/calltop.t/run.t         | 30 +++++++++++++++++++
+ compiler/tests/safety/dune                    |  2 ++
+ 12 files changed, 135 insertions(+), 4 deletions(-)
+ create mode 100644 compiler/tests/safety/calltop.t/calltop.json
+ create mode 100644 compiler/tests/safety/calltop.t/cmov.jazz
+ create mode 100644 compiler/tests/safety/calltop.t/div.jazz
+ create mode 100644 compiler/tests/safety/calltop.t/first_call.jazz
+ create mode 100644 compiler/tests/safety/calltop.t/if.jazz
+ create mode 100644 compiler/tests/safety/calltop.t/index.jazz
+ create mode 100644 compiler/tests/safety/calltop.t/reuse.jazz
+ create mode 100644 compiler/tests/safety/calltop.t/run.t
+
+diff --git a/compiler/safetylib/domains/safetyBoolean.ml b/compiler/safetylib/domains/safetyBoolean.ml
+index 54e322d92..e14d9b9b5 100644
+--- a/compiler/safetylib/domains/safetyBoolean.ml
++++ b/compiler/safetylib/domains/safetyBoolean.ml
+@@ -758,7 +758,10 @@ module AbsBoolNoRel (AbsNum : AbsNumT) (Pt : PointsTo) (Sym : SymExpr)
+       num       = top;
+       points_to = Pt.make [];      
+       sym       = Sym.make ();
+-      alignment = assert false; } (* TODO *)
++      (* No alignment requirement: the callee has no memory access (see
++         [check_valid_call_top]), and [return_call] joins its requirements
++         with the caller's. *)
++      alignment = Mml.empty; }
+ 
+   let to_shape t shp =
+     { t with num = AbsNum.R.to_shape t.num shp.num }
+diff --git a/compiler/safetylib/domains/safetyDisjunctive.ml b/compiler/safetylib/domains/safetyDisjunctive.ml
+index b89187e6d..95ea731f1 100644
+--- a/compiler/safetylib/domains/safetyDisjunctive.ml
++++ b/compiler/safetylib/domains/safetyDisjunctive.ml
+@@ -657,7 +657,9 @@ module LiftToDisj (A : AbsNumType) : AbsDisjType = struct
+   let set_rel t _ = t
+   let set_unrel t _ = t
+       
+-  let top_no_disj t = t
++  (* Top, as for [AbsDisj]: [t] would keep the facts of the calling context
++     in which the CallTop abstraction of a callee was computed. *)
++  let top_no_disj t = A.top t
+   let to_shape t _ = t
+   let remove_disj t = t
+   let new_cnstr_blck t _ = t
+diff --git a/compiler/safetylib/safetyInterpreter.ml b/compiler/safetylib/safetyInterpreter.ml
+index b029f0645..cb094d65c 100644
+--- a/compiler/safetylib/safetyInterpreter.ml
++++ b/compiler/safetylib/safetyInterpreter.ml
+@@ -1876,9 +1876,11 @@ end = struct
+         let st_out_ndisj = { st_out_ndisj with
+                              it = ItMap.add itk fabs st_out_ndisj.it } in
+ 
+-        (* It remains to add the disjunctions of the call_site to st_out *)
++        (* It remains to add the disjunctions of the call_site to st_out.
++           The disjunctions created in the callee are joined first, as in
++           [fabs]. *)
+         { st_out_ndisj with
+-          abs = AbsDom.to_shape st_out_ndisj.abs st_in.abs }
++          abs = AbsDom.to_shape (AbsDom.remove_disj st_out_ndisj.abs) st_in.abs }
+ 
+   and aeval_if ginstr e c1 c2 state =
+     let eval_cond state = function
+diff --git a/compiler/tests/safety/calltop.t/calltop.json b/compiler/tests/safety/calltop.t/calltop.json
+new file mode 100644
+index 000000000..fb7ecfad7
+--- /dev/null
++++ b/compiler/tests/safety/calltop.t/calltop.json
+@@ -0,0 +1 @@
++{ "call_policy": "CallTopHeuristic" }
+diff --git a/compiler/tests/safety/calltop.t/cmov.jazz b/compiler/tests/safety/calltop.t/cmov.jazz
+new file mode 100644
+index 000000000..91b18c4f7
+--- /dev/null
++++ b/compiler/tests/safety/calltop.t/cmov.jazz
+@@ -0,0 +1,15 @@
++// A callee without memory access with a conditional move.
++fn f(reg u64 x) -> reg u64 {
++  reg u64 one two;
++  one = 1;
++  two = 2;
++  x = x < 3 ? one : two;
++  return x;
++}
++
++export fn g(reg u64 p) -> reg u64 {
++  reg u64 a;
++  a = [p + 0];
++  a = f(a);
++  return a;
++}
+diff --git a/compiler/tests/safety/calltop.t/div.jazz b/compiler/tests/safety/calltop.t/div.jazz
+new file mode 100644
+index 000000000..e3279b563
+--- /dev/null
++++ b/compiler/tests/safety/calltop.t/div.jazz
+@@ -0,0 +1,14 @@
++// The callee may divide by zero.
++fn f(reg u64 x) -> reg u64 {
++  reg u64 y;
++  y = 1000;
++  y = y / x;
++  return y;
++}
++
++export fn g(reg u64 p) -> reg u64 {
++  reg u64 a;
++  a = [p + 0];
++  a = f(a);
++  return a;
++}
+diff --git a/compiler/tests/safety/calltop.t/first_call.jazz b/compiler/tests/safety/calltop.t/first_call.jazz
+new file mode 100644
+index 000000000..238ae5b8a
+--- /dev/null
++++ b/compiler/tests/safety/calltop.t/first_call.jazz
+@@ -0,0 +1,12 @@
++// f has no memory access, so it is analysed once from top.
++fn f(reg u64 x) -> reg u64 {
++  x += 1;
++  return x;
++}
++
++export fn g(reg u64 p) -> reg u64 {
++  reg u64 a;
++  a = [p + 0];
++  a = f(a);
++  return a;
++}
+diff --git a/compiler/tests/safety/calltop.t/if.jazz b/compiler/tests/safety/calltop.t/if.jazz
+new file mode 100644
+index 000000000..2744ebfd3
+--- /dev/null
++++ b/compiler/tests/safety/calltop.t/if.jazz
+@@ -0,0 +1,12 @@
++// A callee without memory access that branches.
++fn f(reg u64 x) -> reg u64 {
++  if (x < 3) { x = 1; } else { x = 2; }
++  return x;
++}
++
++export fn g(reg u64 p) -> reg u64 {
++  reg u64 a;
++  a = [p + 0];
++  a = f(a);
++  return a;
++}
+diff --git a/compiler/tests/safety/calltop.t/index.jazz b/compiler/tests/safety/calltop.t/index.jazz
+new file mode 100644
+index 000000000..0c885eafc
+--- /dev/null
++++ b/compiler/tests/safety/calltop.t/index.jazz
+@@ -0,0 +1,17 @@
++// f(3) = 4 is out of bounds.
++fn f(reg u64 x) -> reg u64 {
++  x += 1;
++  return x;
++}
++
++export fn g(reg u64 p) -> reg u64 {
++  stack u64[4] t;
++  reg u64 a;
++  inline int i;
++  for i = 0 to 4 { t[i] = i; }
++  a = [p + 0];
++  a &= 3;
++  a = f(a);
++  a = t[a];
++  return a;
++}
+diff --git a/compiler/tests/safety/calltop.t/reuse.jazz b/compiler/tests/safety/calltop.t/reuse.jazz
+new file mode 100644
+index 000000000..acde97026
+--- /dev/null
++++ b/compiler/tests/safety/calltop.t/reuse.jazz
+@@ -0,0 +1,21 @@
++// The call in the loop is analysed once, and its abstraction is reused at the
++// next iterations. f's result is in [0; 3].
++fn f(reg u64 x) -> reg u64 {
++  x += 1;
++  x &= 3;
++  return x;
++}
++
++export fn g(reg u64 p) -> reg u64 {
++  stack u64[4] t;
++  reg u64 a s;
++  inline int i;
++  for i = 0 to 4 { t[i] = i; }
++  a = [p + 0];
++  s = 0;
++  for i = 0 to 3 {
++    a = f(a);
++    s += t[a];
++  }
++  return s;
++}
+diff --git a/compiler/tests/safety/calltop.t/run.t b/compiler/tests/safety/calltop.t/run.t
+new file mode 100644
+index 000000000..71a45ce9d
+--- /dev/null
++++ b/compiler/tests/safety/calltop.t/run.t
+@@ -0,0 +1,30 @@
++With the CallTopHeuristic call policy, a callee without memory access is
++analyzed once per call site, from top.
++
++  $ ../../../jasmin-checksafety --config calltop.json first_call.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** No Safety Violation
++
++The abstraction of a callee is reused at the next evaluations of its call site.
++
++  $ ../../../jasmin-checksafety --config calltop.json reuse.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** No Safety Violation
++
++A callee may branch, in an if or in a conditional move.
++
++  $ ../../../jasmin-checksafety --config calltop.json if.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** No Safety Violation
++
++  $ ../../../jasmin-checksafety --config calltop.json cmov.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** No Safety Violation
++
++The safety conditions of the callee and of the caller are still checked.
++
++  $ ../../../jasmin-checksafety --config calltop.json div.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** Possible Safety Violation(s):
++    "div.jazz", line 5 (2-12): x <>64 (64u) 0
++  Program is not safe!
++
++  $ ../../../jasmin-checksafety --config calltop.json index.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** Possible Safety Violation(s):
++    "index.jazz", line 15 (2-11): in_bound: t[a] (length 32 U8)
++  Program is not safe!
+diff --git a/compiler/tests/safety/dune b/compiler/tests/safety/dune
+index 01ae4fd38..dcada73e4 100644
+--- a/compiler/tests/safety/dune
++++ b/compiler/tests/safety/dune
+@@ -7,3 +7,5 @@
+   (names
+     run))
+ 
++(cram
++  (deps ../../jasmin-checksafety))

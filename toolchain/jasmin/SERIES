@@ -19,3 +19,11 @@ patches/0005-armv8a-check-the-LDP-STP-offset-range-on-the-scaled-.patch 51525531
 patches/0006-armv8a-remove-the-printer-check-for-LDP-with-equal-d.patch 031c2445471cc239c09cc4fcbd55c3553bbe502c13fcd2a022074c408433324a
 patches/0007-armv8a-print-Mach-O-relocation-operators-on-macOS.patch 4092276f4528caa5b5a47f1a667d44d52c1932d2a0d9e91e023c483ee60ac3ef
 patches/0008-armv8a-changelog-entry-for-the-Mach-O-relocation-fix.patch 340a6023592a9507752afa80ddbf7f4a909feec17acf7728314603ac6001a28f
+patches/0009-safetylib-make-the-CallTopHeuristic-call-policy-usab.patch 1428e6b3bf032a1ead99813582f57d2386a8aa23ed4c368491dbb48eab9629dd
+patches/0010-safetylib-analyze-CallTop-callees-with-pointer-argum.patch 5ea672776a56ed16e8403cdc62b15d05755259fd83c3f35023b24fc081ba1b34
+patches/0011-safetylib-loop-stability-also-compares-initializatio.patch 0fe9fb7510a4f8b4e9cfcc544e08296f9d8aea00ee8c046c5cb2bb661ba52628
+patches/0012-safetylib-initialization-of-slice-copies-at-unknown-.patch 58fa1486fb973758f62b2990e2319db1d05358db80b87551b4c20f93d4177d8f
+patches/0013-safetylib-report-unbounded-memory-ranges.patch 15e9e90d5d48821a7bcf92e5e7912e928054dbea63ce1b2d01719c1882df84c6
+patches/0014-safetylib-for-loop-counters-point-to-no-memory-regio.patch 4f8e4d83f81e8b68daf19233d90103a0b7d9356940cc97db72d103e2a00c8ae5
+patches/0015-safetylib-faster-start-up-with-large-global-tables.patch 38a2770730871bff8fce2d37392ef8fee963e00eb8388c7181899245524e2870
+patches/0016-changes-changelog-entry-for-the-safety-checker-fixes.patch eb9173fed3d99cb7c7d001d74953a9ef1f117a9f8a92f7010139115b1e34f240
