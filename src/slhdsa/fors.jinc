@@ -1,0 +1,441 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * fors.jinc
+ * =========
+ *
+ * FORS few-time signatures (FIPS 205 section 8): k trees of height a.
+ *
+ * Indexing
+ *
+ *     FORS nodes are numbered across all k trees. Leaf j of tree t has
+ *     global index g = t 2^a + j, and the node at height z above it has
+ *     index g >> z (Algorithm 15 with i = t 2^(a - z) + (j >> z); t 2^a has
+ *     no bits below a, so the shift distributes). Every node hash uses
+ *     ADRS[type FORS_TREE, key pair idx_leaf, height z, index g >> z]; the
+ *     secret of leaf g is PRF(PK.seed, SK.seed, ADRS[type FORS_PRF, key pair
+ *     idx_leaf, index g]) (Algorithm 14), and the leaf is F of that secret.
+ *
+ * The k indices come from the message digest and are released with it (see
+ * internal.jinc); every branch and address below depends on them, on loop
+ * counters, or on fixed sizes.
+ */
+
+/*
+ * One FORS tree by treehash
+ * =========================
+ *
+ * For tree t with selected leaf target (0 <= target < 2^a), computes
+ *
+ *     sig  = sk(t 2^a + target) || AUTH[0 .. a - 1]      (Algorithm 16)
+ *     root = fors_node(SK.seed, t, a, PK.seed, ADRS)     (Algorithm 15)
+ *
+ * with AUTH[z] = node of tree t at height z with local index
+ * (target >> z) xor 1. The leaves are folded as described in
+ * treehash.jinc, with ADRS indices numbered across trees.
+ *
+ * adrs carries the tree address, type FORS_TREE and key pair idx_leaf.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × public × public × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf"]
+fn _fors_tree(
+  reg mut ptr u8[(SLH_A + 1) * SLH_N] sig,
+  reg mut ptr u8[SLH_N] root,
+  reg const ptr u8[SLH_N] sk_seed,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u32 tree target,
+  reg u64 ms
+) -> reg ptr u8[(SLH_A + 1) * SLH_N], reg ptr u8[SLH_N], reg u64
+{
+  stack u8[SLH_FOLD_SLOTS * SLH_N] nodes auth;
+  stack u8[4 * SLH_N] leaves;
+  stack u8[SLH_N] node selected;
+  stack u64[16] sk_adrs leaf_adrs;
+  stack u64[4] node_adrs;
+  reg ptr u8[4 * SLH_N] lp;
+  reg u32 base i g gk z li gi tg d;
+  reg u64 t src;
+  reg bool more found;
+  inline int k w;
+
+  /*
+   * sk_adrs: type FORS_PRF with the key pair of adrs (Algorithm 14), four
+   * copies for four leaves. leaf_adrs: adrs itself, type FORS_TREE, height
+   * 0, four copies. node_adrs: adrs, for the inner nodes of the fold.
+   */
+
+  for k = 0 to 4 {
+    sk_adrs[4 * k : 4] = __adrs_copy(sk_adrs[4 * k : 4], adrs);
+    sk_adrs[4 * k : 4] = __adrs_set_type_and_clear(sk_adrs[4 * k : 4], ADRS_FORS_PRF);
+    sk_adrs[4 * k : 4] = __adrs_copy_keypair(sk_adrs[4 * k : 4], adrs);
+    leaf_adrs[4 * k : 4] = __adrs_copy(leaf_adrs[4 * k : 4], adrs);
+  }
+  node_adrs = __adrs_copy(node_adrs, adrs);
+
+  base = tree;
+  base <<= SLH_A;
+
+  /*
+   * Values needed across the hash calls live in spill slots: the call
+   * chain below a tweakable hash leaves too few registers for them.
+   */
+  #spill(sig, root, sk_seed, ctx, target, base);
+
+  /*
+   * Leaves i .. i + 3 (global g .. g + 3) are computed together; 2^a >= 64
+   * is a multiple of 4. Their secrets come first (Algorithm 14); the
+   * target's secret is kept for the signature; then F gives the leaves
+   * (Algorithm 15, z = 0), which are folded in order.
+   */
+
+  i = 0;
+  while { more = i < SLH_FORS_LEAVES; } (more) {
+    ms = #update_msf(more, ms);
+
+    #unspill(base);
+    base = #protect_32(base, ms);
+    #spill(base);
+    g = base;
+    g += i;
+    #spill(i, g);
+
+    z = 0;
+    for k = 0 to 4 {
+      gk = g;
+      gk += k;
+      sk_adrs[4 * k : 4] = __adrs_set_tree_index(sk_adrs[4 * k : 4], gk);
+      leaf_adrs[4 * k : 4] = __adrs_set_tree_height(leaf_adrs[4 * k : 4], z);
+      leaf_adrs[4 * k : 4] = __adrs_set_tree_index(leaf_adrs[4 * k : 4], gk);
+    }
+
+    #unspill(sk_seed, ctx);
+    sk_seed = #protect_ptr(sk_seed, ms);
+    ctx = #protect_ptr(ctx, ms);
+    #spill(sk_seed, ctx);
+    leaves, ms = _thash_prf_x4(leaves, sk_seed, ctx, sk_adrs, ms);
+
+    /* target - i, unsigned, is below 4 exactly when the target is in the group. */
+
+    #unspill(i, target);
+    i = #protect_32(i, ms);
+    target = #protect_32(target, ms);
+    #spill(i, target);
+    d = target;
+    d -= i;
+    found = d < 4;
+    if (found) {
+      ms = #update_msf(found, ms);
+      src = (64u) d;
+      src = __offset64(src, SLH_N);
+      lp = leaves;
+      for w = 0 to SLH_N / 8 {
+        t = lp.[:u64 src];
+        selected[:u64 w] = t;
+        src += 8;
+      }
+      leaves = lp;
+    } else {
+      ms = #update_msf(!found, ms);
+    }
+
+    #unspill(ctx);
+    ctx = #protect_ptr(ctx, ms);
+    #spill(ctx);
+    leaves, ms = _thash_f_x4(leaves, ctx, leaf_adrs, ms);
+
+    for k = 0 to 4 {
+      for w = 0 to SLH_N / 8 {
+        t = leaves[:u64 SLH_N / 8 * k + w];
+        node[:u64 w] = t;
+      }
+      #unspill(i, g, target, ctx);
+      i = #protect_32(i, ms);
+      g = #protect_32(g, ms);
+      target = #protect_32(target, ms);
+      ctx = #protect_ptr(ctx, ms);
+      #spill(i, g, target, ctx);
+      li = i;
+      li += k;
+      gi = g;
+      gi += k;
+      tg = target;
+      nodes, auth, node, node_adrs, ms = _treehash_fold(nodes, auth, node, li, gi, tg, ctx, node_adrs, ms);
+    }
+
+    #unspill(i);
+    i = #protect_32(i, ms);
+    #spill(i);
+    i += 4;
+  }
+  ms = #update_msf(!more, ms);
+
+  #unspill(sig, root);
+  sig = #protect_ptr(sig, ms);
+  root = #protect_ptr(root, ms);
+
+  root = __node_copy(root, nodes[SLH_A * SLH_N : SLH_N]);
+
+  sig[0 : SLH_N] = __node_copy(sig[0 : SLH_N], selected);
+  for k = 0 to SLH_A * SLH_N / 8 {
+    t = auth[:u64 k];
+    sig[:u64 SLH_N / 8 + k] = t;
+  }
+
+  return sig, root, ms;
+}
+
+/*
+ * FORS signing (Algorithm 16) and public key
+ * ==========================================
+ *
+ *     SIG_FORS = fors_sign(md, SK.seed, PK.seed, ADRS), written into
+ *                sig[SIG_FORS_OFFSET : SIG_FORS_OFFSET + k (a + 1) n]
+ *     pk_fors  = T_k(PK.seed, ADRS[type FORS_ROOTS, key pair], root_0 || ...)
+ *
+ * Algorithm 19 obtains PK_FORS by fors_pkFromSig on the new signature; the
+ * roots computed here are the same nodes (Algorithm 15 versus Algorithm
+ * 17 on a valid signature), so T_k sees the same input.
+ *
+ * indices are the k digest indices, already released (internal.jinc).
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: transient } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf"]
+fn _fors_sign(
+  reg mut ptr u8[SLH_SIG_BYTES] sig,
+  reg mut ptr u8[SLH_N] pk_fors,
+  reg const ptr u32[SLH_K] indices,
+  reg const ptr u8[SLH_N] sk_seed,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u64 ms
+) -> reg ptr u8[SLH_SIG_BYTES], reg ptr u8[SLH_N], reg u64
+{
+  stack u8[SLH_K * SLH_N] roots;
+  stack u8[(SLH_A + 1) * SLH_N] tree_sig;
+  stack u8[SLH_N] root;
+  stack u64[4] roots_adrs;
+  reg ptr u8[SLH_K * SLH_N] dst;
+  reg ptr u8[(SLH_A + 1) * SLH_N] src;
+  reg u32 t target tree;
+  reg u64 off k w root_off ti;
+  reg bool more copy;
+
+  #spill(sig, pk_fors, indices, sk_seed, ctx, adrs);
+
+  /*
+   * Tree t is signed into the stack buffer tree_sig and copied into
+   * sig[SIG_FORS_OFFSET + t (a + 1) n], its root into roots[t n]. Values
+   * reloaded from spill slots are protected before use as addresses.
+   */
+
+  t = 0;
+  while { more = t < SLH_K; } (more) {
+    ms = #update_msf(more, ms);
+
+    /* indices[t] is a load behind the loop branch: protect it before use. */
+    #unspill(indices);
+    indices = #protect_ptr(indices, ms);
+    #spill(indices);
+    ti = (64u) t;
+    target = indices[ti];
+    target = #protect_32(target, ms);
+    tree = t;
+
+    #spill(t);
+    #unspill(sk_seed, ctx, adrs);
+    sk_seed = #protect_ptr(sk_seed, ms);
+    ctx = #protect_ptr(ctx, ms);
+    adrs = #protect_ptr(adrs, ms);
+    #spill(sk_seed, ctx, adrs);
+    tree_sig, root, ms = _fors_tree(tree_sig, root, sk_seed, ctx, adrs, tree, target, ms);
+
+    #unspill(sig, t);
+    sig = #protect_ptr(sig, ms);
+    t = #protect_32(t, ms);
+
+    off = __offset(t, (SLH_A + 1) * SLH_N);
+    off += SLH_SIG_FORS_OFFSET;
+    /* tree_sig through src: stack slots at run-time offsets (see wots.jinc). */
+    src = tree_sig;
+    k = 0;
+    while { copy = k < (SLH_A + 1) * SLH_N; } (copy) {
+      ms = #update_msf(copy, ms);
+      w = src.[:u64 k];
+      sig.[:u64 off] = w;
+      off += 8;
+      k += 8;
+    }
+    ms = #update_msf(!copy, ms);
+    tree_sig = src;
+    #spill(sig);
+
+    root_off = __offset(t, SLH_N);
+    dst = roots;
+    dst[root_off : SLH_N] = __node_copy(dst[root_off : SLH_N], root);
+    roots = dst;
+
+    t += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  #unspill(adrs, ctx, pk_fors);
+  adrs = #protect_ptr(adrs, ms);
+  ctx = #protect_ptr(ctx, ms);
+  pk_fors = #protect_ptr(pk_fors, ms);
+
+  roots_adrs = __adrs_copy(roots_adrs, adrs);
+  roots_adrs = __adrs_set_type_and_clear(roots_adrs, ADRS_FORS_ROOTS);
+  roots_adrs = __adrs_copy_keypair(roots_adrs, adrs);
+
+  pk_fors, ms = _thash_t_k(pk_fors, roots, ctx, roots_adrs, ms);
+
+  #unspill(sig);
+  sig = #protect_ptr(sig, ms);
+
+  return sig, pk_fors, ms;
+}
+
+/*
+ * pk_fors <- fors_pkFromSig(SIG_FORS, md, PK.seed, ADRS) (Algorithm 17).
+ *
+ * Verification: the indices are released by the caller. sig is public on
+ * the verification API and secret-derived on the C layer's fault check,
+ * so it is typed secret and decides no branch or address here.
+ */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: transient } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _fors_pk_from_sig(
+  reg mut ptr u8[SLH_N] pk_fors,
+  reg const ptr u8[SLH_FORS_SIG_BYTES] sig,
+  reg const ptr u32[SLH_K] indices,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[4] adrs,
+  reg u64 ms
+) -> reg ptr u8[SLH_N], reg u64
+{
+  stack u8[SLH_K * SLH_N] roots;
+  stack u8[2 * SLH_N] pair;
+  stack u8[SLH_N] node;
+  stack u64[4] node_adrs roots_adrs;
+  reg ptr u8[SLH_K * SLH_N] dst;
+  reg u32 t idx g z bit;
+  reg u64 sig_off auth_off root_off ti;
+  reg bool more climb odd;
+
+  node_adrs = __adrs_copy(node_adrs, adrs);
+
+  #spill(pk_fors, sig, indices, ctx, adrs);
+
+  t = 0;
+  while { more = t < SLH_K; } (more) {
+    ms = #update_msf(more, ms);
+
+    /* indices[t] is a load behind the loop branch: protect before use. */
+    #unspill(indices);
+    indices = #protect_ptr(indices, ms);
+    #spill(indices);
+    ti = (64u) t;
+    idx = indices[ti];
+    idx = #protect_32(idx, ms);
+
+    g = t;
+    g <<= SLH_A;
+    g += idx;
+
+    #unspill(sig, ctx);
+    sig = #protect_ptr(sig, ms);
+    ctx = #protect_ptr(ctx, ms);
+    #spill(sig, ctx);
+    sig_off = __offset(t, (SLH_A + 1) * SLH_N);
+
+    node = __node_copy(node, sig[sig_off : SLH_N]);
+    z = 0;
+    node_adrs = __adrs_set_tree_height(node_adrs, z);
+    node_adrs = __adrs_set_tree_index(node_adrs, g);
+    #spill(t, idx, g, sig_off);
+    node, ms = _thash_f(node, ctx, node_adrs, ms);
+    #unspill(t, idx, g, sig_off);
+    t = #protect_32(t, ms);
+    idx = #protect_32(idx, ms);
+    g = #protect_32(g, ms);
+    sig_off = #protect(sig_off, ms);
+    #spill(t, idx, g, sig_off);
+    z = 0;
+
+    /*
+     * Climb: at height z the node has global index g >> z and AUTH[z] is
+     * its sibling, on the left when the local index is odd.
+     */
+
+    while { climb = z < SLH_A; } (climb) {
+      ms = #update_msf(climb, ms);
+
+      #unspill(sig);
+      sig = #protect_ptr(sig, ms);
+      #spill(sig);
+      auth_off = __offset(z, SLH_N);
+      auth_off += sig_off;
+      auth_off += SLH_N;
+
+      bit = idx;
+      bit &= 1;
+      odd = bit == 1;
+      if (odd) {
+        ms = #update_msf(odd, ms);
+        pair[0 : SLH_N] = __node_copy(pair[0 : SLH_N], sig[auth_off : SLH_N]);
+        pair[SLH_N : SLH_N] = __node_copy(pair[SLH_N : SLH_N], node);
+      } else {
+        ms = #update_msf(!odd, ms);
+        pair[0 : SLH_N] = __node_copy(pair[0 : SLH_N], node);
+        pair[SLH_N : SLH_N] = __node_copy(pair[SLH_N : SLH_N], sig[auth_off : SLH_N]);
+      }
+
+      z += 1;
+      idx >>= 1;
+      g >>= 1;
+      node_adrs = __adrs_set_tree_height(node_adrs, z);
+      node_adrs = __adrs_set_tree_index(node_adrs, g);
+      #spill(t, idx, g, z, sig_off);
+      #unspill(ctx);
+      ctx = #protect_ptr(ctx, ms);
+      #spill(ctx);
+      node, ms = _thash_h(node, pair, ctx, node_adrs, ms);
+      #unspill(t, idx, g, z, sig_off);
+      t = #protect_32(t, ms);
+      idx = #protect_32(idx, ms);
+      g = #protect_32(g, ms);
+      z = #protect_32(z, ms);
+      sig_off = #protect(sig_off, ms);
+      #spill(t, idx, g, z, sig_off);
+    }
+    ms = #update_msf(!climb, ms);
+
+    root_off = __offset(t, SLH_N);
+    dst = roots;
+    dst[root_off : SLH_N] = __node_copy(dst[root_off : SLH_N], node);
+    roots = dst;
+
+    t += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  #unspill(pk_fors, ctx, adrs);
+  pk_fors = #protect_ptr(pk_fors, ms);
+  ctx = #protect_ptr(ctx, ms);
+  adrs = #protect_ptr(adrs, ms);
+  roots_adrs = __adrs_copy(roots_adrs, adrs);
+  roots_adrs = __adrs_set_type_and_clear(roots_adrs, ADRS_FORS_ROOTS);
+  roots_adrs = __adrs_copy_keypair(roots_adrs, adrs);
+
+  pk_fors, ms = _thash_t_k(pk_fors, roots, ctx, roots_adrs, ms);
+
+  return pk_fors, ms;
+}
