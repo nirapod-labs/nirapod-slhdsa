@@ -13,14 +13,15 @@
 #                                      for it)
 #   macos-aarch64   macos-26           AArch64, macOS, Mach-O
 #
-# Order, cheapest first: the lint of the automation, the REUSE check and
-# the source checks need no compiler and fail within minutes; the vectors
-# are fetched once; then each platform builds or restores the pinned
-# toolchain and runs its tests, analyses and checks (platform.yml); then
-# the EasyCrypt proofs run with the linux-x86_64 switch, and the platforms
-# are compared with each other. Every job calls one make target or one
-# script; the workflows themselves only order jobs and move files between
-# them.
+# Order, cheapest first: the lint of the automation, the REUSE check, the
+# changelog check and the source checks need no compiler and fail within
+# minutes; the vectors are fetched once. Only when all of these have passed
+# does each platform build or restore the pinned toolchain and run its
+# tests, analyses and checks (platform.yml), so that a change that fails a
+# quick check does not hold runners for hours. Then the EasyCrypt proofs
+# run with the linux-x86_64 switch, and the platforms are compared with
+# each other. Every job calls one make target or one script; the workflows
+# themselves only order jobs and move files between them.
 #
 # Each check applies to one component of the repository (the hash layer,
 # the core, ACVP, the differential test, safety and emitted-code analyses,
@@ -209,7 +210,7 @@ jobs:
 
   linux-x86_64:
     name: linux-x86_64
-    needs: [lint, reuse, source, vectors]
+    needs: [lint, reuse, changelog, source, vectors]
     uses: ./.github/workflows/platform.yml
     with:
       platform: linux-x86_64
@@ -220,7 +221,7 @@ jobs:
 
   linux-aarch64:
     name: linux-aarch64
-    needs: [lint, reuse, source, vectors]
+    needs: [lint, reuse, changelog, source, vectors]
     uses: ./.github/workflows/platform.yml
     with:
       platform: linux-aarch64
@@ -232,7 +233,7 @@ jobs:
 
   macos-aarch64:
     name: macos-aarch64
-    needs: [lint, reuse, source, vectors]
+    needs: [lint, reuse, changelog, source, vectors]
     uses: ./.github/workflows/platform.yml
     with:
       platform: macos-aarch64
