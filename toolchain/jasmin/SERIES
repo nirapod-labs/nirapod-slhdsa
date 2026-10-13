@@ -36,3 +36,4 @@ patches/0022-armv8a-store-an-immediate-through-a-scratch-register.patch fd6d90c8
 patches/0023-armv8a-load-a-32-bit-word-zero-extended-to-64-bits.patch 49e504895db46edada4d5741ffcfd579297349e39b339752ab9dd5e5fe1ee814
 patches/0024-safetylib-reuse-abstract-values-and-environments-tha.patch bcc421a7dbf916ec609dccbbb823897dc4a3b0c1d7608b56a9dd0c320a0a7bf5
 patches/0025-safetylib-option-to-leave-large-arrays-out-of-the-nu.patch 0417973ad1b5828663ef9c9e873e7622bb0d88e7ba0f7f75ea2821a03314b100
+patches/0026-safetylib-option-to-pass-on-congruences-for-written-.patch 76fa8cb36c5341050af9500aba18cb6efbd0c2fc4f53f950065233ad7e30497e

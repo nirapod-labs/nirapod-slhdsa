@@ -44,6 +44,7 @@ replaces.
 | 0023 | this project | ARMv8-A: 32-bit load zero-extended to 64 bits (LDRW, written `LDR <Wt>`) | lowering proved; instruction semantics and printing trusted |
 | 0024 | this project | safety checker: abstract values and environments shared when unchanged; relational constraints printed sorted | safety checker (trusted) |
 | 0025 | this project | safety checker option `array_track_max_bytes` | safety checker (trusted) |
+| 0026 | this project | safety checker option `congruence_reduction` | safety checker (trusted) |
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -248,6 +249,19 @@ default, -1, tracks every array as before. Leaving cells out can only add
 alarms. Test: the cram test `compiler/tests/safety/arraytrack.t` (a table
 lookup, a masked index and an uninitialized read, with and without the
 option). Upstream status: not yet proposed.
+
+### 0026, `congruence_reduction` (this project)
+
+The reduced product of the numerical and congruence domains meets every
+congruence fact into the numerical state after every operation. With the
+configuration option `"congruence_reduction": 1`, an operation that writes
+variables (assignment, forgetting, repacking) passes on only the facts on
+those variables, and other operations pass on all of them; with 0, none is
+passed on, and the congruence domain is still used by the checks. The
+default, 2, keeps the behaviour of the pin. Passing a fact on only refines
+the numerical state, so lower values can only add alarms. Test: the cram
+test `compiler/tests/safety/congruence.t`. Upstream status: not yet
+proposed.
 
 ## Assembly checks
 

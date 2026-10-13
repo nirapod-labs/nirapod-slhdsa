@@ -1,0 +1,256 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Mon, 12 Oct 2026 19:44:12 +0600
+Subject: [PATCH] safetylib: option to pass on congruences for written
+ variables only
+
+The reduced product of the numerical and congruence domains meets every
+congruence fact into the numerical state after every operation. With
+"congruence_reduction": 1, an operation that writes variables (assignment,
+forgetting, repacking) passes on only the facts on those variables; other
+operations pass on all of them. With 0, none is passed on; the congruence
+domain is still used by the checks. The default, 2, keeps the current
+behaviour. Passing a fact on only refines the numerical state, so lower
+values can only add alarms.
+
+Signed-off-by: athexweb3 <athexweb3@nirapod.org>
+---
+ compiler/safetylib/domains/safetyBoolean.ml   | 16 ++++++++
+ compiler/safetylib/domains/safetyProduct.ml   | 38 +++++++++++++------
+ compiler/safetylib/domains/safetyProduct.mli  |  4 ++
+ compiler/safetylib/safetyConfig.ml            | 13 +++++++
+ compiler/safetylib/safetyConfig.mli           |  1 +
+ .../tests/safety/congruence.t/aligned.jazz    | 12 ++++++
+ compiler/tests/safety/congruence.t/cr0.json   |  1 +
+ compiler/tests/safety/congruence.t/cr1.json   |  1 +
+ compiler/tests/safety/congruence.t/run.t      | 19 ++++++++++
+ 9 files changed, 94 insertions(+), 11 deletions(-)
+ create mode 100644 compiler/tests/safety/congruence.t/aligned.jazz
+ create mode 100644 compiler/tests/safety/congruence.t/cr0.json
+ create mode 100644 compiler/tests/safety/congruence.t/cr1.json
+ create mode 100644 compiler/tests/safety/congruence.t/run.t
+
+diff --git a/compiler/safetylib/domains/safetyBoolean.ml b/compiler/safetylib/domains/safetyBoolean.ml
+index 2c4967849..b3fe341f5 100644
+--- a/compiler/safetylib/domains/safetyBoolean.ml
++++ b/compiler/safetylib/domains/safetyBoolean.ml
+@@ -269,6 +269,22 @@ module AbsNumTMake (Arch : SafetyArch.SafetyArch) (PW : ProgWrap with type exten
+       let reduce (a,b) =
+         let m = B.get_constr b in
+         (List.fold_left A.meet_constr a m, b)
++
++      (* A fact of [B] is on one variable, compared here by its blasted
++         cells, the unit in which the numerical domains know variables. *)
++      let reduce_vars vs (a,b) =
++        let names = Hashtbl.create 16 in
++        let add v = Hashtbl.replace names (string_of_mvar v) () in
++        List.iter add vs;
++        List.iter add (u8_blast_vars ~blast_arrays:true vs);
++        let concerns c =
++          List.exists (fun v ->
++              Hashtbl.mem names (string_of_mvar v)
++              || List.exists (fun w -> Hashtbl.mem names (string_of_mvar w))
++                (u8_blast_vars ~blast_arrays:true [v]))
++            (Mtexpr.get_var (Mtcons.get_expr c)) in
++        let m = List.filter concerns (B.get_constr b) in
++        (List.fold_left A.meet_constr a m, b)
+     end)
+ 
+   module R = MakeAbsDisjProf (struct
+diff --git a/compiler/safetylib/domains/safetyProduct.ml b/compiler/safetylib/domains/safetyProduct.ml
+index 4461a5885..d6012bcbc 100644
+--- a/compiler/safetylib/domains/safetyProduct.ml
++++ b/compiler/safetylib/domains/safetyProduct.ml
+@@ -813,6 +813,10 @@ module type RProdParam = sig
+   module B : AbsDisjType
+   val print : ?full:bool -> Format.formatter -> (A.t * B.t) -> unit
+   val reduce : (A.t * B.t) -> (A.t * B.t)
++
++  (* [reduce_vars vs t] is [reduce t] restricted to what [B] knows about the
++     variables [vs]. *)
++  val reduce_vars : mvar list -> (A.t * B.t) -> (A.t * B.t)
+ end
+ 
+ (* Asymmetric reduced product.   
+@@ -823,9 +827,20 @@ module ReducedProd (P : RProdParam) : AbsDisjType = struct
+ 
+   type t = A.t * B.t
+   
+-  let reduce = P.reduce
+-  
++  (* How much of [B] is passed on to [A]: see the option
++     [congruence_reduction] of SafetyConfig. Skipping a reduction is sound,
++     as it only refines [A]. *)
++  let reduce t =
++    if Config.sc_congruence_reduction () >= 1 then P.reduce t else t
++
++  let reduce_vars vs t =
++    match Config.sc_congruence_reduction () with
++    | 0 -> t
++    | 1 -> P.reduce_vars vs t
++    | _ -> P.reduce t
++
+   let app  fa fb (a,b)           = reduce (fa a, fb b)
++  let app_vars vs fa fb (a,b)    = reduce_vars vs (fa a, fb b)
+   let app2 fa fb (a1,b1) (a2,b2) = reduce (fa a1 a2, fb b1 b2)
+   let appl fa fb l =
+     let la, lb = List.split l in
+@@ -842,7 +857,7 @@ module ReducedProd (P : RProdParam) : AbsDisjType = struct
+   let widening c = app2 (A.widening c) (B.widening c)
+   
+   let forget_list t l =
+-    app (fun x -> A.forget_list x l) (fun x -> B.forget_list x l) t
++    app_vars l (fun x -> A.forget_list x l) (fun x -> B.forget_list x l) t
+ 
+   let is_bottom (a,b) = (A.is_bottom a) || (B.is_bottom b)
+ 
+@@ -867,8 +882,9 @@ module ReducedProd (P : RProdParam) : AbsDisjType = struct
+     interval_meet i1 i2
+   
+   let assign_expr ?force:(force=false) t ves =
+-    app (fun x -> A.assign_expr ~force:force x ves)
+-        (fun x -> B.assign_expr ~force:force x ves) t
++    app_vars (List.map fst ves)
++      (fun x -> A.assign_expr ~force:force x ves)
++      (fun x -> B.assign_expr ~force:force x ves) t
+       
+   let meet_constr t c =
+     app (fun x -> A.meet_constr x c)
+@@ -904,16 +920,16 @@ module ReducedProd (P : RProdParam) : AbsDisjType = struct
+   let print = P.print
+ 
+   let set_rel t v =
+-    app (fun x -> A.set_rel x v)
+-        (fun x -> B.set_rel x v) t
++    app_vars [v] (fun x -> A.set_rel x v)
++                 (fun x -> B.set_rel x v) t
+   
+   let set_unrel t v =
+-    app (fun x -> A.set_unrel x v)
+-        (fun x -> B.set_unrel x v) t
++    app_vars [v] (fun x -> A.set_unrel x v)
++                 (fun x -> B.set_unrel x v) t
+ 
+   let dom_st_update t v minfo =
+-    app (fun x -> A.dom_st_update x v minfo)
+-        (fun x -> B.dom_st_update x v minfo) t
++    app_vars v (fun x -> A.dom_st_update x v minfo)
++               (fun x -> B.dom_st_update x v minfo) t
+ 
+   let top_no_disj = app A.top_no_disj B.top_no_disj
+ 
+diff --git a/compiler/safetylib/domains/safetyProduct.mli b/compiler/safetylib/domains/safetyProduct.mli
+index 279a330d9..f68ba6fd3 100644
+--- a/compiler/safetylib/domains/safetyProduct.mli
++++ b/compiler/safetylib/domains/safetyProduct.mli
+@@ -50,6 +50,10 @@ module type RProdParam = sig
+   module B : AbsDisjType
+   val print : ?full:bool -> Format.formatter -> (A.t * B.t) -> unit
+   val reduce : (A.t * B.t) -> (A.t * B.t)
++
++  (* [reduce_vars vs t] is [reduce t] restricted to what [B] knows about the
++     variables [vs]. *)
++  val reduce_vars : mvar list -> (A.t * B.t) -> (A.t * B.t)
+ end
+ 
+ (* Asymmetric reduced product.   
+diff --git a/compiler/safetylib/safetyConfig.ml b/compiler/safetylib/safetyConfig.ml
+index 5061356dd..494940bb7 100644
+--- a/compiler/safetylib/safetyConfig.ml
++++ b/compiler/safetylib/safetyConfig.ml
+@@ -133,6 +133,18 @@ let default =
+             Can only add alarms. A negative value tracks every array.";
+   } ::
+ 
++  { p    = Int 2;
++    name = "congruence_reduction";
++    desc = `String "When the facts of the congruence domain are passed on to \
++            the numerical domains. 2: after every operation. 1: after an \
++            operation that writes some variables (assignment, forgetting, \
++            repacking), the facts on these variables only; after the other \
++            operations, all of them. 0: never; the congruence domain is still \
++            used in the checks. Passing a fact on only refines the numerical \
++            state, so a lower value can only add alarms. Each pass costs one \
++            constraint per congruence fact.";
++  } ::
++
+   { p    = Int 1;
+     name = "k_unroll";
+     desc = `String "Number of unrolling of a loop body before applying the \
+@@ -313,6 +325,7 @@ let sc_input_ranges            = find_ranges     "input_range"
+ let sc_comp_pass               = find_comppass   "compilation_pass"
+ let sc_k_unroll                = find_int        "k_unroll"
+ let sc_array_track_max_bytes   = find_int        "array_track_max_bytes"
++let sc_congruence_reduction    = find_int        "congruence_reduction"
+ let sc_call_policy             = find_callpolicy "call_policy"
+ let sc_widening_out            = find_bool       "widening_out"
+ let sc_zero_threshold          = find_bool       "zero_threshold"
+diff --git a/compiler/safetylib/safetyConfig.mli b/compiler/safetylib/safetyConfig.mli
+index d47aec7a0..61e735658 100644
+--- a/compiler/safetylib/safetyConfig.mli
++++ b/compiler/safetylib/safetyConfig.mli
+@@ -19,6 +19,7 @@ val sc_input_ranges            : unit -> input_range list
+ val sc_comp_pass               : unit -> Compiler.compiler_step
+ val sc_k_unroll                : unit -> int
+ val sc_array_track_max_bytes   : unit -> int
++val sc_congruence_reduction    : unit -> int
+ val sc_zero_threshold          : unit -> bool
+ val sc_param_threshold         : unit -> bool
+ val sc_more_threshold          : unit -> bool
+diff --git a/compiler/tests/safety/congruence.t/aligned.jazz b/compiler/tests/safety/congruence.t/aligned.jazz
+new file mode 100644
+index 000000000..391c2c47a
+--- /dev/null
++++ b/compiler/tests/safety/congruence.t/aligned.jazz
+@@ -0,0 +1,12 @@
++// x is a multiple of 8 in [0; 56]; the branch on x == 4 is never taken,
++// which the congruence domain knows and the interval domain does not.
++export fn aligned(reg u64 i) -> reg u64 {
++  stack u64[1] a;
++  reg u64 x r;
++  a[0] = 0;
++  i &= 7;
++  x = i << 3;
++  r = 0;
++  if (x == 4) { r = a[x]; }
++  return r;
++}
+diff --git a/compiler/tests/safety/congruence.t/cr0.json b/compiler/tests/safety/congruence.t/cr0.json
+new file mode 100644
+index 000000000..6e9376c94
+--- /dev/null
++++ b/compiler/tests/safety/congruence.t/cr0.json
+@@ -0,0 +1 @@
++{ "congruence_reduction": 0 }
+diff --git a/compiler/tests/safety/congruence.t/cr1.json b/compiler/tests/safety/congruence.t/cr1.json
+new file mode 100644
+index 000000000..12c43896a
+--- /dev/null
++++ b/compiler/tests/safety/congruence.t/cr1.json
+@@ -0,0 +1 @@
++{ "congruence_reduction": 1 }
+diff --git a/compiler/tests/safety/congruence.t/run.t b/compiler/tests/safety/congruence.t/run.t
+new file mode 100644
+index 000000000..ffbb563dc
+--- /dev/null
++++ b/compiler/tests/safety/congruence.t/run.t
+@@ -0,0 +1,19 @@
++Passing congruences on for the written variables only gives the same
++verdict here as passing all of them after every operation; not passing them
++at all loses the fact that x == 4 cannot hold.
++
++  $ ../../../jasmin-checksafety aligned.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** Possible Safety Violation(s):
++    "aligned.jazz", line 10 (16-25): is_init a[x]
++  Program is not safe!
++
++  $ ../../../jasmin-checksafety --config cr1.json aligned.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** Possible Safety Violation(s):
++    "aligned.jazz", line 10 (16-25): is_init a[x]
++  Program is not safe!
++
++  $ ../../../jasmin-checksafety --config cr0.json aligned.jazz 2>&1 | grep -e Violation -e line -e safe
++  *** Possible Safety Violation(s):
++    "aligned.jazz", line 10 (16-25): is_init a[x]
++    "aligned.jazz", line 10 (16-25): in_bound: a[x] (length 8 U8)
++  Program is not safe!
