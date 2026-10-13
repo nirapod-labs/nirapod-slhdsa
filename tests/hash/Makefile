@@ -116,7 +116,10 @@ $(ASM): $(JSRC)
 $(BIN): $(ASM) $(CSRC) $(CHDR)
 	$(CC) $(CFLAGS) -o $@ $(CSRC) $(ASM) $(CRYPTO_LIBS)
 
-check: $(BIN) run
+# The run steps are sub-makes, so that under make -j they start only after
+# the build they test is complete.
+check: $(BIN)
+	$(MAKE) --no-print-directory run
 
 # The x86-64 host builds from a copied assembly file without jasminc.
 check-prebuilt:
@@ -166,7 +169,8 @@ negative-control-prebuilt:
 	CC=$(CC) CRYPTO_LIBS="$(CRYPTO_LIBS)" NEG_FAMILIES="$(NEG_FAMILIES)" \
 	$(TESTS)/tools/negative_control.sh run $(NEG_WORK) $(CSRC) $(VECTORS)
 
-negative-control: negative-control-asm negative-control-prebuilt
+negative-control: negative-control-asm
+	$(MAKE) --no-print-directory negative-control-prebuilt
 
 # Fill check (tools/fill_check.sh): the one-shot buffers are zeroed only for
 # the safety checker; a build that fills them with 0xa5 must pass every test.
@@ -183,7 +187,8 @@ fill-check-prebuilt:
 	DIFF_SEED=$(DIFF_SEED) DIFF_ITERS=$(DIFF_ITERS) \
 	$(TESTS)/tools/fill_check.sh run $(FILL_WORK) $(CSRC) $(VECTORS)
 
-fill-check: fill-check-asm fill-check-prebuilt
+fill-check: fill-check-asm
+	$(MAKE) --no-print-directory fill-check-prebuilt
 
 clean:
 	rm -rf $(OUT)
