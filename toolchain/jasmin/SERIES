@@ -31,3 +31,4 @@ patches/0017-armv8a-add-EXTR-and-the-bit-field-instructions.patch b825ee2e4a9138
 patches/0018-safetylib-implement-the-safety-checker-for-ARMv8-A.patch f74fcc3a734c6adefac99953aad45e5e5a00499b60eed2396ad536ba673e0602
 patches/0019-linearization-report-invalid-operands-as-errors.patch a3d9681575d77c56fdd33cf99cb599192eac66d0d28e2ba25b6aaf958ba6a844
 patches/0020-linearization-changelog-entry-for-invalid-operands.patch a57bbb8505eac5e3bde89677663d44477d4bd6c715991056d4b8b1883eb291ea
+patches/0021-armv8a-lower-an-AND-with-a-complemented-operand-to-B.patch b08c57e7247fa7fa91acfc71b3f9a2dce245680831b51fddf385262351122e07
