@@ -19,7 +19,10 @@
 #                         a command that skips checking (admit, admitted,
 #                         pragma, exit, fail)
 #   make check-constants  re-derive the FIPS 180-4 constant tables and compare
-#   make list-axioms      print every axiom the checked files declare
+#   make check-inventory  fail unless EasyCrypt's list of the axioms in scope
+#                         and the claimed theorem statements equal the
+#                         committed inventory/<arch>-<variant>.txt
+#   make inventory        rewrite the inventory files
 #   make extract          regenerate extracted/<arch>/<variant>/ with jasmin2ec
 #   make check-extraction re-extract into a scratch directory and fail if the
 #                         committed models differ or a model directory is
@@ -102,7 +105,7 @@ pair_flags   = -no-eco $(EC_PATH) -I extracted/$(1) \
 IMPORTED_FILES := $(shell find $(CRYPTO_SPECS) \( -name '*.ec' -o -name '*.eca' \) \
                     2>/dev/null | LC_ALL=C sort)
 
-.PHONY: check check-spec check-own check-imported check-correctness scan-admits check-constants list-axioms
+.PHONY: check check-spec check-own check-imported check-correctness scan-admits check-constants
 
 check: scan-admits check-constants check-imported check-own check-correctness
 
@@ -138,9 +141,48 @@ scan-admits:
 check-constants:
 	@$(PYTHON) -I tools/sha2_constants.py spec/hash/FIPS180_SHA2.ec
 
-list-axioms:
-	@grep -nE '^[[:space:]]*(declare[[:space:]]+)?axiom' $(OWN_FILES) $(IMPORTED_FILES) \
-	  $(shell find correctness extracted -name '*.ec' 2>/dev/null) || true
+# ------------------------------------------------------------------
+# Axiom and theorem inventory
+#
+# For each pair, tools/inventory.py requires every theory checked for that
+# pair and records what EasyCrypt prints for `print axiom` (every axiom in
+# scope, whether declared, given by `axiomatized by`, or left unrealized by
+# a clone) and the statements of THEOREMS. check-inventory fails on any
+# difference from the committed file, and on an inventory file of a pair
+# that is no longer extracted.
+
+THEOREMS := \
+  SHA256_Compress.sha256_rounds_correct SHA256_Compress.sha256_compress_correct \
+  SHA256_Compress.sha256_compress_total \
+  SHA512_Compress.sha512_rounds_correct SHA512_Compress.sha512_compress_correct \
+  SHA512_Compress.sha512_compress_total
+
+inventory_file = inventory/$(subst /,-,$(1)).txt
+
+.PHONY: inventory check-inventory inventory-pair
+inventory:
+	@mkdir -p inventory
+	@for p in $(PAIRS); do \
+	  $(MAKE) --no-print-directory PAIR=$$p MODE=write inventory-pair || exit 1; \
+	done
+
+check-inventory:
+	@for p in $(PAIRS); do \
+	  $(MAKE) --no-print-directory PAIR=$$p MODE=check inventory-pair || exit 1; \
+	done
+	@expected="$(foreach p,$(PAIRS),$(call inventory_file,$(p)))"; \
+	for f in inventory/*; do \
+	  case " $$expected " in *" $$f "*) ;; \
+	    *) echo "check-inventory: FAIL ($$f is not the inventory of a pair in EXTRACTIONS)"; exit 1;; \
+	  esac; \
+	done; echo "check-inventory: PASS"
+
+inventory-pair:
+	@test -n "$(PAIR)" || { echo "inventory-pair: PAIR not set"; exit 1; }
+	@$(PYTHON) -I tools/inventory.py --pair $(PAIR) --easycrypt "$(EASYCRYPT)" \
+	  --flags "$(call pair_flags,$(PAIR))" --namespace JazzEC=$(CRYPTO_SPECS)/arrays \
+	  --theorems "$(THEOREMS)" --$(MODE) $(call inventory_file,$(PAIR)) \
+	  $(OWN_FILES) $(IMPORTED_FILES) $(call pair_files,$(PAIR))
 
 # ------------------------------------------------------------------
 # Extraction

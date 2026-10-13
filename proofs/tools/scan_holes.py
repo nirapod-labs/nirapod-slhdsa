@@ -16,6 +16,9 @@
 #                     prefixed with it is never established
 #
 # No file of this project or of the imported theories needs any of them.
+# Axioms are not a matter of syntax (a clone can leave the axioms of its
+# theory unrealized without the word appearing), so they are checked
+# against EasyCrypt's own list instead, by `make check-inventory`.
 #
 # Comments are removed first (EasyCrypt comments nest), so a hole that has
 # been commented out is not reported, while every hole in code is.
