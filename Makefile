@@ -11,8 +11,9 @@
 #     make            build/<target>/lib/libnirapod_slhdsa.a
 #                     build/<target>/lib/libnirapod_slhdsa_testing.a
 #     make check      check the symbols of the application library, run the
-#                     ACVP known answers, the core, negative and fault tests
-#                     on this host; writes build/<target>/transcript-core.txt
+#                     ACVP known answers, the core, negative, stack, register
+#                     and fault tests on this host; writes
+#                     build/<target>/transcript-core.txt
 #     make asm        only the Jasmin assembly
 #     make gen        write the assembly of every target and its manifest
 #                     into gen/ (this tree does not carry gen/)
@@ -288,6 +289,7 @@ $(EXPORTS_CONTROL): $(LIB_OBJ)
 # Every test links the testing library.
 
 CORE_TESTS := $(OUT)/tests/test_core $(OUT)/tests/test_negative \
+              $(OUT)/tests/test_stack $(OUT)/tests/test_registers \
               $(OUT)/tests/test_acvp
 
 TEST_CC = $(CC) $(CPPFLAGS) $(TESTING_DEF) $(CWARN) $(CFLAGS)
@@ -306,6 +308,34 @@ ACVP_SUBSET := $(TESTS_DIR)/core/acvp-subset.txt
 $(OUT)/tests/test_acvp: $(TESTS_DIR)/core/test_acvp.c $(TESTING_LIB)
 	@mkdir -p $(@D)
 	$(TEST_CC) -o $@ $< $(TESTING_LIB)
+
+# Stack depth and residue of the exports (tests/abi/test_stack.c), and its
+# negative control: two units compiled without stack zeroization, which
+# must leave residue for the probe to be trusted.
+
+CONTROL_SETS := sha2_128f shake_128f
+CONTROL_OBJ  := $(addprefix $(OUT)/control/,$(addsuffix -scalar.o,$(CONTROL_SETS)))
+JASMIN_FLAGS_NOZERO = -arch $(JASMIN_ARCH) -system $(JASMIN_SYSTEM) -nowarning
+
+$(OUT)/control/%.s: $(OUT)/units/%.jazz $(JASMIN_DEPS)
+	@mkdir -p $(@D)
+	$(JASMINC) $(JASMIN_FLAGS_NOZERO) $(JASMIN_INCLUDES) -o $@ $<
+
+$(OUT)/control/%.o: $(OUT)/control/%.s
+	$(CC) -c -o $@ $<
+
+$(OUT)/tests/test_stack: $(TESTS_DIR)/abi/test_stack.c $(TESTING_LIB)
+	@mkdir -p $(@D)
+	$(TEST_CC) -o $@ $< $(TESTING_LIB)
+
+# Register state after the library returns (tests/abi/test_registers.c).
+$(OUT)/tests/test_registers: $(TESTS_DIR)/abi/test_registers.c $(TESTING_LIB)
+	@mkdir -p $(@D)
+	$(TEST_CC) -o $@ $< $(TESTING_LIB)
+
+$(OUT)/tests/test_stack_control: $(TESTS_DIR)/abi/test_stack.c $(CONTROL_OBJ)
+	@mkdir -p $(@D)
+	$(TEST_CC) -DNIRAPOD_SLHDSA_STACK_CONTROL -o $@ $< $(CONTROL_OBJ)
 
 # The fault check of the C layer (tests/negative/test_fault.c): units whose
 # hooks flip a bit of the FORS public key (faultfors) or of the layer-0
@@ -349,7 +379,7 @@ TEST_CORE_FLAGS ?=
 ifeq ($(strip $(JASMINC)),)
 CHECK_TESTS := $(CORE_TESTS)
 else
-CHECK_TESTS := $(CORE_TESTS) $(OUT)/tests/test_fault
+CHECK_TESTS := $(CORE_TESTS) $(OUT)/tests/test_stack_control $(OUT)/tests/test_fault
 endif
 
 check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
@@ -361,9 +391,13 @@ check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
 	$(OUT)/tests/test_acvp $(ACVP_SUBSET)
 	$(OUT)/tests/test_negative
 	$(OUT)/tests/test_core $(TEST_CORE_FLAGS) --transcript $(OUT)/transcript-core.txt
+	$(OUT)/tests/test_stack
+	$(OUT)/tests/test_registers
 ifeq ($(strip $(JASMINC)),)
+	@echo "test_stack (negative control): NOT RUN (needs JASMINC)"
 	@echo "test_fault: NOT RUN (needs JASMINC)"
 else
+	$(OUT)/tests/test_stack_control --expect-residue
 	$(OUT)/tests/test_fault
 endif
 

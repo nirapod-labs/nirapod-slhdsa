@@ -1,7 +1,8 @@
 # C API
 
 The library's interface is `include/nirapod_slhdsa.h`. This page explains how
-to use it. The header owns the contract of every function; where this
+to use it and records the facts about it that change with the build: stack use
+and what is cleared. The header owns the contract of every function; where this
 page and the header differ, the header is right and this page is a bug.
 
 ## Building and linking
@@ -182,12 +183,73 @@ withheld one until it is zeroed. The signature buffer must therefore not be
 readable by anyone else before the call returns: not shared with another
 process or a device, for example, while the secret key stays private.
 
+## Stack use
+
+The library allocates no heap memory. All working memory is on the caller's
+stack: the C wrapper's frames plus the frames of the Jasmin export it calls.
+
+`tests/abi/test_stack.c` measures it by stack painting (its header gives the
+method). For the Jasmin exports alone, the deepest stack any export reached,
+in bytes, over all parameter sets and variants of the architecture:
+
+| Export | AArch64 (macOS) | x86-64 (Linux) | Deepest set |
+|---|---:|---:|---|
+| key generation | 17984 | 18024 | SLH-DSA-SHA2-256s |
+| signing | 18704 | 18664 | SLH-DSA-SHA2-256s |
+| verification | 6112 | 6056 | SLH-DSA-SHA2-256f |
+
+Measured on these Jasmin sources with the pinned Jasmin toolchain, on an
+Apple M4 (macOS) and an AMD Ryzen 7 7700X (Linux, WSL2 guest). The figures
+change with the Jasmin sources and the compiler, and must be measured again
+when either changes; `make check` prints them for the build at hand, one line
+per export in the output of `test_stack`.
+
+## What is cleared
+
+| Copy | Where | Cleared by | Checked by |
+|---|---|---|---|
+| SK.seed, SK.prf, PK.seed drawn for key generation | `buf` in `nirapod_slhdsa_keygen_env` (C stack) | `nirapod_slhdsa_clear` before return | `tests/abi/test_stack.c` secret scan, below |
+| opt_rand of hedged or deterministic signing | `opt_rand` in `nirapod_slhdsa_sign_framed` (C stack) | `nirapod_slhdsa_clear` before return | `tests/abi/test_stack.c` secret scan, below |
+| Working state of the Jasmin code: hash states, chain values, tree nodes, copies of secret-key parts | the export's stack frames | the compiler's stack zeroization (`jasminc -stack-zero loop -stack-zero-size u64`) at export return | `tests/abi/test_stack.c` residue scan, below |
+| Register contents after an export that reads the secret key (keygen, sign and the check of the new signature) | caller-saved registers | `nirapod_slhdsa_clear_registers` (`capi/clear.c` lists the registers) | `tests/abi/test_registers.c`, below |
+
+What the checks establish, on the host and build they run on:
+
+- Residue scan: after each Jasmin export returns, the stack below the caller
+  holds no byte that is neither the paint nor zero, outside the return address
+  and the registers the export saves on entry (the top 56 bytes on x86-64, 16
+  on AArch64). A build without stack zeroization run through the same scan
+  must show residue, so the scan can see it.
+- Secret scan: after keygen and each signing function through the public API,
+  no 8 consecutive bytes of SK.seed or SK.prf remain anywhere in the 512 KiB
+  below the caller, the C frames included; after signing with a given opt_rand
+  through the testing library, none of opt_rand either. A copy the test leaves
+  on purpose is found.
+- Register check: `nirapod_slhdsa_clear_registers` zeroes the registers it
+  lists. The library calls it after every export that reads the secret key:
+  key generation, deterministic, hedged and pre-hash signing, and internal
+  signing, run on stub exports that load a marker into every register a
+  callee may change, leave no register holding the marker, while a stub
+  called directly does. After keygen, sign and deterministic hash_sign
+  through the public API, no caller-saved register holds 8 consecutive bytes
+  of SK.seed or SK.prf.
+
+The stack scans look for the seeds and opt_rand themselves, not for values
+derived from them; within the Jasmin frames the residue scan covers derived
+values too. Not covered: the caller's own buffers (the secret key, the
+message), copies the operating system or a debugger makes (swap, core dumps,
+registers saved on a context switch), and the flags register.
+
 ## Timing mode
 
 The contract is in `nirapod_slhdsa.h`, section "Timing". In short: on AArch64
 CPUs with FEAT_DIT, key generation and signing (the check of the new signature
 included) run with PSTATE.DIT set, and the caller's DIT value is restored on
-return. Without FEAT_DIT, and on x86-64, the library changes no mode.
+return. `tests/abi/test_registers.c` checks both, with the caller's DIT set and
+clear: stub exports record the DIT value they run with, set in key generation,
+signing and the check, the caller's in verification, and the real functions
+must return with the caller's value. Without FEAT_DIT, and on x86-64, the
+library changes no mode.
 Intel's DOITM is controlled by a model-specific register that user code cannot
 write, so enabling it where the CPU has it is the caller's or the operating
 system's responsibility. On CPUs without such a control, AMD processors among

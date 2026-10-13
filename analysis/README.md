@@ -40,6 +40,34 @@ Scope and limits:
   platform's responsibility (`capi/timing.c`). The stricter `--doit` policy
   has not been run.
 
+## Stack depth and residue (`tests/abi/test_stack.c`)
+
+Run by `make check`. The test paints the stack below the caller, calls each
+export, and measures the depth it reached and the bytes it left behind that
+are neither the paint nor zero. A second binary built from two units compiled
+without stack zeroization is the negative control: it must report residue,
+otherwise the probe could not detect any. A second scan runs the public
+functions on the painted stack and searches it, C frames included, for any
+8 consecutive bytes of SK.seed or SK.prf, and of opt_rand where the test
+gives it; a copy the test leaves on purpose must be found. The method and
+its limits are in the test's header.
+
+## Registers after return (`tests/abi/test_registers.c`)
+
+Run by `make check`. An assembly trampoline fills the caller-saved registers
+with a pattern, calls, and stores them before any compiler-generated code
+runs. PASS means: the register-clearing routine of `capi/clear.c` zeroes
+every register it lists; key generation and every signing path of the C
+layer, run on stub exports that leave a marker in every register a callee
+may change, return with no register holding it, while a stub called
+directly leaves it; no caller-saved register holds 8 consecutive bytes of
+SK.seed or SK.prf after key generation or signing through the public API.
+On AArch64 with FEAT_DIT, stub exports also record PSTATE.DIT: set during
+key generation, signing and the check of the new signature, the caller's
+value during verification and after every call. On x86-64 CPUs that report
+it, the upper ymm state is initial after a call on an AVX variant. It does
+not inspect the flags, or registers saved by the operating system.
+
 ## Fault check (`tests/negative/test_fault.c`)
 
 Run by `make check` when the Jasmin compiler is available. Test units built
