@@ -8,10 +8,10 @@ build.
 
 A patch is either a commit of an upstream pull request, carried unchanged
 until the pin includes it, or a patch of this project, written to be proposed
-upstream. A carried commit keeps its author, date and message;
-`git cherry-pick -x` appended the upstream commit it was taken from. A pull
-request merged after the pin is carried as it was merged until the pin moves
-past it.
+upstream. A carried commit keeps its author, date and message; for #1594 and
+#1625, `git cherry-pick -x` appended the upstream commit it was taken from.
+The one carried commit that is not byte-identical to its pull request is
+listed under "Identity with the pull requests", with the difference.
 
 Upstream Jasmin is distributed under the MIT licence, reproduced in
 `jasmin-license.txt` next to this file from the pinned commit. The patches
@@ -22,26 +22,18 @@ The Advanced SIMD and cryptographic-extension patches for `armv8a`, listed in
 
 ## Series
 
-Pin: `2bf326d583659c1fbd0e5b90f7c09fe0c0456e35` (jasmin-lang/jasmin, main,
-2026-10-12). The six pull requests are applied in pull-request order, as of
-2026-10-13, then the project patches. #1621 and #1616 have been merged since
-the pin; #1594, #1617, #1624 and #1625 are open. #1616 and #1624 are carried
-at an earlier revision of the pull request, written for the pin (see
-"Revisions" below).
+Pin: `e8f59794c92ce1d8dba49cb087173a49f20a691f` (jasmin-lang/jasmin, main,
+2026-10-12). It includes #1616 (conditional select) and #1621
+(`jasmin-checksafety --slice`), carried by the previous series, and #1565,
+which redefined the instruction descriptors. The open pull requests are
+carried at their heads of 2026-10-13: #1624 first, whose commits then apply
+with no change, then #1594 and #1625, then the patches of this project in
+the order of `SERIES`, with #1632 in the place of the project patch it
+replaces.
 
 | Patches | Origin | Content | Proof status |
 |---|---|---|---|
-| 0001-0002 | PR #1594, head `a30c006246fc` | Mach-O relocation operators in ARMv8-A assembly | printer only (trusted) |
-| 0003-0005 | PR #1616, merged as `e8f59794c92c`; carried revision 23c648c, fa89939, abfae7d | CSINC, CSINV, CSNEG, CSET, CSETM; lowering of conditional expressions to them | lowering proved; instruction semantics trusted |
-| 0006-0008 | PR #1617, head `00e7e972eeb6` | EXTR, BFC, BFI, BFXIL, SBFX, UBFX | instruction semantics trusted |
-| 0009 | PR #1621, merged as `8461b95f2b2f` | `jasmin-checksafety --slice` slices the program | safety checker (trusted) |
-| 0010-0015 | PR #1624, head `72c64afbc6cb`; carried revision 34b528f, 10410e0, 72649cd, 61fdb91, 0b1d351, then 72c64af | LDP and STP; architecture-specific conditions on memory arguments | assembly generation and global-load lowering proved; instruction semantics trusted |
-| 0016-0023 | PR #1625, head `02a2330a04c9` | safety checker: unsound verdicts, false alarms, CallTopHeuristic | safety checker (trusted) |
-| 0024 | this project | safety checker for ARMv8-A | safety checker (trusted) |
-| 0025 | this project | located error for an instruction argument that is not an operand | `check_rexpr` redefined to return the new error; same accepted arguments; theorem statements and proofs unchanged |
-| 0026 | this project | ARMv8-A: `a & !b` lowered to BIC | lowering proved |
-| 0027 | this project | ARMv8-A: store of an immediate through a scratch register | lowering proved |
-| 0028 | this project | ARMv8-A: 32-bit load zero-extended to 64 bits (LDRW, written `LDR <Wt>`) | lowering proved; instruction semantics and printing trusted |
+
 
 "Proved" means that the Rocq development of the patched tree, checked by
 `make -C proofs all`, covers the change: the compiler correctness theorem is
@@ -50,190 +42,13 @@ instruction semantics transcribed from the Arm Architecture Reference Manual,
 or hand-written OCaml (printers, analysers). `docs/TOOLCHAIN.md` gives the
 whole boundary.
 
+The safety-checker options of 0025, 0026 and 0028 are read from the
+checker's JSON configuration file. Their defaults keep the analysis of the
+pin, and each non-default value can only add alarms, never remove one.
+
 ## Why each change is carried
 
-### #1594, Mach-O relocation operators
-
-At the pin, `jasminc -arch armv8a` prints the address of a global as
-`adrp x, sym` and `add x, x, :lo12:sym`, the ELF syntax, whatever `-system`
-says. The macOS assembler rejects `:lo12:`; Mach-O needs `sym@PAGE` and
-`sym@PAGEOFF`. macOS on AArch64 is a supported platform and the hash kernels
-read constant tables, which are globals. The pull request also adds the
-`armv8a-macos` category to the compiler's assembly tests.
-
-Reproducer: `compiler/tests/success/armv8a/global_read.jazz` with
-`jasminc -arch armv8a -system macosx`, then
-`clang -c -x assembler -target arm64-apple-macos` on the output.
-
-### #1616, conditional select
-
-CSET and CSETM turn a comparison into 0/1 or 0/-1 without a branch, and a
-conditional expression `c ? a : b` on registers is lowered to the CSEL family
-instead of needing intrinsics. Used for branch-free results and masks.
-
-### #1617, EXTR and bit-field instructions
-
-UBFX and SBFX extract a bit field in one instruction, BFI and BFXIL insert
-one, and EXTR extracts a word from a register pair. Used for index
-computations on digest bits and multi-word shifts.
-
-### #1621, `jasmin-checksafety --slice`
-
-At the pin the option only selects which export functions are analysed; the
-analysis still runs over the whole program, every global table included. The
-patch restricts the program to the selected functions and their dependencies
-first, as `jasminc -slice` does. The pull request was squash-merged into main
-as 8461b95f2 on 2026-10-12; 0009 is that commit. Its last commit removed the
-test it had added, so 0009 adds no test.
-
-### #1624, LDP and STP
-
-Load and store a register pair in one instruction. The address of a pair
-access must be a base register plus a 7-bit offset scaled by the register
-size. The first commit adds conditions on memory arguments that assembly
-generation enforces, and 0014 checks the range on the scaled offset;
-an address outside the form is rejected by the compiler, not the assembler.
-
-0015 removes the assembly printer's rejection of an LDP whose two
-destinations are the same register, an encoding the Arm ARM makes
-CONSTRAINED UNPREDICTABLE. Register allocation gives the two destinations
-of one instruction distinct registers; `ldp_same_dest.jazz`, which loads
-both into one variable, compiles. Without the printer check, that test no
-longer fails if the two registers are equal.
-
-### #1625, safety checker fixes
-
-The verdicts of `jasmin-checksafety` are evidence for this project, so its
-known defects are fixed before any verdict is used:
-
-- unsound verdicts: a copy at an unknown slice offset kept the destination
-  cells initialized although the source cells read may not be; a loop could
-  be found stable before an initialization change was propagated; a memory
-  range such as `[-1/0; inf]` was reported with a "safe" verdict;
-- false alarms on slices of global tables and on pointers offset by a `for`
-  counter;
-- the CallTopHeuristic call policy aborted on its first use;
-- start-up time quadratic in the size of the global tables.
-
-### 0024, safety checker for ARMv8-A (this project)
-
-At the pin, `jasmin-checksafety -arch armv8a` fails with "the safety checker
-is not implemented for ARMv8-A" (`compiler/safetylib/safetyMain.ml`), and the
-safety test runner skips ARMv8-A. The patch instantiates the analysis with the
-abstraction ARMv7-M and RISC-V already use: the outputs of architecture-
-specific operators are unknown, and no comparison or conditional-instruction
-heuristic is applied. Unknown outputs can only cause alarms, never hide one;
-memory and array accesses, initialization and alignment are checked by the
-generic analysis, as on the other architectures.
-
-Tests: the common safety tests now also run on ARMv8-A, and
-`compiler/tests/safety/{success,fail}/armv8a/` cover 64-bit memory and array
-accesses, alignment, the initialization of the memory LDP reads, and an
-operator result used as an index with and without a mask. Upstream status:
-not yet proposed.
-
-A known limit of the generic analysis, seen on both architectures and not
-addressed by this series: an array that two loops fill at run-time indices,
-the second starting where the first stopped, is not recognised as
-initialized, and reading it raises an `is_init` alarm although every byte is
-written first. The alarm is a loss of precision, not of soundness.
-Initializing the array in one pass avoids it.
-
-### 0025, invalid instruction operands (this project)
-
-An instruction argument that is not an operand of the target, such as the
-zero-extension of a byte read through a pointer in `x += (64u) d[0];`, failed
-at linearization with the internal error `linearization: check_rexpr`, on
-x86-64 and ARMv8-A alike (upstream issue #1126, open). Neither instruction set
-has an addition whose operand zero-extends a memory byte, so the program
-cannot be compiled as written; the byte must be loaded into a register first.
-The patch reports this as an error of the program, located at the
-instruction, printing the argument and the fix. In `linearization.v`, the
-patch adds the error `invalid_operand` and redefines `check_rexpr` to
-return it, built from the argument it rejects. The check succeeds for
-exactly the arguments it accepted before and its type is unchanged; the
-statements and proofs of the theorems that use it are unchanged.
-
-Tests: `compiler/tests/fail/linearization/{x86-64,armv8a}/zext_load_operand.jazz`;
-the expected output of the existing
-`fail/stack_allocation/x86-64/reg_var_expected.jazz` changes from the internal
-error to the new message. Upstream status: not yet proposed.
-
-### 0026, BIC from an AND with a complemented operand (this project)
-
-At the pin, `u = !b & c` on ARMv8-A failed at assembly generation ("invalid
-rexpr for oprd"): the lowering of `&` did not recognise a complemented
-operand, although BIC computes exactly `Xn AND NOT Xm`. Both operand orders
-are now lowered to BIC with the complemented operand second, and a shift or
-rotation of that operand is folded into BIC's shifted-register form, as for
-AND. The lowering proof (`armv8a_lowering_proof.v`, `lower_Papp2P`) covers
-both orders. Before the patch the same code needed the `#BIC` intrinsic.
-Tests: `compiler/tests/success/armv8a/bic_lowering.jazz` (both orders,
-shifted operands, a complemented constant `a & !C`), and
-`compiler/tests/fail/asmgen/armv8a/bic_two_complements.jazz`: with both
-operands complemented (`!a & !b`) one complement remains an expression, and
-the program is rejected at assembly generation rather than compiled to a
-different operation. Upstream status: not yet proposed.
-
-### 0027, store of an immediate (this project)
-
-A64 has no store of an immediate. At the pin, assigning a constant to memory
-or to a stack array on ARMv8-A (`buf[i] = 0x80;`, `[:u64 p + 8] = 0;`, any
-access size) remained after lowering and was rejected at linearization. The
-lowering now moves the constant to a fresh 64-bit variable, `__wtmp__`, that
-the program cannot name, and stores its low bytes with STR, STRH or STRB. In
-the lowering proof, the lemma `sem_lower_store_imm` states that the two
-instructions end in a state equal to the one the source assignment reaches,
-except for that variable; `lower_cassgn_wordP` uses it for this case.
-Every such store materializes its constant (a MOVZ/MOVK sequence); a
-constant stored many times is cheaper held in a register by the source. Test:
-`compiler/tests/success/armv8a/store_imm.jazz`. Upstream status: not yet
-proposed.
-
-### 0028, LDRW (this project)
-
-At the pin, `x = (64u)[:u32 p];` on ARMv8-A was rejected: zero-extending
-loads were lowered for bytes (LDRB) and halfwords (LDRH) only. `LDR <Wt>`
-loads a word and, because a write to a W register clears the upper half,
-zero-extends it to 64 bits. The patch adds the mnemonic LDRW for that form.
-Like LDRSW, it has a 64-bit destination and is valid at that operand size
-only; it is printed as `ldr` with the W name of the destination register.
-The zero-extending word load is lowered to it, and the Jasmin EasyCrypt
-library models it (`op LDRW`). Before the patch the source needed a 32-bit
-load followed by a separate zero extension (an extra UXTW). The instruction
-semantics, its printing and its EasyCrypt model are trusted, like those of
-the other instructions. The lowering proof needs no change; `make -C proofs
-all` checks it again with the new case. Test:
-`compiler/tests/success/armv8a/ldrw.jazz`. Upstream status: not yet
-proposed.
-
-## Revisions
-
-Between the pin and dd35a2bb, a later commit of main, upstream redefined the
-instruction descriptors: an instruction now has a total semantics with its
-safety and initialization conditions as separate fields (`id_semi_total`,
-`id_err`, `id_init` and `id_wf` replace `id_semi`, `id_semi_errty` and
-`id_semi_safe`). On 2026-10-12 #1616 and #1624 were re-committed onto
-dd35a2bb in that form, and #1616 was merged so. Instructions declared in
-that form do not compile at the pin. This series carries the revision of
-each pull request written for the pin's descriptors:
-
-- #1616: 23c648c, fa89939, abfae7d (2026-10-05, on a6daed0). The merged
-  commits 2b9b564, 5fd7f8a and e8f5979 equal the last head, b9ef826, commit
-  for commit. Against them the carried revision differs in the descriptor
-  fields, in four constants written `1%R` and `0%R` instead of `1%w` and
-  `0%w`, and in context lines that main changed. A revision of 2026-10-12
-  added CNEG in a fourth commit; the merged pull request does not have it.
-- #1624: 34b528f, 10410e0, 72649cd, 61fdb91, 0b1d351 (2026-10-07, based
-  on 3194c25d, eight commits before the pin), then 72c64af from the current
-  head. The current head re-commits
-  the first five onto dd35a2bb; the first two differ from the carried ones
-  in the descriptor fields and in context only, and the other three are
-  equal.
-
-GitHub still serves the carried commits (`git fetch` of
-https://github.com/jasmin-lang/jasmin with the full commit id). When the pin
-moves past dd35a2bb, the merged commits and current heads replace them.
+No patch is applied yet.
 
 ## Assembly checks
 
@@ -244,32 +59,18 @@ assembles the result with `llvm-mc --triple=arm64-apple-macos`. It runs
 with `compiler/scripts/runtest` (Python with PyYAML, and `llvm-mc` on
 `PATH`); `toolchain/build.sh test` does not run it.
 
-## Conflicts
-
-The pull requests were written against different upstream commits. Where two
-of them, or one of them and the pin, change the same lines, the resolution
-keeps both changes:
-
-- 0003 (#1616, revision of 2026-10-05): the mnemonic lists of
-  `proofs/compiler/armv8a_instr_decl.v`, where the pin already has CMN (from
-  #1604, merged after that revision was written): `CMP; CMN; TST` and
-  `CSEL; CSINC; CSINV; CSNEG; CSET; CSETM`.
-- 0011 (#1624): the same lists, which by then also hold the #1616 and #1617
-  entries, gain LDP and STP. In `compiler/src/pp_arm_v8a.ml` the ADR case
-  keeps the #1594 form `pp_ADR (pp_asm_arg dst) r`, followed by the LDP case
-  of #1624.
-- 0015 (#1624): the LDP case it removes follows that ADR case, which keeps
-  the #1594 form.
-
 ## Identity with the pull requests
 
-Each carried commit was compared with the upstream commit named in its
-`cherry picked from` line: for #1621 the merge commit on main, for #1616 and
-#1624 the revisions described above, otherwise the head of the pull request.
-Author, date, subject and message, co-author lines included, are equal for
-all 23. `git patch-id --stable` is equal for 18; for 0003, 0006, 0007, 0011
-and 0015 the lines added and removed are equal file by file and only context
-differs.
+- #1624: 0001-0006 are the pull request's six commits at its head,
+  282fcaa, which upstream based on the pin. They apply with no conflict.
+- #1594, #1625: each commit was compared with the commit named in its
+  `cherry picked from` line, at the heads in the table. Author, date and
+  message are equal, and `git patch-id --stable` is equal for all ten.
+- #1632: 0020 equals c0006367c. 0019 equals 67ea654b4 in author, date,
+  message and every changed line but one, the generated test count
+  described in its section.
+
+The pull requests apply in this order with no conflict resolution.
 
 ## Considered and not carried
 

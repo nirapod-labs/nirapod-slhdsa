@@ -18,7 +18,7 @@
 
 # Jasmin, branch main, 2026-10-12.
 JASMIN_URL=https://github.com/jasmin-lang/jasmin.git
-JASMIN_COMMIT=2bf326d583659c1fbd0e5b90f7c09fe0c0456e35
+JASMIN_COMMIT=e8f59794c92ce1d8dba49cb087173a49f20a691f
 
 OCAML_VERSION=4.14.4
 
