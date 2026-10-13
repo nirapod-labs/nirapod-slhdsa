@@ -132,9 +132,9 @@ also keeps secret-derived data on return:
 | `_hmac_sha*_keyblock_mem` | H(K) for a key longer than one block |
 | `__hmac_sha*_init` | the padded key blocks K0 ^ ipad and K0 ^ opad |
 | `__hmac_sha*_finalize` | the inner digest |
-| `_mgf1_sha*` | the padded seed block and the last chaining value |
+| `_mgf1_sha*` | the padded seed message and the last chaining value |
 
-A function's residue includes the residue of every kernel it calls.
+A function's residue includes the residue of every function it calls.
 Clearing that stack is an obligation of the export that runs these
 functions. No clearing mechanism is part of this directory or claimed by it.
 

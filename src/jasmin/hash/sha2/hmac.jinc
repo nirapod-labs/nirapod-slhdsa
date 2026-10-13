@@ -35,7 +35,8 @@ require "sha512.jinc"
  * at most one block is padded with zeros; a longer key is replaced by its
  * digest, then padded. The key length is public and selects the case.
  *
- * Residue: for a long key the local digest holds H(K) on return.
+ * Residue: for a long key the local digest holds H(K) on return, and
+ * the one-shot hash of the key leaves its last padded block.
  */
 #[sct = "{ ptr: public, val: secret } × public × public × msf →
          { ptr: public, val: secret } × msf"]
