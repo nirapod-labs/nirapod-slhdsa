@@ -852,10 +852,16 @@ static void diff_sha2(unsigned long iter, uint8_t *msg, size_t len)
   if (!check(what, got, want, sm->dlen))
     hexdump("msg", msg, len);
 
+  /*
+   * The streaming state's buf starts as 0xa5 bytes, not as whatever is on
+   * the stack: a read of a byte the hash has not written then changes the
+   * digest the same way on every run.
+   */
   if (!sm->wide) {
     uint32_t h[8];
     uint8_t buf[64];
 
+    memset(buf, 0xa5, sizeof buf);
     (sm->variant ? HT(sha224_init) : HT(sha256_init))(h);
     while (off < len) {
       size_t piece = rnd_below(3) == 0 ? len - off : rnd_below(len - off + 1);
@@ -867,6 +873,7 @@ static void diff_sha2(unsigned long iter, uint8_t *msg, size_t len)
     uint64_t h[8];
     uint8_t buf[128];
 
+    memset(buf, 0xa5, sizeof buf);
     switch (sm->variant) {
     case 0: HT(sha512_init)(h); break;
     case 1: HT(sha384_init)(h); break;
@@ -1114,12 +1121,13 @@ static void diff_arrays(unsigned long iter, uint8_t *msg)
            km->ossl, ac->len, pre, skip, more);
   check(what, got, want + skip, ac->len + more);
 
-  /* SHA-256 and SHA-512: prefix (memory form) || array. */
+  /* SHA-256 and SHA-512: prefix (memory form) || array, buf filled as in diff_sha2. */
   {
     uint32_t h[8];
     uint8_t buf[64];
     uint64_t total;
 
+    memset(buf, 0xa5, sizeof buf);
     HT(sha256_init)(h);
     total = HT(sha256_absorb)(h, buf, 0, msg, pre);
     total = ac->s256(h, buf, total, msg + pre);
@@ -1133,6 +1141,7 @@ static void diff_arrays(unsigned long iter, uint8_t *msg)
     uint8_t buf[128];
     uint64_t total;
 
+    memset(buf, 0xa5, sizeof buf);
     HT(sha512_init)(h);
     total = HT(sha512_absorb)(h, buf, 0, msg, pre);
     total = ac->s512(h, buf, total, msg + pre);
