@@ -1,0 +1,168 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * tests/core/checker/workarounds.jazz
+ * ===================================
+ *
+ * Reproducers of the three code shapes in src/slhdsa that exist only for
+ * jasmin-checksafety, each as a pair of exports: the shape the algorithm
+ * would use, which the pinned checker reports, and the shape the source
+ * uses, which it accepts. check.py runs both and fails if either verdict
+ * changes, so a checker that no longer needs a workaround, or a workaround
+ * that no longer suffices, is noticed.
+ *
+ *   fill_plain  / fill_first    a buffer written at run-time offsets, then
+ *                               read whole: is_init, unless the buffer is
+ *                               first written at constant indices
+ *                               (_wots_leaf_x4 pk, _wots_pk_from_sig tmp,
+ *                               _xmss_treehash nodes, _fors_pk_from_sig roots)
+ *   slot_plain  / slot_clamp    a slot offset from a counter of trailing one
+ *                               bits: in_bound, unless the counter is clamped
+ *                               to the last slot (treehash.jinc __fold_slot)
+ *   msg_array   / msg_scalar    a message pointer kept in a stack array cell:
+ *                               is_valid on every read through it, unless it
+ *                               stays in a variable (M' in internal.jinc)
+ *
+ * The constants are those of SLH-DSA-SHA2-128f (n = 16, a = 6, len = 35);
+ * the shapes do not depend on them.
+ */
+
+param int N = 16;
+param int A = 6;
+param int LEN = 35;
+
+/* Chain ends stored at i n for i < len, as in the WOTS+ loops. */
+inline fn __ends(reg mut ptr u8[LEN * N] b, reg u64 x) -> reg ptr u8[LEN * N]
+{
+  reg u64 i off;
+  reg bool more;
+  inline int w;
+
+  i = 0;
+  while { more = i < LEN; } (more) {
+    off = i;
+    off *= N;
+    for w = 0 to N / 8 {
+      b.[:u64 off] = x;
+      off += 8;
+    }
+    i += 1;
+  }
+  return b;
+}
+
+/* Every byte of b, read at constant indices, as the hash of T_l reads it. */
+inline fn __sum(reg const ptr u8[LEN * N] b) -> reg u64
+{
+  reg u64 s t;
+  inline int k;
+
+  s = 0;
+  for k = 0 to LEN * N / 8 {
+    t = b[:u64 k];
+    s ^= t;
+  }
+  return s;
+}
+
+export fn fill_plain(reg u64 x) -> reg u64
+{
+  stack u8[LEN * N] b;
+  reg ptr u8[LEN * N] p;
+  reg u64 s;
+
+  p = b;
+  p = __ends(p, x);
+  s = __sum(p);
+  return s;
+}
+
+export fn fill_first(reg u64 x) -> reg u64
+{
+  stack u8[LEN * N] b;
+  reg ptr u8[LEN * N] p;
+  reg u64 s fill;
+  inline int k;
+
+  fill = 0;
+  for k = 0 to LEN * N / 8 {
+    b[:u64 k] = fill;
+  }
+  p = b;
+  p = __ends(p, x);
+  s = __sum(p);
+  return s;
+}
+
+/* z = the trailing one bits of idx, then the slot at z n, as in the fold. */
+export fn slot_plain(reg u64 idx) -> reg u64
+{
+  stack u8[(A + 1) * N] nodes;
+  reg u64 z off r bit;
+  reg bool odd;
+  inline int i;
+
+  for i = 0 to (A + 1) * N / 8 { nodes[:u64 i] = 0; }
+  z = 0;
+  while { bit = idx; bit &= 1; odd = bit == 1; } (odd) { z += 1; idx >>= 1; }
+  off = z;
+  off *= N;
+  r = nodes.[:u64 off];
+  return r;
+}
+
+export fn slot_clamp(reg u64 idx) -> reg u64
+{
+  stack u8[(A + 1) * N] nodes;
+  reg u64 z off r bit cap;
+  reg bool odd;
+  inline int i;
+
+  for i = 0 to (A + 1) * N / 8 { nodes[:u64 i] = 0; }
+  z = 0;
+  while { bit = idx; bit &= 1; odd = bit == 1; } (odd) { z += 1; idx >>= 1; }
+  cap = A;
+  z = z < A ? z : cap;
+  off = z;
+  off *= N;
+  r = nodes.[:u64 off];
+  return r;
+}
+
+/* msg_len bytes read at msg, through an array cell or a variable. */
+inline fn __read(reg u64 m l) -> reg u64
+{
+  reg u64 i s t;
+  reg bool more;
+
+  s = 0;
+  i = 0;
+  while { more = i < l; } (more) {
+    t = (64u) [:u8 m + i];
+    s ^= t;
+    i += 1;
+  }
+  return s;
+}
+
+export fn msg_array(reg u64 msg msg_len) -> reg u64
+{
+  stack u64[2] ref;
+  reg u64 m l s;
+
+  ref[0] = msg;
+  ref[1] = msg_len;
+  m = ref[0];
+  l = ref[1];
+  s = __read(m, l);
+  return s;
+}
+
+export fn msg_scalar(reg u64 msg msg_len) -> reg u64
+{
+  reg u64 s;
+
+  s = __read(msg, msg_len);
+  return s;
+}

@@ -14,6 +14,10 @@
 #                     ACVP known answers, the core, negative, stack, register
 #                     and fault tests on this host; writes
 #                     build/<target>/transcript-core.txt
+#     make checker-repro
+#                     run JASMIN_CHECKSAFETY, which must be the checker of
+#                     the pinned toolchain, on the reproducers of the
+#                     safety-checker workarounds (tests/core/checker/)
 #     make asm        only the Jasmin assembly
 #     make gen        write the assembly of every target and its manifest
 #                     into gen/ (this tree does not carry gen/)
@@ -429,6 +433,21 @@ $(OUT)/fault/%.o: $(OUT)/fault/%.s
 $(OUT)/tests/test_fault: $(TESTS_DIR)/negative/test_fault.c $(FAULT_OBJ) $(TESTING_LIB)
 	@mkdir -p $(@D)
 	$(TEST_CC) -o $@ $< $(FAULT_OBJ) $(TESTING_LIB)
+
+# The safety-checker limitations the core works around, reproduced on
+# small exports (tests/core/checker/).
+
+PYTHON   ?= python3
+JASMIN_CHECKSAFETY ?=
+
+.PHONY: checker-repro
+
+# The expected verdicts are those of the pinned checker, so no checker is
+# taken from the PATH by default.
+checker-repro:
+	@test -n "$(JASMIN_CHECKSAFETY)" || { echo "make checker-repro needs JASMIN_CHECKSAFETY," \
+	  "the jasmin-checksafety that toolchain/build.sh builds from the pin" >&2; exit 1; }
+	$(PYTHON) -I $(TESTS_DIR)/core/checker/check.py $(JASMIN_CHECKSAFETY)
 
 # --------------------------------------------------------------------
 # Entry points
