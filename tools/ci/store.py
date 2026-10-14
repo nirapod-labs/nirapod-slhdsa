@@ -74,9 +74,14 @@ def trusted(run, now):
 
 
 class Store:
-    def __init__(self, api, now=None):
+    """EXCLUDE: a run id never used, by default the run this job is part
+    of (GITHUB_RUN_ID), so that a run never takes its own results as
+    another run's."""
+
+    def __init__(self, api, now=None, exclude=None):
         self.api = api
         self.now = now or datetime.datetime.now(datetime.timezone.utc)
+        self.exclude = exclude if exclude is not None else os.environ.get("GITHUB_RUN_ID", "")
         self._runs = None
         self._artifacts = {}
         self._on_main = {}
@@ -87,7 +92,7 @@ class Store:
             for event in EVENTS:
                 for r in self.api.pages(f"actions/workflows/{WORKFLOW}/runs", "workflow_runs",
                                         limit=RUNS, branch=BRANCH, event=event):
-                    if trusted(r, self.now):
+                    if trusted(r, self.now) and str(r["id"]) != str(self.exclude):
                         found[r["id"]] = r
             self._runs = sorted(found.values(), key=lambda r: r["created_at"], reverse=True)[:RUNS]
         return self._runs
