@@ -1,0 +1,96 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * keccak_round_x2.jinc (AArch64, SHA-3 instructions)
+ * ==================================================
+ *
+ * One Keccak-f[1600] round (FIPS 202 section 3.3) on 25 Advanced SIMD
+ * registers, each holding one lane of two states, for the kernels in this
+ * directory. The round in A64 SHA-3 instructions:
+ *
+ *     θ    C[x] = EOR3(EOR3(A[x], A[x+5], A[x+10]), A[x+15], A[x+20])
+ *          D[x] = RAX1(C[x-1], C[x+1])            C[x-1] ^ ROT(C[x+1], 1)
+ *     ρ π  B[x, y] = XAR(A[x', y'], D[x'], 64 - r[x', y'])
+ *                                     ROT(A[x', y'] ^ D[x'], r[x', y']),
+ *          (x', y') = ((x + 3y) mod 5, x); imm 0 when r = 0
+ *     χ    A[x, y] = BCAX(B[x, y], B[x+2, y], B[x+1, y])
+ *                                     B[x] ^ (B[x+2] & ~B[x+1])
+ *     ι    A[0, 0] ^= RC[ir] in both lanes
+ *
+ * with x indices mod 5.
+ *
+ * Security: all lanes may be secret; straight-line code without memory
+ * access.
+ */
+
+from Hash require "keccak/keccak_constants.jinc"
+
+/*
+ * One round on a, in place, with round constant t.
+ *
+ * D is formed in the order 0, 2, 4, 1, 3, in which each D after the first
+ * can take the register of a C that has had its last use. Counted from
+ * the live ranges in this order, θ has at most 31 values live at once
+ * (the 25 lanes, five C or D values and the D being formed), which fits
+ * the 32 vector registers.
+ *
+ * ρ and π follow the cycle of the scalar AArch64 kernel: π moves lane
+ * i = x + 5y to i', with source((x', y')) = ((x' + 3y') mod 5, x');
+ * following source() from lane 1 visits all 24 lanes other than (0, 0)
+ * once, so each destination is written from its source before the source
+ * is overwritten. Lane 1 is saved first to close the cycle, and the θ
+ * correction is applied by the same XAR that rotates the lane.
+ *
+ * χ runs row by row with two temporaries: a0' and a1' are formed first,
+ * then a2', a3' and a4' overwrite their lanes, which only later terms of
+ * the row no longer need.
+ */
+inline fn __keccak_round_x2(reg u128[25] a, reg u64 t) -> reg u128[25]
+{
+  reg u128[5] c d;
+  reg u128 s0 s1 rcv;
+  inline int i k x y src cur r;
+
+  for x = 0 to 5 {
+    c[x] = #EOR3(a[x], a[x + 5], a[x + 10]);
+    c[x] = #EOR3(c[x], a[x + 15], a[x + 20]);
+  }
+  for i = 0 to 5 {
+    x = (2 * i) % 5;
+    d[x] = #RAX1(c[(x + 4) % 5], c[(x + 1) % 5]);
+  }
+
+  a[0] = #VEOR(a[0], d[0]);
+  s0 = a[1];
+  cur = 1;
+  for k = 0 to 24 {
+    x = cur % 5;
+    y = cur / 5;
+    src = (x + 3 * y) % 5 + 5 * x;
+    r = __keccak_rho((x + 3 * y) % 5, x);
+    #[inline]
+    if (src == 1) {
+      a[cur] = #XAR(s0, d[src % 5], (64 - r) % 64);
+    } else {
+      a[cur] = #XAR(a[src], d[src % 5], (64 - r) % 64);
+    }
+    cur = src;
+  }
+
+  for y = 0 to 5 {
+    i = 5 * y;
+    s0 = #BCAX(a[i], a[i + 2], a[i + 1]);
+    s1 = #BCAX(a[i + 1], a[i + 3], a[i + 2]);
+    a[i + 2] = #BCAX(a[i + 2], a[i + 4], a[i + 3]);
+    a[i + 3] = #BCAX(a[i + 3], a[i], a[i + 4]);
+    a[i + 4] = #BCAX(a[i + 4], a[i + 1], a[i]);
+    a[i] = s0;
+    a[i + 1] = s1;
+  }
+
+  rcv = #VDUP_2u64(t);
+  a[0] = #VEOR(a[0], rcv);
+
+  return a;
+}

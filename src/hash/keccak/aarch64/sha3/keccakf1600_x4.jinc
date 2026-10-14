@@ -1,0 +1,65 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * keccakf1600_x4.jinc (AArch64, SHA-3 instructions)
+ * =================================================
+ *
+ * Four independent Keccak-f[1600] permutations (FIPS 202 sections 3.3 and
+ * 3.4) on the A64 SHA-3 instructions (FEAT_SHA3), as two passes of a
+ * 2-way permutation in Advanced SIMD registers. Entry point and contract
+ * are those of the portable 4-way kernel (keccak/keccakf1600_x4.jinc):
+ *
+ *     _keccakf1600_x4(st, ms)
+ *
+ * State. In the 4-way layout lane j of instance k is st[4j + k], so the
+ * 128-bit word 2j + q of st holds lane j of instances 2q and 2q + 1. Pass
+ * q loads those 25 words into a[0 .. 24] (lane x + 5y in a[x + 5y]),
+ * permutes them, and stores them back.
+ *
+ * The round is __keccak_round_x2 (keccak_round_x2.jinc), on both lanes
+ * of every register.
+ *
+ * Required CPU feature: FEAT_SHA3 (and Advanced SIMD). The caller's
+ * dispatch must establish it; this file does not check.
+ *
+ * Security: all lanes may be secret. The round loop's branch is the public
+ * round counter; every address is fixed at compile time or is an index
+ * into the public round constant table. Residue: nothing secret is stored
+ * to the stack; the vector registers are not cleared.
+ */
+
+from Hash require "keccak/keccak_constants.jinc"
+from Hash require "keccak/aarch64/sha3/keccak_round_x2.jinc"
+
+#[sct = "{ ptr: public, val: secret } × msf → { ptr: public, val: secret } × msf"]
+fn _keccakf1600_x4(reg mut ptr u64[100] st, reg u64 ms) -> reg ptr u64[100], reg u64
+{
+  reg u128[25] a;
+  reg ptr u64[24] rc;
+  reg u64 i t;
+  reg bool more;
+  inline int q j;
+
+  for q = 0 to 2 {
+    for j = 0 to 25 {
+      a[j] = st[:u128 2 * j + q];
+    }
+
+    rc = KECCAK_RC;
+    i = 0;
+    while { more = i < KECCAK_ROUNDS; } (more) {
+      ms = #update_msf(more, ms);
+      t = rc[i];
+      a = __keccak_round_x2(a, t);
+      i += 1;
+    }
+    ms = #update_msf(!more, ms);
+
+    for j = 0 to 25 {
+      st[:u128 2 * j + q] = a[j];
+    }
+  }
+
+  return st, ms;
+}
