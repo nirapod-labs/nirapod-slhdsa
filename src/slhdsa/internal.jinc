@@ -13,9 +13,12 @@
  *
  *     M = prefix[0 : prefix_len] || msg[0 : msg_len]
  *
- * described by mref = (prefix_len, msg, msg_len), three u64 words in the
- * caller's stack: one argument instead of three keeps the call within the
- * registers left free by the hash code.
+ * described by three scalars, prefix_len, msg and msg_len, passed down to
+ * the message hashes. They are not packed into an array: the points-to
+ * domain of jasmin-checksafety follows pointers held in variables only, so
+ * a message pointer loaded from an array cell would point anywhere for it,
+ * and every read of the message would be reported as possibly invalid
+ * (msg_array and msg_scalar in tests/core/checker/workarounds.jazz).
  *
  * The external interfaces of section 10 put their framing (and for
  * HashSLH-DSA the pre-hash) in the prefix; the internal test entry points
@@ -146,13 +149,13 @@ fn _slh_keygen(
  * sig must not overlap sk, opt_rand, prefix or the message.
  */
 #[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
-         { ptr: public, val: transient } ×
+         transient × transient × transient ×
          { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
          { ptr: public, val: secret } × msf"]
 fn _slh_sign(
   reg mut ptr u8[SLH_SIG_BYTES] sig,
   reg const ptr u8[SLH_PREFIX_MAX] prefix,
-  reg const ptr u64[3] mref,
+  reg u64 prefix_len msg msg_len,
   reg const ptr u8[SLH_SK_BYTES] sk,
   reg const ptr u8[SLH_N] opt_rand,
   reg u64 ms
@@ -167,24 +170,22 @@ fn _slh_sign(
   reg u32 idx_leaf;
   inline int i;
 
-  #spill(sig, prefix, mref, sk, opt_rand);
+  #spill(sig, prefix, prefix_len, msg, msg_len, sk, opt_rand);
   ctx, ms = _thash_ctx_init(ctx, sk[SLH_SK_PK_OFFSET : SLH_N], ms);
-  #unspill(sig, prefix, mref, sk, opt_rand);
+  #unspill(sig, prefix, prefix_len, msg, msg_len, sk, opt_rand);
   sig = #protect_ptr(sig, ms);
   prefix = #protect_ptr(prefix, ms);
-  mref = #protect_ptr(mref, ms);
   sk = #protect_ptr(sk, ms);
   opt_rand = #protect_ptr(opt_rand, ms);
 
   /* R = PRF_msg(SK.prf, opt_rand, M), the first n bytes of the signature. */
 
-  #spill(sig, prefix, mref, sk);
-  r, ms = _prf_msg(r, sk[SLH_SK_PRF_OFFSET : SLH_N], opt_rand, prefix, mref, ms);
+  #spill(sig, prefix, prefix_len, msg, msg_len, sk);
+  r, ms = _prf_msg(r, sk[SLH_SK_PRF_OFFSET : SLH_N], opt_rand, prefix, prefix_len, msg, msg_len, ms);
 
-  #unspill(sig, prefix, mref, sk);
+  #unspill(sig, prefix, prefix_len, msg, msg_len, sk);
   sig = #protect_ptr(sig, ms);
   prefix = #protect_ptr(prefix, ms);
-  mref = #protect_ptr(mref, ms);
   sk = #protect_ptr(sk, ms);
 
   for i = 0 to SLH_N / 8 {
@@ -195,7 +196,8 @@ fn _slh_sign(
   /* digest = H_msg(R, PK.seed, PK.root, M) */
 
   #spill(sig, sk);
-  digest, ms = _h_msg(digest, r, sk[SLH_SK_PK_OFFSET : 2 * SLH_N], prefix, mref, ms);
+  digest, ms = _h_msg(digest, r, sk[SLH_SK_PK_OFFSET : 2 * SLH_N], prefix, prefix_len, msg,
+                      msg_len, ms);
   #unspill(sig, sk);
   sig = #protect_ptr(sig, ms);
   sk = #protect_ptr(sk, ms);
@@ -276,13 +278,13 @@ fn _slh_sign(
  * before calling.
  */
 #[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
-         { ptr: public, val: transient } ×
+         transient × transient × transient ×
          { ptr: public, val: secret } × msf →
          public × msf"]
 fn _slh_verify(
   reg const ptr u8[SLH_SIG_BYTES] sig,
   reg const ptr u8[SLH_PREFIX_MAX] prefix,
-  reg const ptr u64[3] mref,
+  reg u64 prefix_len msg msg_len,
   reg const ptr u8[SLH_PK_BYTES] pk,
   reg u64 ms
 ) -> reg u64, reg u64
@@ -295,16 +297,15 @@ fn _slh_verify(
   reg u64 idx_tree result;
   reg u32 idx_leaf;
 
-  #spill(sig, prefix, mref, pk);
+  #spill(sig, prefix, prefix_len, msg, msg_len, pk);
   ctx, ms = _thash_ctx_init(ctx, pk[0 : SLH_N], ms);
-  #unspill(sig, prefix, mref, pk);
+  #unspill(sig, prefix, prefix_len, msg, msg_len, pk);
   sig = #protect_ptr(sig, ms);
   prefix = #protect_ptr(prefix, ms);
-  mref = #protect_ptr(mref, ms);
   pk = #protect_ptr(pk, ms);
 
   #spill(sig, pk);
-  digest, ms = _h_msg(digest, sig[0 : SLH_N], pk, prefix, mref, ms);
+  digest, ms = _h_msg(digest, sig[0 : SLH_N], pk, prefix, prefix_len, msg, msg_len, ms);
   #unspill(sig, pk);
   sig = #protect_ptr(sig, ms);
   pk = #protect_ptr(pk, ms);

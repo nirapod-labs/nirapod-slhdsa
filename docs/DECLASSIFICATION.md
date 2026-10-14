@@ -25,7 +25,6 @@ functions in `src/hash` contain no declassification.
 | 4 | `wots.jinc`, `_wots_pk_from_sig` | the len WOTS+ digits of the node being verified: the FORS public key (layer 0) or the XMSS root (above) recomputed from the signature; the 2n message digits give the node whole | type lift; release on the fault check | On the verification API the node is a function of public inputs. On the fault check it is a function of the withheld signature: either the correct value at its position, or after a fault a fresh hash output over withheld values. Argued under "Withheld signatures". |
 | 5 | `hypertree.jinc`, `_ht_verify` | the verdict, 0 or all ones; not the recomputed root nor its difference from PK.root | type lift; release on the fault check | The verdict is the result of verification. The verification API returns it; the fault check reports it as the status of the failed call. |
 | 6 | `internal.jinc`, `_slh_keygen` | `no_steps`, an all-zero digit vector | type lift | Constant zeros; the treehash of key generation never reads it. |
-| 7 | `api.jinc`, `sign`, `verify`, `sign_internal`, `verify_internal` | `mref`: prefix length, message pointer, message length | type lift | Public arguments and lengths, stored in a stack array, which the checker types secret on creation. |
 
 Every release is followed by `#protect` of the released scalar (or of each
 element where it is read) before it is used: the speculative model treats a

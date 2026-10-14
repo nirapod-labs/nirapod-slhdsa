@@ -274,8 +274,8 @@ fn _thash_t_k(
  * ---------------
  *
  * M' = prefix[0 : prefix_len] || msg[0 : msg_len]: the framing built by
- * external.jinc in a stack buffer, then the caller's message in memory;
- * mref = (prefix_len, msg, msg_len).
+ * external.jinc in a stack buffer, then the caller's message in memory,
+ * passed as the scalars prefix_len, msg and msg_len (internal.jinc).
  * The prefix is absorbed byte by byte at sponge byte position pos
  * (0 <= pos < 136), the message by the sponge of the hash layer.
  */
@@ -328,34 +328,29 @@ fn _shake_absorb_prefix(
 /*
  * Absorb M' after a fixed head of `head` bytes already in st, pad, permute.
  *
- * mref describes M' (internal.jinc): mref[0] = prefix length, mref[1] =
- * message pointer, mref[2] = message length. Each is reloaded and
- * protected where it bounds a loop or addresses memory.
+ * prefix_len, msg and msg_len are protected where they bound a loop or
+ * address memory; msg and msg_len wait in spill slots across the prefix.
  */
 inline fn __shake_absorb_message(
   reg mut ptr u64[25] st,
   inline int head,
   reg const ptr u8[SLH_PREFIX_MAX] prefix,
-  reg const ptr u64[3] mref,
+  reg u64 prefix_len msg msg_len,
   reg u64 ms
 ) -> reg ptr u64[25], reg u64
 {
-  reg u64 pos rate ds m l;
+  reg u64 pos rate ds;
 
   pos = head;
-  l = mref[0];
-  l = #protect(l, ms);
-  #spill(mref);
-  st, pos, ms = _shake_absorb_prefix(st, pos, prefix, l, ms);
-  #unspill(mref);
-  mref = #protect_ptr(mref, ms);
+  prefix_len = #protect(prefix_len, ms);
+  #spill(msg, msg_len);
+  st, pos, ms = _shake_absorb_prefix(st, pos, prefix, prefix_len, ms);
+  #unspill(msg, msg_len);
+  msg = #protect(msg, ms);
+  msg_len = #protect(msg_len, ms);
 
-  m = mref[1];
-  m = #protect(m, ms);
-  l = mref[2];
-  l = #protect(l, ms);
   rate = SLH_SHAKE_RATE;
-  st, pos, ms = _keccak_absorb_mem(st, pos, rate, m, l, ms);
+  st, pos, ms = _keccak_absorb_mem(st, pos, rate, msg, msg_len, ms);
 
   rate = SLH_SHAKE_RATE;
   ds = SLH_SHAKE_DS;
@@ -372,14 +367,14 @@ inline fn __shake_absorb_message(
  */
 #[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
          { ptr: public, val: secret } × { ptr: public, val: secret } ×
-         { ptr: public, val: transient } × msf →
+         transient × transient × transient × msf →
          { ptr: public, val: secret } × msf"]
 fn _prf_msg(
   reg mut ptr u8[SLH_N] r,
   reg const ptr u8[SLH_N] sk_prf,
   reg const ptr u8[SLH_N] opt_rand,
   reg const ptr u8[SLH_PREFIX_MAX] prefix,
-  reg const ptr u64[3] mref,
+  reg u64 prefix_len msg msg_len,
   reg u64 ms
 ) -> reg ptr u8[SLH_N], reg u64
 {
@@ -396,7 +391,7 @@ fn _prf_msg(
   }
 
   #spill(r);
-  st, ms = __shake_absorb_message(st, 2 * SLH_N, prefix, mref, ms);
+  st, ms = __shake_absorb_message(st, 2 * SLH_N, prefix, prefix_len, msg, msg_len, ms);
   #unspill(r);
   r = #protect_ptr(r, ms);
   r = __shake_extract_n(r, st);
@@ -409,14 +404,14 @@ fn _prf_msg(
  */
 #[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
          { ptr: public, val: secret } × { ptr: public, val: secret } ×
-         { ptr: public, val: transient } × msf →
+         transient × transient × transient × msf →
          { ptr: public, val: secret } × msf"]
 fn _h_msg(
   reg mut ptr u8[SLH_M] digest,
   reg const ptr u8[SLH_N] r,
   reg const ptr u8[2 * SLH_N] pk,
   reg const ptr u8[SLH_PREFIX_MAX] prefix,
-  reg const ptr u64[3] mref,
+  reg u64 prefix_len msg msg_len,
   reg u64 ms
 ) -> reg ptr u8[SLH_M], reg u64
 {
@@ -435,7 +430,7 @@ fn _h_msg(
   }
 
   #spill(digest);
-  st, ms = __shake_absorb_message(st, 3 * SLH_N, prefix, mref, ms);
+  st, ms = __shake_absorb_message(st, 3 * SLH_N, prefix, prefix_len, msg, msg_len, ms);
   #unspill(digest);
   digest = #protect_ptr(digest, ms);
 

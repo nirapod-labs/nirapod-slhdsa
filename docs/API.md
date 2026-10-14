@@ -207,8 +207,8 @@ in bytes, over all parameter sets and variants of the architecture:
 | Export | AArch64 (macOS) | x86-64 (Linux) | Deepest set |
 |---|---:|---:|---|
 | key generation | 17984 | 18024 | SLH-DSA-SHA2-256s |
-| signing | 18704 | 18664 | SLH-DSA-SHA2-256s |
-| verification | 6112 | 6056 | SLH-DSA-SHA2-256f |
+| signing | 18704 | 18648 | SLH-DSA-SHA2-256s |
+| verification | 6096 | 6056 | SLH-DSA-SHA2-256f |
 
 Measured on these Jasmin sources with the pinned Jasmin toolchain, on an
 Apple M4 (macOS) and an AMD EPYC 7763 (Linux, KVM guest). The figures
@@ -226,10 +226,10 @@ the architecture can select:
 | Function | AArch64 (macOS) | x86-64 (Linux) | Deepest set |
 |---|---:|---:|---|
 | `keygen` | 18160 | 18216 | SLH-DSA-SHA2-256s |
-| `sign`, `sign_deterministic` | 19248 | 19240 | SLH-DSA-SHA2-256s |
-| `hash_sign`, `hash_sign_deterministic` | 19264 | 19256 | SLH-DSA-SHA2-256s |
-| `verify` | 6464 | 6520 | SLH-DSA-SHA2-256f |
-| `hash_verify` | 6480 | 6520 | SLH-DSA-SHA2-256f |
+| `sign`, `sign_deterministic` | 19248 | 19224 | SLH-DSA-SHA2-256s |
+| `hash_sign`, `hash_sign_deterministic` | 19264 | 19240 | SLH-DSA-SHA2-256s |
+| `verify` | 6448 | 6520 | SLH-DSA-SHA2-256f |
+| `hash_verify` | 6464 | 6520 | SLH-DSA-SHA2-256f |
 
 Measured on the same hosts. The deepest path is the scalar variant on
 AArch64 and the `shani` variant on x86-64; `make check` prints the figures

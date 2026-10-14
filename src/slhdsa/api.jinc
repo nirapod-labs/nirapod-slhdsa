@@ -43,13 +43,11 @@
  *     execution, possibly secret under misspeculation) for the same
  *     reason; the contents of seeds, sk and opt_rand are typed secret.
  *
- * Message reference
+ * Message
  *
- *     sign and verify describe M' to internal.jinc by mref = (prefix_len,
- *     msg, msg_len), a stack array of public values. A stack array starts
- *     with the secret type in the checker whatever is stored in it, so
- *     each export releases mref after filling it; the release lifts a
- *     type only, as the three words are public arguments and lengths.
+ *     M' reaches internal.jinc as the prefix buffer and three scalars,
+ *     prefix_len, msg and msg_len; internal.jinc says why they are not
+ *     packed into an array.
  *
  * Testing-only exports
  *
@@ -128,7 +126,6 @@ export fn sign(
 ) -> reg ptr u8[SLH_SIG_BYTES], reg u64
 {
   stack u8[SLH_PREFIX_MAX] prefix;
-  stack u64[3] mref;
   reg u64 ms prefix_len status;
   reg bool ok;
 
@@ -151,12 +148,8 @@ export fn sign(
   ok = status == 0;
   if (ok) {
     ms = #update_msf(ok, ms);
-    mref[0] = prefix_len;
-    mref[1] = msg;
-    mref[2] = msg_len;
-    #declassify(mref);
     #spill(status);
-    sig, ms = _slh_sign(sig, prefix, mref, sk, opt_rand, ms);
+    sig, ms = _slh_sign(sig, prefix, prefix_len, msg, msg_len, sk, opt_rand, ms);
     #unspill(status);
     status = #protect(status, ms);
     #spill(status);
@@ -196,7 +189,6 @@ export fn verify(
 ) -> reg u64
 {
   stack u8[SLH_PREFIX_MAX] prefix;
-  stack u64[3] mref;
   reg u64 ms prefix_len status result;
   reg bool ok;
 
@@ -218,11 +210,7 @@ export fn verify(
   ok = status == 0;
   if (ok) {
     ms = #update_msf(ok, ms);
-    mref[0] = prefix_len;
-    mref[1] = msg;
-    mref[2] = msg_len;
-    #declassify(mref);
-    result, ms = _slh_verify(sig, prefix, mref, pk, ms);
+    result, ms = _slh_verify(sig, prefix, prefix_len, msg, msg_len, pk, ms);
   } else {
     ms = #update_msf(!ok, ms);
   }
@@ -248,7 +236,6 @@ export fn sign_internal(
 ) -> reg ptr u8[SLH_SIG_BYTES]
 {
   stack u8[SLH_PREFIX_MAX] prefix;
-  stack u64[3] mref;
   reg u64 ms prefix_len;
 
   ms = #init_msf();
@@ -259,11 +246,7 @@ export fn sign_internal(
   opt_rand = #protect_ptr(opt_rand, ms);
 
   prefix_len = 0;
-  mref[0] = prefix_len;
-  mref[1] = msg;
-  mref[2] = msg_len;
-  #declassify(mref);
-  sig, ms = _slh_sign(sig, prefix, mref, sk, opt_rand, ms);
+  sig, ms = _slh_sign(sig, prefix, prefix_len, msg, msg_len, sk, opt_rand, ms);
 
   return sig;
 }
@@ -284,7 +267,6 @@ export fn verify_internal(
 ) -> reg u64
 {
   stack u8[SLH_PREFIX_MAX] prefix;
-  stack u64[3] mref;
   reg u64 ms prefix_len result;
 
   ms = #init_msf();
@@ -294,11 +276,7 @@ export fn verify_internal(
   pk = #protect_ptr(pk, ms);
 
   prefix_len = 0;
-  mref[0] = prefix_len;
-  mref[1] = msg;
-  mref[2] = msg_len;
-  #declassify(mref);
-  result, ms = _slh_verify(sig, prefix, mref, pk, ms);
+  result, ms = _slh_verify(sig, prefix, prefix_len, msg, msg_len, pk, ms);
 
   return result;
 }

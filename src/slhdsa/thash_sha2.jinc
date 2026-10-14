@@ -548,32 +548,27 @@ inline fn __sha512_absorb_prefix(
 
 /*
  * Append M' to a SHA-256 or SHA-512 stream: the prefix, then the
- * message. mref = (prefix_len, msg, msg_len); each is reloaded and
- * protected where it bounds a loop or addresses memory.
+ * message. prefix_len, msg and msg_len are protected where they bound a
+ * loop or address memory; msg and msg_len wait in spill slots across the
+ * prefix.
  */
 inline fn __sha256_absorb_message(
   reg mut ptr u32[8] h,
   reg mut ptr u8[64] buf,
   reg u64 total,
   reg const ptr u8[SLH_PREFIX_MAX] prefix,
-  reg const ptr u64[3] mref,
+  reg u64 prefix_len msg msg_len,
   reg u64 ms
 ) -> reg ptr u32[8], reg ptr u8[64], reg u64, reg u64
 {
-  reg u64 l m;
+  prefix_len = #protect(prefix_len, ms);
+  #spill(msg, msg_len);
+  h, buf, total, ms = __sha256_absorb_prefix(h, buf, total, prefix, prefix_len, ms);
+  #unspill(msg, msg_len);
+  msg = #protect(msg, ms);
+  msg_len = #protect(msg_len, ms);
 
-  l = mref[0];
-  l = #protect(l, ms);
-  #spill(mref);
-  h, buf, total, ms = __sha256_absorb_prefix(h, buf, total, prefix, l, ms);
-  #unspill(mref);
-  mref = #protect_ptr(mref, ms);
-
-  m = mref[1];
-  m = #protect(m, ms);
-  l = mref[2];
-  l = #protect(l, ms);
-  h, buf, total, ms = _sha256_absorb_mem(h, buf, total, m, l, ms);
+  h, buf, total, ms = _sha256_absorb_mem(h, buf, total, msg, msg_len, ms);
 
   return h, buf, total, ms;
 }
@@ -583,24 +578,18 @@ inline fn __sha512_absorb_message(
   reg mut ptr u8[128] buf,
   reg u64 total,
   reg const ptr u8[SLH_PREFIX_MAX] prefix,
-  reg const ptr u64[3] mref,
+  reg u64 prefix_len msg msg_len,
   reg u64 ms
 ) -> reg ptr u64[8], reg ptr u8[128], reg u64, reg u64
 {
-  reg u64 l m;
+  prefix_len = #protect(prefix_len, ms);
+  #spill(msg, msg_len);
+  h, buf, total, ms = __sha512_absorb_prefix(h, buf, total, prefix, prefix_len, ms);
+  #unspill(msg, msg_len);
+  msg = #protect(msg, ms);
+  msg_len = #protect(msg_len, ms);
 
-  l = mref[0];
-  l = #protect(l, ms);
-  #spill(mref);
-  h, buf, total, ms = __sha512_absorb_prefix(h, buf, total, prefix, l, ms);
-  #unspill(mref);
-  mref = #protect_ptr(mref, ms);
-
-  m = mref[1];
-  m = #protect(m, ms);
-  l = mref[2];
-  l = #protect(l, ms);
-  h, buf, total, ms = _sha512_absorb_mem(h, buf, total, m, l, ms);
+  h, buf, total, ms = _sha512_absorb_mem(h, buf, total, msg, msg_len, ms);
 
   return h, buf, total, ms;
 }
@@ -613,14 +602,14 @@ inline fn __sha512_absorb_message(
  */
 #[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
          { ptr: public, val: secret } × { ptr: public, val: secret } ×
-         { ptr: public, val: transient } × msf →
+         transient × transient × transient × msf →
          { ptr: public, val: secret } × msf"]
 fn _prf_msg(
   reg mut ptr u8[SLH_N] r,
   reg const ptr u8[SLH_N] sk_prf,
   reg const ptr u8[SLH_N] opt_rand,
   reg const ptr u8[SLH_PREFIX_MAX] prefix,
-  reg const ptr u64[3] mref,
+  reg u64 prefix_len msg msg_len,
   reg u64 ms
 ) -> reg ptr u8[SLH_N], reg u64
 {
@@ -643,7 +632,7 @@ fn _prf_msg(
     k0[:u64 i] = t;
   }
 
-  #spill(r, opt_rand, prefix, mref);
+  #spill(r, opt_rand, prefix, prefix_len, msg, msg_len);
 
   #[inline]
   if (SHA2_WIDE == 0) {
@@ -657,10 +646,9 @@ fn _prf_msg(
       buf[:u64 i] = t;
     }
     total = 64 + SLH_N;
-    #unspill(prefix, mref);
+    #unspill(prefix, prefix_len, msg, msg_len);
     prefix = #protect_ptr(prefix, ms);
-    mref = #protect_ptr(mref, ms);
-    inner, buf, total, ms = __sha256_absorb_message(inner, buf, total, prefix, mref, ms);
+    inner, buf, total, ms = __sha256_absorb_message(inner, buf, total, prefix, prefix_len, msg, msg_len, ms);
     tag, inner, buf, ms = __hmac_sha256_finalize(tag, inner, buf, total, outer, ms);
     #unspill(r);
     r = #protect_ptr(r, ms);
@@ -679,10 +667,10 @@ fn _prf_msg(
       buf512[:u64 i] = t;
     }
     total = 128 + SLH_N;
-    #unspill(prefix, mref);
+    #unspill(prefix, prefix_len, msg, msg_len);
     prefix = #protect_ptr(prefix, ms);
-    mref = #protect_ptr(mref, ms);
-    inner512, buf512, total, ms = __sha512_absorb_message(inner512, buf512, total, prefix, mref, ms);
+    inner512, buf512, total, ms = __sha512_absorb_message(inner512, buf512, total, prefix,
+                                                          prefix_len, msg, msg_len, ms);
     tag512, inner512, buf512, ms = __hmac_sha512_finalize(tag512, inner512, buf512, total, outer512, ms);
     #unspill(r);
     r = #protect_ptr(r, ms);
@@ -703,14 +691,14 @@ fn _prf_msg(
  */
 #[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
          { ptr: public, val: secret } × { ptr: public, val: secret } ×
-         { ptr: public, val: transient } × msf →
+         transient × transient × transient × msf →
          { ptr: public, val: secret } × msf"]
 fn _h_msg(
   reg mut ptr u8[SLH_M] digest,
   reg const ptr u8[SLH_N] r,
   reg const ptr u8[2 * SLH_N] pk,
   reg const ptr u8[SLH_PREFIX_MAX] prefix,
-  reg const ptr u64[3] mref,
+  reg u64 prefix_len msg msg_len,
   reg u64 ms
 ) -> reg ptr u8[SLH_M], reg u64
 {
@@ -741,7 +729,7 @@ fn _h_msg(
     seed[:u64 SLH_N / 8 + i] = t;
   }
 
-  #spill(digest, prefix, mref);
+  #spill(digest, prefix, prefix_len, msg, msg_len);
 
   #[inline]
   if (SHA2_WIDE == 0) {
@@ -753,10 +741,9 @@ fn _h_msg(
       buf[:u64 i] = t;
     }
     total = 3 * SLH_N;
-    #unspill(prefix, mref);
+    #unspill(prefix, prefix_len, msg, msg_len);
     prefix = #protect_ptr(prefix, ms);
-    mref = #protect_ptr(mref, ms);
-    h, buf, total, ms = __sha256_absorb_message(h, buf, total, prefix, mref, ms);
+    h, buf, total, ms = __sha256_absorb_message(h, buf, total, prefix, prefix_len, msg, msg_len, ms);
     d256, h, buf, ms = _sha256_finalize(d256, h, buf, total, ms);
     for i = 0 to 4 {
       t = d256[:u64 i];
@@ -771,10 +758,10 @@ fn _h_msg(
       buf512[:u64 i] = t;
     }
     total = 3 * SLH_N;
-    #unspill(prefix, mref);
+    #unspill(prefix, prefix_len, msg, msg_len);
     prefix = #protect_ptr(prefix, ms);
-    mref = #protect_ptr(mref, ms);
-    h512, buf512, total, ms = __sha512_absorb_message(h512, buf512, total, prefix, mref, ms);
+    h512, buf512, total, ms = __sha512_absorb_message(h512, buf512, total, prefix,
+                                                      prefix_len, msg, msg_len, ms);
     d512, h512, buf512, ms = _sha512_finalize(d512, h512, buf512, total, ms);
     for i = 0 to 8 {
       t = d512[:u64 i];
