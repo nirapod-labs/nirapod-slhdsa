@@ -1,0 +1,9 @@
+{
+  "id": 38329391739,
+  "path": ".github/workflows/ci.yml",
+  "event": "pull_request",
+  "run_attempt": 1,
+  "conclusion": "failure",
+  "head_sha": "ba3ec58d64a7f09bd0621c002d86a484158ff0d3",
+  "head_branch": "ci/workflows"
+}

@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# .github/workflows/ci-retry.yml
+# ==============================
+#
+# Re-runs a run of ci.yml once when it failed only because GitHub never
+# gave a job a runner, or lost the runner while the job ran (hosted macOS
+# runners are scarce: a job can wait in the queue and be dropped with "The
+# job was not acquired by Runner of type hosted even after multiple
+# attempts"). A job with a failed step, a timeout, a cancellation by hand
+# or by a newer push, and any second attempt are never re-run.
+# tools/ci/retry.py classifies the jobs and states each class in the job
+# summary.
+#
+# A workflow_run workflow runs the file and code of the default branch,
+# never those of the run it judges: it checks out main, reads the run
+# through the API and starts the re-run. It holds the one token in this
+# repository that can start runs (actions: write), so it runs nothing of
+# the pull request. A re-run runs the jobs again, so it cannot make a
+# failing check pass.
+
+name: ci-retry
+
+on:  # zizmor: ignore[dangerous-triggers] runs main's code only; checks out nothing of the triggering run
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: ci-retry-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  retry:
+    name: retry
+    if: github.event.workflow_run.run_attempt == 1 && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      checks: read
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Classify the jobs and re-run those that lost their runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: python3 -I tools/ci/retry.py run "$RUN_ID"

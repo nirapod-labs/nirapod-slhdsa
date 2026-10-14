@@ -14,3 +14,8 @@ SPDX-License-Identifier = "CC-BY-4.0"
 path = ["tests/core/acvp-subset.txt"]
 SPDX-FileCopyrightText = "National Institute of Standards and Technology (ACVP-Server); not subject to copyright in the United States"
 SPDX-License-Identifier = "NIST-Software"
+
+[[annotations]]
+path = ["tools/ci/tests/fixtures/**"]
+SPDX-FileCopyrightText = "nirapod-slhdsa contributors"
+SPDX-License-Identifier = "Apache-2.0"

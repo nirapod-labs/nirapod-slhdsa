@@ -1,0 +1,10 @@
+[
+  {
+    "annotation_level": "failure",
+    "message": "Canceling since a higher priority waiting request for ci-21 exists"
+  },
+  {
+    "annotation_level": "failure",
+    "message": "The operation was canceled."
+  }
+]
