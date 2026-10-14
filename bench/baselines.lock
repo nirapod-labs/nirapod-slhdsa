@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Independent SLH-DSA implementations used as test oracles and performance
+# baselines. bench/baselines.py fetches exactly these revisions and refuses
+# anything else. None of them is built into this library.
+#
+# git <name> <url> <commit>
+#   The checkout must resolve to the commit.
+# archive <name> <url> <bytes> <sha256>
+#   A .tar.gz or .zip release; the download must match size and digest.
+#   For OpenSSL these are the digests published beside each release.
+# openpgp <name> <signature url> <primary key fingerprint> <keyring url>
+#   `baselines.py verify` checks the archive's detached signature and that
+#   the key that made it belongs to that primary key (OpenSSL's
+#   release-signing key; its signing subkey is
+#   C46ED3F2CBEFDA1FDAADA44264ED7B1DCCE71CB2).
+# sameas <name> <git url> <commit> <path>...
+#   `baselines.py verify` checks that these files of the archive are
+#   byte-identical to the same paths at that commit.
+#
+# slhdsa-c: PQ Code Package, main branch.
+# sphincsplus: the SPHINCS+ team's code, branch bas/fips205, which tracks
+#   FIPS 205 (context strings, HashSLH-DSA framing, deterministic addrnd =
+#   PK.seed). The master branch still implements round-3 SPHINCS+ and is not
+#   a FIPS 205 baseline.
+# openssl-3.6.5: latest 3.x release; openssl-4.0.3: latest stable release.
+#   Both implement SLH-DSA itself in C without SIMD, over OpenSSL's own SHA-2
+#   and Keccak code (assembly where the CPU has it); 4.0 calls the SHA-2
+#   block functions directly instead of through EVP, so both are measured.
+# wolfssl-5.9.4: latest release with SLH-DSA (wc_slhdsa.c), as the
+#   configured source archive wolfSSL publishes (no detached signature is
+#   published beside it); the sameas line ties its SLH-DSA and hash sources
+#   to git tag v5.9.4-stable. GPL-3.0: built and run as a baseline only,
+#   never vendored or distributed.
+# boringssl: main branch; implements SLH-DSA-SHA2-128s and SLH-DSA-SHAKE-256f
+#   only. Built with CMake (must be on PATH), crypto library only.
+
+git slhdsa-c https://github.com/pq-code-package/slhdsa-c.git 174c02e42257f95c210963272877c49dbb50070f
+git boringssl https://boringssl.googlesource.com/boringssl 5b83e5d1abf0ae0033ae52ab579d906b67633b2c
+git sphincsplus https://github.com/sphincs/sphincsplus.git ef36d20ff3588324ad69f844507b8217f008f35a
+archive openssl-3.6.5 https://github.com/openssl/openssl/releases/download/openssl-3.6.5/openssl-3.6.5.tar.gz 55078161 a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98
+archive openssl-4.0.3 https://github.com/openssl/openssl/releases/download/openssl-4.0.3/openssl-4.0.3.tar.gz 55235667 325b5c806167c13b40b1ffeadfe0248197c00eccc4cf123ec1e28d2d2fd216d9
+archive wolfssl-5.9.4 https://www.wolfssl.com/wolfssl-5.9.4.zip 36334939 9cd0d69d208d025b16836c177658cc0deebc2a85c4b60898c9bc546bc6cbdf18
+openpgp openssl-3.6.5 https://github.com/openssl/openssl/releases/download/openssl-3.6.5/openssl-3.6.5.tar.gz.asc B146647E45A7B33947AB226B2A2C87D161692D40 https://openssl-library.org/source/pubkeys.asc
+openpgp openssl-4.0.3 https://github.com/openssl/openssl/releases/download/openssl-4.0.3/openssl-4.0.3.tar.gz.asc B146647E45A7B33947AB226B2A2C87D161692D40 https://openssl-library.org/source/pubkeys.asc
+sameas wolfssl-5.9.4 https://github.com/wolfSSL/wolfssl.git 3c5eead44904df64e6a5a1f4ebdce377d35a849a wolfcrypt/src/wc_slhdsa.c wolfssl/wolfcrypt/wc_slhdsa.h wolfcrypt/src/sha3.c wolfcrypt/src/sha256.c wolfcrypt/src/sha512.c
