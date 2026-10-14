@@ -1,0 +1,199 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha512_compress.jinc (AArch64, SHA-512 instructions)
+ * ====================================================
+ *
+ * The SHA-512 compression function (FIPS 180-4 section 6.4.2) on the A64
+ * SHA-512 instructions (FEAT_SHA512), with the entry points and contracts
+ * of the shared scalar kernel (sha2/sha512_compress.jinc):
+ *
+ *     _sha512_compress(h, block, ms)
+ *     _sha512_compress_blocks(h, p, n, ms)
+ *
+ * State. Pairs of working variables share a vector, lane 0 lowest, written
+ * [lane 0; lane 1]:
+ *
+ *     [a; b]  [c; d]  [e; f]  [g; h]
+ *
+ * which is h[0:2] .. h[6:2] loaded as they are. A fifth vector receives
+ * each new [e; f].
+ *
+ * Rounds, two at a time. For rounds t and t + 1, with k0 = K_t + W_t and
+ * k1 = K_t+1 + W_t+1:
+ *
+ *     x  = [g + k1; h + k0]
+ *     x  = SHA512H(x, [f; g], [d; e])        the two T1 + Σ1 + Ch sums
+ *     ef = [c; d] + x                         e and f two rounds later
+ *     ab = SHA512H2(x, [c; d], [a; b])        a and b two rounds later
+ *
+ * The operand roles are those of the SHA512H and SHA512H2 pseudocode in
+ * the Arm architecture manual: SHA512H takes the two W + K sums already
+ * added to [g; h] in swapped order, then [f; g] and [d; e]; SHA512H2 takes
+ * that result, [c; d] and [a; b]. The NIST vectors in tests/hash check
+ * this packing end to end.
+ *
+ * [f; g] and [d; e] straddle two state vectors and are formed with EXT:
+ * #VEXT(lo, hi, 8) takes bytes 8 to 23 of the pair hi:lo, which is
+ * [lo lane 1; hi lane 0], so [f; g] = #VEXT([e; f], [g; h], 8). With
+ * lo = hi it swaps the two lanes, which turns the W + K pair into
+ * [k1; k0].
+ * The vector that held [g; h] receives the new [a; b], the old [a; b]
+ * becomes [c; d], and so on: after each pair of rounds the five vectors
+ * change roles by the cycle (i0, i1, i2, i3, i4) -> (i3, i0, i4, i2, i1),
+ * which returns to the start after five pairs. 40 pairs are eight cycles,
+ * so the result is in the vectors it started in.
+ *
+ * Schedule. m[j] holds two consecutive words. Pair g reads m[g mod 8] and,
+ * for g < 32, then replaces it by the pair sixteen rounds later (section
+ * 6.4.2 step 1; pairs 32 to 39 are a second loop without this step):
+ *
+ *     m[j] = SHA512SU1(SHA512SU0(m[j], m[j + 1]), m[j + 7],
+ *                      [W_t+9; W_t+10])
+ *
+ * with indices mod 8 and [W_t+9; W_t+10] = EXT(m[j + 4], m[j + 5], 8).
+ * Message words are big-endian in the block (section 3.1); REV64 swaps the
+ * bytes of each word after a 16-byte load.
+ *
+ * Required CPU feature: FEAT_SHA512 (and Advanced SIMD). The caller's
+ * dispatch must establish it; this file does not check.
+ *
+ * Security: h and the block are secret. The rounds are straight-line code;
+ * the only branch is the loop of the blocks entry point on its public
+ * block count, which updates ms; every address is fixed at compile time or
+ * is the public block pointer. Residue: nothing secret is stored to the
+ * stack; the vector registers that held the state and schedule are not
+ * cleared here (the C layer clears them after each export that reads the
+ * secret key, capi/clear.c).
+ */
+
+from Hash require "sha2/sha512_k.jinc"
+
+/*
+ * One block: the 80 rounds and the feed-forward on s[0..3]. m holds the
+ * block's sixteen message words, already in native order, two per vector.
+ */
+inline fn __sha512_block_a64(
+  reg u128[5] s,
+  reg u128[8] m,
+  reg const ptr u64[80] k
+) -> reg u128[5], reg u128[8]
+{
+  reg u128[4] s0;
+  reg u128 wk x y z;
+  inline int g j i0 i1 i2 i3 i4 t;
+
+  for j = 0 to 4 {
+    s0[j] = s[j];
+  }
+
+  i0 = 0; i1 = 1; i2 = 2; i3 = 3; i4 = 4;
+  for g = 0 to 32 {
+    j = g % 8;
+    wk = k[:u128 g];
+    wk = #VADD_2u64(wk, m[j]);
+    wk = #VEXT(wk, wk, 8);
+    x = #VEXT(s[i2], s[i3], 8);
+    y = #VEXT(s[i1], s[i2], 8);
+    s[i3] = #VADD_2u64(s[i3], wk);
+    z = #VEXT(m[(j + 4) % 8], m[(j + 5) % 8], 8);
+    m[j] = #SHA512SU0(m[j], m[(j + 1) % 8]);
+    m[j] = #SHA512SU1(m[j], m[(j + 7) % 8], z);
+    s[i3] = #SHA512H(s[i3], x, y);
+    s[i4] = #VADD_2u64(s[i1], s[i3]);
+    s[i3] = #SHA512H2(s[i3], s[i1], s[i0]);
+
+    t = i0; i0 = i3; i3 = i2; i2 = i4; i4 = i1; i1 = t;
+  }
+  for g = 32 to 40 {
+    j = g % 8;
+    wk = k[:u128 g];
+    wk = #VADD_2u64(wk, m[j]);
+    wk = #VEXT(wk, wk, 8);
+    x = #VEXT(s[i2], s[i3], 8);
+    y = #VEXT(s[i1], s[i2], 8);
+    s[i3] = #VADD_2u64(s[i3], wk);
+    s[i3] = #SHA512H(s[i3], x, y);
+    s[i4] = #VADD_2u64(s[i1], s[i3]);
+    s[i3] = #SHA512H2(s[i3], s[i1], s[i0]);
+
+    t = i0; i0 = i3; i3 = i2; i2 = i4; i4 = i1; i1 = t;
+  }
+
+  for j = 0 to 4 {
+    s[j] = #VADD_2u64(s[j], s0[j]);
+  }
+
+  return s, m;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha512_compress(
+  reg mut ptr u64[8] h,
+  reg const ptr u8[128] block,
+  reg u64 ms
+) -> reg ptr u64[8], reg u64
+{
+  reg u128[5] s;
+  reg u128[8] m;
+  reg ptr u64[80] k;
+  inline int j;
+
+  for j = 0 to 4 {
+    s[j] = h[:u128 j];
+  }
+  for j = 0 to 8 {
+    m[j] = block[:u128 j];
+    m[j] = #VREV64_16u8(m[j]);
+  }
+  k = SHA512_K;
+  s, m = __sha512_block_a64(s, m, k);
+  for j = 0 to 4 {
+    h[:u128 j] = s[j];
+  }
+
+  return h, ms;
+}
+
+/*
+ * n consecutive blocks from caller memory at p, with the contract of the
+ * shared kernel's _sha512_compress_blocks. The state stays in vector
+ * registers from block to block and the loop calls no function, so p and
+ * n are never reloaded.
+ */
+#[sct = "{ ptr: public, val: secret } × public × public × msf → { ptr: public, val: secret } × msf"]
+fn _sha512_compress_blocks(
+  reg mut ptr u64[8] h,
+  reg u64 p n,
+  reg u64 ms
+) -> reg ptr u64[8], reg u64
+{
+  reg u128[5] s;
+  reg u128[8] m;
+  reg ptr u64[80] k;
+  reg bool more;
+  inline int j;
+
+  for j = 0 to 4 {
+    s[j] = h[:u128 j];
+  }
+  k = SHA512_K;
+  while { more = n != 0; } (more) {
+    ms = #update_msf(more, ms);
+    for j = 0 to 8 {
+      m[j] = [:u128 p + 16 * j];
+      m[j] = #VREV64_16u8(m[j]);
+    }
+    s, m = __sha512_block_a64(s, m, k);
+    p += 128;
+    n -= 1;
+  }
+  ms = #update_msf(!more, ms);
+  for j = 0 to 4 {
+    h[:u128 j] = s[j];
+  }
+
+  return h, ms;
+}

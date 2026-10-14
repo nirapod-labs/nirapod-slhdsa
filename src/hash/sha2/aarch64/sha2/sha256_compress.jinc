@@ -1,0 +1,160 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * sha256_compress.jinc (AArch64, SHA-256 instructions)
+ * ====================================================
+ *
+ * The SHA-256 compression function (FIPS 180-4 section 6.2.2) on the A64
+ * SHA-256 instructions (FEAT_SHA256), with the entry points and contracts
+ * of the shared scalar kernel (sha2/sha256_compress.jinc):
+ *
+ *     _sha256_compress(h, block, ms)
+ *     _sha256_compress_blocks(h, p, n, ms)
+ *
+ * State. The chaining value sits in two vectors, lane 0 lowest:
+ *
+ *     abcd = [H_0; H_1; H_2; H_3]      efgh = [H_4; H_5; H_6; H_7]
+ *
+ * which is h[0:4] and h[4:4] loaded as they are.
+ *
+ * Rounds, four at a time. For rounds 4g .. 4g + 3, with wk the four words
+ * W_t + K_t of those rounds,
+ *
+ *     abcd' = SHA256H(abcd, efgh, wk)
+ *     efgh' = SHA256H2(efgh, abcd, wk)
+ *
+ * both reading the abcd of before the group, so it is copied once. These
+ * are the operand roles of the SHA256H and SHA256H2 pseudocode in the Arm
+ * architecture manual; the NIST vectors in tests/hash check them end to
+ * end.
+ *
+ * Schedule. m[j] holds four consecutive words; group g reads m[g mod 4]
+ * and, for g < 12, then replaces it by the words sixteen rounds later
+ * (groups 12 to 15 are a second loop without this step):
+ *
+ *     W_t .. W_t+3 = SHA256SU1(SHA256SU0(W_t-16 .. W_t-13, W_t-12 .. W_t-9),
+ *                              W_t-8 .. W_t-5, W_t-4 .. W_t-1)
+ *
+ * the section 6.2.2 step 1 recurrence four words at a time. Message words
+ * are big-endian in the block (section 3.1); REV32 swaps the bytes of each
+ * word after a 16-byte load.
+ *
+ * Required CPU feature: FEAT_SHA256 (and Advanced SIMD). The caller's
+ * dispatch must establish it; this file does not check.
+ *
+ * Security: h and the block are secret. The rounds are straight-line code;
+ * the only branch is the loop of the blocks entry point on its public
+ * block count, which updates ms; every address is fixed at compile time or
+ * is the public block pointer. Residue: nothing secret is stored to the
+ * stack; the vector registers that held the state and schedule are not
+ * cleared here (the C layer clears them after each export that reads the
+ * secret key, capi/clear.c).
+ */
+
+from Hash require "sha2/sha256_k.jinc"
+
+/*
+ * One block: the 64 rounds and the feed-forward on (abcd, efgh). m holds
+ * the block's sixteen message words, already in native order.
+ */
+inline fn __sha256_block_a64(
+  reg u128 abcd efgh,
+  reg u128[4] m,
+  reg const ptr u32[64] k
+) -> reg u128, reg u128, reg u128[4]
+{
+  reg u128 abcd0 efgh0 wk prev;
+  inline int g;
+
+  abcd0 = abcd;
+  efgh0 = efgh;
+
+  for g = 0 to 12 {
+    wk = k[:u128 g];
+    wk = #VADD_4u32(wk, m[g % 4]);
+    m[g % 4] = #SHA256SU0(m[g % 4], m[(g + 1) % 4]);
+    m[g % 4] = #SHA256SU1(m[g % 4], m[(g + 2) % 4], m[(g + 3) % 4]);
+    prev = abcd;
+    abcd = #SHA256H(abcd, efgh, wk);
+    efgh = #SHA256H2(efgh, prev, wk);
+  }
+  for g = 12 to 16 {
+    wk = k[:u128 g];
+    wk = #VADD_4u32(wk, m[g % 4]);
+    prev = abcd;
+    abcd = #SHA256H(abcd, efgh, wk);
+    efgh = #SHA256H2(efgh, prev, wk);
+  }
+
+  abcd = #VADD_4u32(abcd, abcd0);
+  efgh = #VADD_4u32(efgh, efgh0);
+
+  return abcd, efgh, m;
+}
+
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _sha256_compress(
+  reg mut ptr u32[8] h,
+  reg const ptr u8[64] block,
+  reg u64 ms
+) -> reg ptr u32[8], reg u64
+{
+  reg u128 abcd efgh;
+  reg u128[4] m;
+  reg ptr u32[64] k;
+  inline int j;
+
+  abcd = h[:u128 0];
+  efgh = h[:u128 1];
+  for j = 0 to 4 {
+    m[j] = block[:u128 j];
+    m[j] = #VREV32_16u8(m[j]);
+  }
+  k = SHA256_K;
+  abcd, efgh, m = __sha256_block_a64(abcd, efgh, m, k);
+  h[:u128 0] = abcd;
+  h[:u128 1] = efgh;
+
+  return h, ms;
+}
+
+/*
+ * n consecutive blocks from caller memory at p, with the contract of the
+ * shared kernel's _sha256_compress_blocks. The state stays in vector
+ * registers from block to block and the loop calls no function, so p and
+ * n are never reloaded.
+ */
+#[sct = "{ ptr: public, val: secret } × public × public × msf → { ptr: public, val: secret } × msf"]
+fn _sha256_compress_blocks(
+  reg mut ptr u32[8] h,
+  reg u64 p n,
+  reg u64 ms
+) -> reg ptr u32[8], reg u64
+{
+  reg u128 abcd efgh;
+  reg u128[4] m;
+  reg ptr u32[64] k;
+  reg bool more;
+  inline int j;
+
+  abcd = h[:u128 0];
+  efgh = h[:u128 1];
+  k = SHA256_K;
+  while { more = n != 0; } (more) {
+    ms = #update_msf(more, ms);
+    for j = 0 to 4 {
+      m[j] = [:u128 p + 16 * j];
+      m[j] = #VREV32_16u8(m[j]);
+    }
+    abcd, efgh, m = __sha256_block_a64(abcd, efgh, m, k);
+    p += 64;
+    n -= 1;
+  }
+  ms = #update_msf(!more, ms);
+  h[:u128 0] = abcd;
+  h[:u128 1] = efgh;
+
+  return h, ms;
+}

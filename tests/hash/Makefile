@@ -98,6 +98,19 @@ endif
 CFLAGS ?= -O2 -g
 CFLAGS += -std=c11 -Wall -Wextra -Werror
 
+# The Linux assemblers accept the mnemonics of the A64 crypto-extension
+# kernels (sha2/aarch64/sha2, keccak/aarch64/sha3) only with the extensions
+# enabled. In GCC and LLVM extension names, +sha2 enables the SHA-256
+# instructions (FEAT_SHA256) and +sha3 both the SHA-512 (FEAT_SHA512) and
+# the SHA-3 (FEAT_SHA3) instructions. The flag is added only for a build that
+# selects one of those kernels, so the other builds run on any AArch64 CPU.
+A64_EXT_DIRS := aarch64/sha2 aarch64/sha3
+ifeq ($(ARCH)-$(SYSTEM),aarch64-linux)
+ifneq ($(filter $(A64_EXT_DIRS),$(KECCAK_VARIANT) $(KECCAKX_VARIANT) $(SHA2_VARIANT) $(SHA2X_VARIANT)),)
+CFLAGS += -march=armv8.2-a+sha2+sha3
+endif
+endif
+
 DIFF_SEED  ?= 20261012
 DIFF_ITERS ?= 2000
 
@@ -167,7 +180,7 @@ negative-control-asm:
 
 negative-control-prebuilt:
 	@test -d $(VECTORS) || { echo "missing $(VECTORS): run 'make vectors'"; exit 1; }
-	CC=$(CC) CRYPTO_LIBS="$(CRYPTO_LIBS)" NEG_FAMILIES="$(NEG_FAMILIES)" \
+	CC=$(CC) CFLAGS="$(CFLAGS)" CRYPTO_LIBS="$(CRYPTO_LIBS)" NEG_FAMILIES="$(NEG_FAMILIES)" \
 	$(TESTS)/tools/negative_control.sh run $(NEG_WORK) $(CSRC) $(VECTORS)
 
 negative-control: negative-control-asm

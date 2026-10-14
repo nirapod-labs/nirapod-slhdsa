@@ -7,12 +7,14 @@
 # Hash kernel sets. A kernel set is one choice of the kernel roots of
 # tests/hash/Makefile. Each architecture is tested with the portable
 # scalar kernels and, once it has kernels of its own, a second time with
-# all of them selected together. Between them, the CAVP and differential
-# tests run every kernel the architecture has; the source check fails when
-# a variant directory exists that no set selects, or a set selects one that
-# does not exist (ci/components.py). `cpu` lists the CPU features the
-# set needs on the runner (ci/cpu-has.sh): a runner without them
-# fails the check, it is never reduced to fewer kernels.
+# all of them selected together. AArch64 has a third set, its kernels on
+# the crypto extensions, which not every AArch64 CPU has (the second set
+# keeps to the base instruction set). Between them, the CAVP and
+# differential tests run every kernel the architecture has; the source
+# check fails when a variant directory exists that no set selects, or a
+# set selects one that does not exist (ci/components.py). `cpu` lists the
+# CPU features the set needs on the runner (ci/cpu-has.sh): a runner
+# without them fails the check, it is never reduced to fewer kernels.
 #
 # Read by test-hash and analysis-hash (ci/checks.toml).
 
@@ -30,3 +32,10 @@ cpu = ["avx", "avx2", "sha_ni"]
 arch = ["aarch64"]
 vars = ["KECCAK_VARIANT=aarch64/scalar", "SHA2_VARIANT=aarch64/scalar"]
 cpu = []
+
+# FEAT_SHA512 implies the SHA-256 instructions (ID_AA64ISAR0_EL1.SHA2 =
+# 0b0010), so `sha512` stands for both.
+[sets.aarch64-crypto]
+arch = ["aarch64"]
+vars = ["SHA2_VARIANT=aarch64/sha2"]
+cpu = ["sha512"]

@@ -24,7 +24,7 @@
 #     negative_control.sh build <hash source dir> <work dir> <test unit .jazz>
 #         env: JASMINC JARCH SYSTEM ARCH KECCAK_DIR KECCAKX_DIR SHA2_DIR SHA2X_DIR
 #     negative_control.sh run <work dir> <harness .c> <vectors dir>
-#         env: CC CRYPTO_LIBS NEG_FAMILIES
+#         env: CC CFLAGS CRYPTO_LIBS NEG_FAMILIES
 #
 # *_DIR name each kernel root relative to the hash source dir (for example
 # keccak or sha2/x86_64/shani). NEG_FAMILIES is a space-separated list of
@@ -91,7 +91,7 @@ run() {
   for d in "$work" "$work/store"; do
     test -f "$d/hash_test.s" || { echo "negative_control: no mutated build in $d" >&2; exit 1; }
     # shellcheck disable=SC2086
-    $CC -O2 -o "$d/hash_test" "$harness" "$d/hash_test.s" $CRYPTO_LIBS
+    $CC ${CFLAGS:--O2} -o "$d/hash_test" "$harness" "$d/hash_test.s" $CRYPTO_LIBS
   done
 
   "$work/hash_test" cavp "$vectors" > "$work/run.log" 2>&1 || true
