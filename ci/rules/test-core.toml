@@ -12,3 +12,18 @@
 [[transcript.nonblank]]
 what = "core transcript"
 minimum = 84
+
+# The fills of the SLH-DSA core that tests/core/fill-check.py rewrites; the
+# script fails on any other count itself, this holds the number it reports.
+[fill-check]
+[[fill-check.line]]
+what = "fill sites rewritten with 0xa5 bytes"
+pattern = '^fill-check: sites=(\d+)$'
+exactly = 4
+
+# The fill check's controls (linux-aarch64 only): every site detected.
+[fill-controls]
+[[fill-controls.line]]
+what = "fill sites whose control the fill check detected"
+pattern = '^fill-check controls: detected=(\d+) of 4$'
+exactly = 4

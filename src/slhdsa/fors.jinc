@@ -327,12 +327,24 @@ fn _fors_pk_from_sig(
   stack u64[4] node_adrs roots_adrs;
   reg ptr u8[SLH_K * SLH_N] dst;
   reg u32 t idx g z bit;
-  reg u64 sig_off auth_off root_off ti;
+  reg u64 sig_off auth_off root_off ti fill;
   reg bool more climb odd;
+  inline int k;
 
   node_adrs = __adrs_copy(node_adrs, adrs);
 
   #spill(pk_fors, sig, indices, ctx, adrs);
+
+  /*
+   * Safety-checker workaround, as for pk in _wots_leaf_x4 (wots.jinc):
+   * the loop writes roots at run-time offsets, root t at t n, before
+   * _thash_t_k reads all k of them. The fill check covers this site too.
+   */
+
+  fill = 0;
+  for k = 0 to SLH_K * SLH_N / 8 {
+    roots[:u64 k] = fill;
+  }
 
   t = 0;
   while { more = t < SLH_K; } (more) {

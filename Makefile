@@ -14,6 +14,13 @@
 #                     ACVP known answers, the core, negative, stack, register
 #                     and fault tests on this host; writes
 #                     build/<target>/transcript-core.txt
+#     make fill-check build the library once more with the safety-checker
+#                     fills of the core written as 0xa5 bytes instead of
+#                     zeros, and run the ACVP known answers and the core
+#                     tests on it (tests/core/fill-check.py)
+#     make fill-check-controls
+#                     one build per fill site, made to depend on the fill
+#                     value there; each must fail the known answers
 #     make checker-repro
 #                     run JASMIN_CHECKSAFETY, which must be the checker of
 #                     the pinned toolchain, on the reproducers of the
@@ -448,6 +455,30 @@ checker-repro:
 	@test -n "$(JASMIN_CHECKSAFETY)" || { echo "make checker-repro needs JASMIN_CHECKSAFETY," \
 	  "the jasmin-checksafety that toolchain/build.sh builds from the pin" >&2; exit 1; }
 	$(PYTHON) -I $(TESTS_DIR)/core/checker/check.py $(JASMIN_CHECKSAFETY)
+
+# The fill check (tests/core/fill-check.py): the same library from a copy
+# of the Jasmin sources whose fills hold 0xa5 bytes, in its own build
+# directory, with the known answers and the core tests run on it; and its
+# controls, one build per fill site.
+
+FILL_DIR := $(BUILD)/fill-check
+FILL_JOBS ?= 1
+
+.PHONY: fill-check fill-check-run fill-check-controls
+
+fill-check:
+	@test -n "$(JASMINC)" || { echo "make fill-check needs JASMINC" >&2; exit 1; }
+	$(PYTHON) -I $(TESTS_DIR)/core/fill-check.py prepare $(JASMIN_SRC) $(FILL_DIR)/src
+	$(MAKE) --no-print-directory BUILD=$(FILL_DIR)/build JASMIN_SRC=$(FILL_DIR)/src fill-check-run
+
+fill-check-run: $(OUT)/tests/test_acvp $(OUT)/tests/test_core
+	$(OUT)/tests/test_acvp $(ACVP_SUBSET)
+	$(OUT)/tests/test_core $(TEST_CORE_FLAGS)
+
+fill-check-controls:
+	@test -n "$(JASMINC)" || { echo "make fill-check-controls needs JASMINC" >&2; exit 1; }
+	FILL_JOBS=$(FILL_JOBS) $(PYTHON) -I $(TESTS_DIR)/core/fill-check.py controls $(JASMIN_SRC) $(BUILD)/fill-controls \
+	  $(TARGET) $(abspath $(ACVP_SUBSET))
 
 # --------------------------------------------------------------------
 # Entry points

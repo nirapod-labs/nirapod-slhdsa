@@ -75,12 +75,26 @@ fn _xmss_treehash(
   stack u8[SLH_N] node;
   stack u64[4] tree_adrs;
   reg u32 i kp li ai tg d;
-  reg u64 lane four t;
+  reg u64 lane four t fill;
   reg bool more found;
   inline int k w;
 
   tree_adrs = __adrs_copy(tree_adrs, adrs);
   tree_adrs = __adrs_set_type_and_clear(tree_adrs, ADRS_TREE);
+
+  /*
+   * Safety-checker workaround, as for pk in _wots_leaf_x4 (wots.jinc):
+   * _treehash_fold parks nodes at run-time slots, so the checker reports
+   * is_init where the fold reads a parked sibling and where the root is
+   * copied out. By the fold invariant (treehash.jinc) each of those reads
+   * is of a slot the fold has written. The fill check covers this site
+   * too.
+   */
+
+  fill = 0;
+  for k = 0 to SLH_FOLD_SLOTS * SLH_N / 8 {
+    nodes[:u64 k] = fill;
+  }
 
   /* Values needed after a call wait in spill slots. */
   #spill(root, sig, sk_seed, ctx, adrs, target, steps);

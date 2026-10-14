@@ -170,7 +170,7 @@ fn _wots_leaf_x4(
   reg ptr u8[4 * SLH_LEN * SLH_N] dst;
   reg ptr u8[4 * SLH_N] cp;
   reg u32 i j kp split;
-  reg u64 off src t;
+  reg u64 off src t fill;
   reg bool more step take hit fwd;
   inline int k w;
 
@@ -196,6 +196,26 @@ fn _wots_leaf_x4(
   }
 
   #spill(leaves, sig, sk_seed, ctx, steps, lane);
+
+  /*
+   * Safety-checker workaround, not part of Algorithm 6. The chain loop
+   * below writes pk at run-time offsets, which the jasmin-checksafety of
+   * the pinned toolchain (toolchain/jasmin/PIN) does not count as
+   * initialising, so it reports is_init where _thash_t_len_x4 reads pk.
+   * Writing pk at constant indices first removes that alarm; the shape is
+   * reproduced by fill_plain and fill_first in
+   * tests/core/checker/workarounds.jazz (`make checker-repro`). The loop
+   * still writes every byte of pk before the compression reads it (the
+   * invariant below). `make fill-check` builds the library with 0xa5 bytes
+   * here instead of zeros and requires the known answers to pass. A fill
+   * always stores the register `fill`, set to zero just before, the one
+   * form tests/core/fill-check.py rewrites and counts.
+   */
+
+  fill = 0;
+  for k = 0 to 4 * SLH_LEN * SLH_N / 8 {
+    pk[:u64 k] = fill;
+  }
 
   /*
    * Invariant: pk holds, for each key pair k, the chain ends pk_0 ..
@@ -370,8 +390,9 @@ fn _wots_pk_from_sig(
   reg ptr u8[SLH_WOTS_SIG_BYTES] dst;
   reg ptr u8[SLH_LEN] dp;
   reg u32 i start steps;
-  reg u64 off;
+  reg u64 off fill;
   reg bool more;
+  inline int k;
 
   digits = __wots_digits(digits, msg);
 
@@ -412,6 +433,17 @@ fn _wots_pk_from_sig(
    */
 
   #spill(pk, sig, ctx);
+
+  /*
+   * Safety-checker workaround, as for pk in _wots_leaf_x4: the loop
+   * writes tmp at run-time offsets, chain i at i n, before _thash_t_len
+   * reads all of it. The fill check covers this site too.
+   */
+
+  fill = 0;
+  for k = 0 to SLH_WOTS_SIG_BYTES / 8 {
+    tmp[:u64 k] = fill;
+  }
 
   i = 0;
   while { more = i < SLH_LEN; } (more) {
