@@ -15,7 +15,8 @@ implementation.
 theorems of the specification for all twelve parameter sets are written and
 check. The implementation theorems so far cover the one-block entry points
 `_sha256_compress` and `_sha512_compress` of the portable SHA-256 and
-SHA-512 kernels, and their round functions (below). The kernels' other
+SHA-512 kernels, their round functions, and the hash address (ADRS)
+setters of the SLH-DSA core (below). The kernels' other
 entry points, `_sha256_compress_blocks` and `_sha512_compress_blocks`, which
 the streaming hash uses for every whole block of input in memory, and
 `_sha256_compress_one` and `_sha512_compress_one`, have no proof yet.
@@ -220,7 +221,17 @@ Theorems so far, each checked on `x86_64/portable` and
 - `sha512_rounds_correct`, `sha512_compress_correct`,
   `sha512_compress_total` (`correctness/hash/SHA512_Compress.ec`): the same
   three statements for the SHA-512 kernel, section 6.4.2, on its 128-byte
-  block.
+  block;
+- the eleven `adrs_*_correct` theorems (`correctness/slhdsa/ADRS.ec`):
+  every procedure of `src/slhdsa/address.jinc` (zeroing, the setters of
+  FIPS 205 Table 1, the key pair copy and the address copy) returns the
+  32-byte address the specification operator of
+  `spec/slhdsa/FIPS205_Address.ec` gives, read as the bytes of the array,
+  for every initial address and argument (setTypeAndClear for a type
+  below 256; FIPS 205 uses 0 to 6). They are total-correctness statements:
+  the procedure terminates with that result with probability 1. The
+  address code is the same for all twelve parameter sets, so they hold
+  for each.
 
 The `_correct` theorems are partial-correctness (Hoare) statements about
 the extracted model: when the procedure returns, its result is the
@@ -229,6 +240,10 @@ specified value. Every loop of the kernels runs over a constant range, so
 state (`sha256_compress_ll`, `sha512_compress_ll`), and the `_total`
 theorems combine the two: the procedure returns, with the specified result,
 with probability 1. Memory safety is a separate obligation.
+
+The address theorems are about the address procedures themselves. That
+the rest of the core passes them the values FIPS 205 prescribes is part of
+the proofs of the algorithms that call them, which do not exist yet.
 
 Not proven yet: the memory entry points `_sha256_compress_one`,
 `_sha256_compress_blocks`, `_sha512_compress_one` and

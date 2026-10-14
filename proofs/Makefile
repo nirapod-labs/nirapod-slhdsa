@@ -172,6 +172,14 @@ THEOREMS := \
   SHA512_Compress.sha512_rounds_correct SHA512_Compress.sha512_compress_correct \
   SHA512_Compress.sha512_compress_total
 
+# The address setters of the SLH-DSA core against FIPS 205 Table 1.
+ADRS_THEOREMS := adrs_zero_correct adrs_set_layer_correct adrs_set_tree_correct \
+                 adrs_set_type_and_clear_correct adrs_set_keypair_correct \
+                 adrs_copy_keypair_correct adrs_set_chain_correct \
+                 adrs_set_tree_height_correct adrs_set_hash_correct \
+                 adrs_set_tree_index_correct adrs_copy_correct
+THEOREMS += $(foreach t,$(ADRS_THEOREMS),ADRS.$(t))
+
 # EUF-CMA of the specification, per parameter set: the deterministic and
 # hedged theorems on the spec's own SLH_DSA module (_spec), the same bounds
 # for the internal scheme behind the framing, and the game equalities that

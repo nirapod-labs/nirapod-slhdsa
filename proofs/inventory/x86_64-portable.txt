@@ -1729,6 +1729,103 @@ lemma sha512_compress_total:
                   (BitEncoding.BitChunking.chunk 8 (BArray128.to_list blk)))] = (
     Real.(%r) 1).
 
+(* ADRS.adrs_zero_correct *)
+lemma adrs_zero_correct:
+  forall (a0 : BArray32.t),
+    phoare[ AddressExtracted.M.__adrs_zero :
+             arg = a0 ==> ADRS.bytes_of res = FIPS205_Encoding.toByte 0 32] = (
+    Real.(%r) 1).
+
+(* ADRS.adrs_set_layer_correct *)
+lemma adrs_set_layer_correct:
+  forall (a0 : BArray32.t) (l0 : JWord.W32.t),
+    phoare[ AddressExtracted.M.__adrs_set_layer :
+             arg = (a0, l0) ==>
+             ADRS.bytes_of res =
+             FIPS205_Address.setLayerAddress (ADRS.bytes_of a0)
+               (JWord.W32.to_uint l0)] = (Real.(%r) 1).
+
+(* ADRS.adrs_set_tree_correct *)
+lemma adrs_set_tree_correct:
+  forall (a0 : BArray32.t) (t0 : JWord.W64.t),
+    phoare[ AddressExtracted.M.__adrs_set_tree :
+             arg = (a0, t0) ==>
+             ADRS.bytes_of res =
+             FIPS205_Address.setTreeAddress (ADRS.bytes_of a0)
+               (JWord.W64.to_uint t0)] = (Real.(%r) 1).
+
+(* ADRS.adrs_set_type_and_clear_correct *)
+lemma adrs_set_type_and_clear_correct:
+  forall (a0 : BArray32.t) (y0 : int),
+    0 Int.(<=) y0 Int.(<) 256 =>
+    phoare[ AddressExtracted.M.__adrs_set_type_and_clear :
+             arg = (a0, y0) ==>
+             ADRS.bytes_of res =
+             FIPS205_Address.setTypeAndClear (ADRS.bytes_of a0) y0] = (
+    Real.(%r) 1).
+
+(* ADRS.adrs_set_keypair_correct *)
+lemma adrs_set_keypair_correct:
+  forall (a0 : BArray32.t) (i0 : JWord.W32.t),
+    phoare[ AddressExtracted.M.__adrs_set_keypair :
+             arg = (a0, i0) ==>
+             ADRS.bytes_of res =
+             FIPS205_Address.setKeyPairAddress (ADRS.bytes_of a0)
+               (JWord.W32.to_uint i0)] = (Real.(%r) 1).
+
+(* ADRS.adrs_copy_keypair_correct *)
+lemma adrs_copy_keypair_correct:
+  forall (d0 s0 : BArray32.t),
+    phoare[ AddressExtracted.M.__adrs_copy_keypair :
+             arg = (d0, s0) ==>
+             ADRS.bytes_of res =
+             FIPS205_Address.setKeyPairAddress (ADRS.bytes_of d0)
+               (FIPS205_Address.getKeyPairAddress (ADRS.bytes_of s0))] = (
+    Real.(%r) 1).
+
+(* ADRS.adrs_set_chain_correct *)
+lemma adrs_set_chain_correct:
+  forall (a0 : BArray32.t) (i0 : JWord.W32.t),
+    phoare[ AddressExtracted.M.__adrs_set_chain :
+             arg = (a0, i0) ==>
+             ADRS.bytes_of res =
+             FIPS205_Address.setTreeHeight (ADRS.bytes_of a0)
+               (JWord.W32.to_uint i0)] = (Real.(%r) 1).
+
+(* ADRS.adrs_set_tree_height_correct *)
+lemma adrs_set_tree_height_correct:
+  forall (a0 : BArray32.t) (i0 : JWord.W32.t),
+    phoare[ AddressExtracted.M.__adrs_set_tree_height :
+             arg = (a0, i0) ==>
+             ADRS.bytes_of res =
+             FIPS205_Address.setTreeHeight (ADRS.bytes_of a0)
+               (JWord.W32.to_uint i0)] = (Real.(%r) 1).
+
+(* ADRS.adrs_set_hash_correct *)
+lemma adrs_set_hash_correct:
+  forall (a0 : BArray32.t) (i0 : JWord.W32.t),
+    phoare[ AddressExtracted.M.__adrs_set_hash :
+             arg = (a0, i0) ==>
+             ADRS.bytes_of res =
+             FIPS205_Address.setTreeIndex (ADRS.bytes_of a0)
+               (JWord.W32.to_uint i0)] = (Real.(%r) 1).
+
+(* ADRS.adrs_set_tree_index_correct *)
+lemma adrs_set_tree_index_correct:
+  forall (a0 : BArray32.t) (i0 : JWord.W32.t),
+    phoare[ AddressExtracted.M.__adrs_set_tree_index :
+             arg = (a0, i0) ==>
+             ADRS.bytes_of res =
+             FIPS205_Address.setTreeIndex (ADRS.bytes_of a0)
+               (JWord.W32.to_uint i0)] = (Real.(%r) 1).
+
+(* ADRS.adrs_copy_correct *)
+lemma adrs_copy_correct:
+  forall (d0 s0 : BArray32.t),
+    phoare[ AddressExtracted.M.__adrs_copy :
+             arg = (d0, s0) ==> ADRS.bytes_of res = ADRS.bytes_of s0] = (
+    Real.(%r) 1).
+
 (* SPHINCS_Sets.SLH_DSA_SHA2_128S.slhdsa_euf_cma_spec *)
 lemma slhdsa_euf_cma_spec:
   forall (A(O : ExternalFraming.DSE.Stateless.SOracle_CMA) <:
@@ -13635,8 +13732,9 @@ lemma spec_hedged_eq:
 
 * In [operators, predicates or exceptions]:
 
-definitions 2664
+definitions 2665
 
+ADRS.bytes_of abbrev d514b4f2c8f7c3d4
 Array200.Array200."_.[_<-_]" op fdaf541d35ff6144
 Array200.Array200."_.[_]" op 0d4e637e047d1c2d
 Array200.Array200.'a type 9e4ef61c3fc07c74
