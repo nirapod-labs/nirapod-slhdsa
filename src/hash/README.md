@@ -410,8 +410,10 @@ and the same with `sha512`, `u64[8]`, `u8[128]` and a `u8[64]` tag.
 
 1. Form `K0` (FIPS 198-1 section 4, steps 1 to 3): the key padded with
    zeros to one block, or its digest padded when it is longer than a block.
-   `_hmac_sha256_keyblock_mem` does this from memory. A caller whose key is a
-   short array (FIPS 205 `SK.prf`, `n <= 32` bytes) writes `K0` itself.
+   `_hmac_sha256_keyblock_mem` does this from memory; it zeroes `K0` at
+   constant indices before writing it, so a safety-checked caller need not
+   initialise `K0`. A caller whose key is a short array (FIPS 205 `SK.prf`,
+   `n <= 32` bytes) writes `K0` itself.
 2. `__hmac_sha256_init` stores the states after compressing `K0 ^ ipad` and
    `K0 ^ opad` into `inner` and `outer`, which must be the caller's stack
    arrays (see the function's comment for why; `out` and `outer` of the

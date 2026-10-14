@@ -33,7 +33,7 @@ class Counts(unittest.TestCase):
         self.rules = "test-hash.toml"
         good = ("cavp: 7130 checks passed, 0 failed\ndiff: 96000 checks passed, 0 failed\n"
                 "squeeze: 45288 checks passed, 0 failed\n"
-                "fill_check: PASS, every test passes with 0xa5-filled buffers (4 sites filled)\n"
+                "fill_check: PASS, every test passes with 0xa5-filled buffers (6 sites filled)\n"
                 "negative_control: PASS, every family detected (9 failing checks)\n"
                 "negative_control: PASS, every dropped squeeze store detected (3 failing checks)\n")
         self.assertEqual(self.run_counts("hash", good), 0)

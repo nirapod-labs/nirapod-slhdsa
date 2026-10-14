@@ -24,7 +24,7 @@ minimum = 45288
 [[hash.line]]
 what = "fill check: buffer sites filled with 0xa5, every test passed"
 pattern = '^fill_check: PASS, every test passes with 0xa5-filled buffers \((\d+) sites filled\)$'
-minimum = 4
+minimum = 6
 
 [[hash.line]]
 what = "negative control: failing checks with every family detected"

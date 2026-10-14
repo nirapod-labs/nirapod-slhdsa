@@ -51,6 +51,20 @@ fn _hmac_sha256_keyblock_mem(
   inline int j;
   reg bool long more;
 
+  /*
+   * Source workaround for a safety-checker limitation, not part of K0.
+   * The copy and the padding below write k0 at run-time indices, which
+   * the pinned jasmin-checksafety does not count as initialising, so it
+   * cannot see k0 initialised where __hmac_sha256_init reads it. Zeroing
+   * k0 at constant indices first gives every byte a write it counts. The
+   * copy and the padding still write every byte of k0 themselves; the
+   * fill check (tests/hash/tools/fill_check.sh) replaces this zeroing
+   * with 0xa5 bytes and requires every test to pass.
+   */
+  for j = 0 to 8 {
+    k0[:u64 j] = 0;
+  }
+
   long = keylen > 64;
   if (long) {
     ms = #update_msf(long, ms);
@@ -102,6 +116,20 @@ fn _hmac_sha512_keyblock_mem(
   reg u64 i z t;
   inline int j;
   reg bool long more;
+
+  /*
+   * Source workaround for a safety-checker limitation, not part of K0.
+   * The copy and the padding below write k0 at run-time indices, which
+   * the pinned jasmin-checksafety does not count as initialising, so it
+   * cannot see k0 initialised where __hmac_sha512_init reads it. Zeroing
+   * k0 at constant indices first gives every byte a write it counts. The
+   * copy and the padding still write every byte of k0 themselves; the
+   * fill check (tests/hash/tools/fill_check.sh) replaces this zeroing
+   * with 0xa5 bytes and requires every test to pass.
+   */
+  for j = 0 to 16 {
+    k0[:u64 j] = 0;
+  }
 
   long = keylen > 128;
   if (long) {

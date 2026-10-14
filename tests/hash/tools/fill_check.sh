@@ -6,11 +6,12 @@
 # Fill check for the SHA-2 buffer invariant: the functions never read a
 # byte of buf that the current hash has not written (src/hash/
 # README.md, SHA-2 state). The one-shot functions and the HMAC test exports
-# zero their buffer before first use, only so that the safety checker can
-# follow the buffer; this check builds a copy in which that zeroing writes
-# 0xa5 bytes instead, and runs CAVP and the differential test on it. A read
-# of a byte the hash has not written would see 0xa5 rather than 0 and
-# change a digest, so the check passes only if every test passes.
+# zero their buffer before first use, and the HMAC key-block functions
+# zero K0 before they write it, only so that the safety checker can follow
+# the buffer; this check builds a copy in which that zeroing writes 0xa5
+# bytes instead, and runs CAVP and the differential test on it. A read of
+# a byte the code has not written would see 0xa5 rather than 0 and change
+# a digest or a tag, so the check passes only if every test passes.
 #
 # Two steps, which can run on different hosts like the main tests:
 #
@@ -52,6 +53,7 @@ build() {
 
   refill "$work/hash/sha2/sha256.jinc" 'buf_s\[:u64 i\]' 1
   refill "$work/hash/sha2/sha512.jinc" 'buf_s\[:u64 i\]' 1
+  refill "$work/hash/sha2/hmac.jinc" 'k0\[:u64 j\]' 2
   refill "$work/jasmin/test_sha2.jinc" 'buf\[:u64 i\]' 2
   echo "$sites" > "$work/sites"
 
