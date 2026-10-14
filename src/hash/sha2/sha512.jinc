@@ -111,7 +111,7 @@ fn _sha512_absorb_mem(
   reg u64 ms
 ) -> reg ptr u64[8], reg ptr u8[128], reg u64, reg u64
 {
-  reg u64 fill n end t;
+  reg u64 fill n end off t;
   reg bool more full;
 
   fill = total;
@@ -164,6 +164,7 @@ fn _sha512_absorb_mem(
    * stack and are protected on reload.
    */
 
+  off = 0;
   n = inlen;
   n >>= 7;
   more = n != 0;
@@ -176,24 +177,28 @@ fn _sha512_absorb_mem(
     in = #protect(in, ms);
     inlen = #protect(inlen, ms);
     buf = #protect_ptr(buf, ms);
-    n = inlen;
-    n >>= 7;
-    n <<= 7;
-    in += n;
+    off = inlen;
+    off >>= 7;
+    off <<= 7;
     inlen &= 127;
   } else {
     ms = #update_msf(!more, ms);
   }
 
-  /* Keep the remainder; buf is empty at this point when inlen > 0. */
+  /*
+   * Keep the remainder; buf is empty at this point when inlen > 0. It
+   * starts off bytes past in, after the whole blocks. in itself is not
+   * advanced by that length, so the address keeps in as its base, as in
+   * keccak/sponge.jinc.
+   */
 
   fill = 0;
   while { more = fill < inlen; } (more) {
     ms = #update_msf(more, ms);
-    t = (64u)[:u8 in];
+    t = (64u)[:u8 in + off];
     buf[fill] = (8u)t;
     fill += 1;
-    in += 1;
+    off += 1;
   }
   ms = #update_msf(!more, ms);
 
