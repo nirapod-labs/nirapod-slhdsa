@@ -3,8 +3,11 @@
 #
 # ci/checks/test-acvp.mk: the NIST ACVP vectors (fetched and checked
 # against their pins) on the variant the library dispatches to on this CPU,
-# with the negative controls; the other variants are tied to it byte for
-# byte by the core tests.
+# every case of the three modes; the other variants are tied to it byte for
+# byte by the core tests. Then the runner's verdict rules against a stub
+# implementation (tests/acvp/verdicts.py) and the negative controls of the
+# vector pipeline (tests/acvp/controls.py), each of which must detect its
+# break.
 
 include ci/mk/common.mk
 
@@ -21,4 +24,7 @@ ci-test-acvp:
 	$(MAKE) lib $(CI_CORE_VARS)
 	$(call logged,acvp,$(MAKE) -C tests/acvp check IMPL=nirapod)
 	$(CI_COUNTS) acvp $(CI_LOGS)/acvp.log
+	$(MAKE) -C tests/acvp IMPL=stub
+	$(CI_PYTHON) -I tests/acvp/verdicts.py build/harness/stub/acvp_runner \
+	  build/harness/nirapod-$(CI_TARGET)/acvp_runner build/vectors/acvp-flat
 	$(MAKE) -C tests/acvp controls IMPL=nirapod

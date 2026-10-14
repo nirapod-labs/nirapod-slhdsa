@@ -70,7 +70,7 @@ jobs = 2
 # cannot pass as absent.
 
 [components]
-required = ["hash", "slhdsa", "asm", "proofs", "core", "diff"]
+required = ["hash", "slhdsa", "asm", "proofs", "core", "acvp", "diff"]
 containers = ["src", "tests", "analysis", "third_party"]
 other-roots = [".git", ".github", "LICENSES", "changes", "ci", "docs", "toolchain", "build"]
 
@@ -157,13 +157,15 @@ keep = ["build/ci/transcript-{target}.txt"]
 skip = ["tests/hash", "tests/acvp", "tests/diff", "tests/vectors", "bench", "analysis",
         "proofs", "third_party", "ci/hash-sets.toml"]
 
+# The runner and its controls (tests/acvp), the vector pins (tests/vectors),
+# the adapters it links (tests/diff/adapters) and the library.
 [checks.test-acvp]
 recipe = "test-acvp"
 component = "acvp"
-needs = ["core"]
+needs = ["core", "diff"]
 platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
-skip = ["tests/hash", "analysis", "proofs", "third_party", "ci/hash-sets.toml"]
+skip = ["tests/hash", "bench", "analysis", "proofs", "third_party", "ci/hash-sets.toml"]
 
 [checks.analysis-units]
 recipe = "analysis-units"

@@ -49,9 +49,10 @@ class Components(unittest.TestCase):
             components.applicability(self.reg, "test-core", components.present(self.reg, files))
 
     def test_validation_component_deleted_fails(self):
-        # Deleting the differential test must fail the run, not turn its
-        # check into NOT APPLICABLE.
-        for check, dirs in (("differential", ("tests/diff/",)),):
+        # Deleting the ACVP or the differential test must fail the run, not
+        # turn its check into NOT APPLICABLE.
+        for check, dirs in (("test-acvp", ("tests/acvp/", "tests/vectors/")),
+                            ("differential", ("tests/diff/",))):
             files = [f for f in self.files if not f.startswith(dirs)]
             self.assertTrue(components.layout_errors(self.reg, files), check)
             with self.assertRaises(components.ComponentError):
@@ -61,6 +62,7 @@ class Components(unittest.TestCase):
         found = components.present(self.reg, self.files)
         self.assertEqual(components.applicability(self.reg, "generated", found)[0], "NOT APPLICABLE")
         self.assertEqual(components.applicability(self.reg, "differential", found)[0], "RUN")
+        self.assertEqual(components.applicability(self.reg, "test-acvp", found)[0], "RUN")
         self.assertEqual(components.applicability(self.reg, "safety", found)[0], "NOT RUN")
         found2 = components.present(self.reg, self.files + ["analysis/safety/Makefile"])
         self.assertEqual(components.applicability(self.reg, "safety", found2)[0], "RUN")
