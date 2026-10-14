@@ -1,0 +1,291 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# tools/ci/checks.toml
+# ====================
+#
+# The registry of the continuous integration: the platforms, the components
+# of the repository, and every check with the files it reads. The scripts
+# beside this file read it (tools/ci/README.md); nothing else defines a
+# check.
+#
+# A check reads every tracked file except those its entry and [inputs]
+# skip-all leave out (by path: a name and everything under it), so a file
+# added at a path nobody listed is an input of every check. Three
+# exceptions are fixed in tools/ci/key.py, not here: every *.mk file one or
+# two directories down stays an input, because the top-level Makefile
+# includes them; a check reads its own recipe tools/ci/checks/<recipe>.mk
+# and its own rules tools/ci/rules/<check>.toml, and not those of other
+# checks; and the files under toolchain/ enter through the toolchain
+# identity instead.
+#
+# Changing this file changes the key of every check, so every check runs
+# again: an input list is where a wrong exclusion would hide a stale pass.
+
+format = 2
+
+# ---------------------------------------------------------------------------
+# Platforms: hosted runner label, the target directory of the top-level
+# Makefile (build/<target>/), the options of toolchain/build.sh, and the
+# parallel jobs of a build or a check.
+
+[platforms.linux-x86_64]
+runner = "ubuntu-24.04"
+system = "Linux"
+machine = "x86_64"
+arch = "x86_64"
+target = "x86_64-elf"
+toolchain-options = ""
+jobs = 4
+
+[platforms.linux-aarch64]
+runner = "ubuntu-24.04-arm"
+system = "Linux"
+machine = "aarch64"
+arch = "aarch64"
+target = "aarch64-elf"
+# The pinned SMT provers have no Linux AArch64 binaries: the compiler alone.
+toolchain-options = "--no-easycrypt"
+jobs = 4
+
+[platforms.macos-aarch64]
+runner = "macos-26"
+system = "Darwin"
+machine = "arm64"
+arch = "aarch64"
+target = "aarch64-macho"
+toolchain-options = ""
+# Three cores and 7 GB of memory: two jobs leave a margin for memory.
+jobs = 2
+
+# ---------------------------------------------------------------------------
+# Components. A component is present when any of its directories exists. A
+# check of an absent component reports NOT APPLICABLE, unless the component
+# is required: a required component that is absent fails every run, so
+# deleting one cannot turn its checks into NOT APPLICABLE. Every directory
+# at the root is a component directory, a container of component
+# directories, or a root that holds no component; every directory directly
+# inside a container is a component directory. Any other directory fails
+# the source check, so a component at a path this table does not know
+# cannot pass as absent.
+
+[components]
+required = ["hash", "slhdsa", "asm", "proofs", "core"]
+containers = ["src", "tests", "analysis", "third_party"]
+other-roots = [".git", ".github", "LICENSES", "changes", "docs", "toolchain", "tools", "build"]
+
+[components.dirs]
+hash = ["src/hash", "tests/hash"]
+slhdsa = ["src/slhdsa", "analysis/ct"]
+core = ["include", "capi", "tests/core", "tests/negative", "tests/abi"]
+acvp = ["tests/acvp", "tests/vectors"]
+diff = ["tests/diff"]
+safety = ["analysis/safety"]
+asm = ["analysis/asm"]
+proofs = ["proofs", "third_party/crypto-specs", "third_party/formosa-slhdsa"]
+gen = ["gen"]
+bench = ["bench"]
+
+# ---------------------------------------------------------------------------
+# Inputs. skip-all: what no check reads. Documentation, change entries,
+# licensing and repository metadata, the workflows and scripts that run no
+# check of ci.yml (changelog, retry, drift, lint) and the tests of the CI
+# scripts. Files are named one by one, never by extension: Jasmin
+# `require`, C `#include` and make `include` read a file of any name.
+
+[inputs]
+skip-all = [
+  "docs", "changes", "LICENSES",
+  "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md",
+  "AUTHORS", "NOTICE", "LICENSE", "CITATION.cff", "REUSE.toml",
+  "analysis/README.md", "proofs/README.md", "src/hash/README.md", "tests/hash/README.md",
+  ".github/CODEOWNERS", ".github/ISSUE_TEMPLATE", ".github/pull_request_template.md",
+  ".github/dependabot.yml", ".github/zizmor.yml",
+  ".github/workflows/changelog.yml", ".github/workflows/ci-retry.yml",
+  ".github/workflows/drift.yml",
+  "tools/changes.sh",
+  "tools/ci/README.md", "tools/ci/changelog.py", "tools/ci/drift.py", "tools/ci/lint.py",
+  "tools/ci/retry.py", "tools/ci/tests",
+]
+
+# ---------------------------------------------------------------------------
+# Checks. For each:
+#
+#   recipe      tools/ci/checks/<recipe>.mk, target ci-<recipe>
+#   shard       a parameter of the recipe (proof shards)
+#   component   NOT APPLICABLE while it is absent (see [components])
+#   needs       components that must be present when this one is: an
+#               error otherwise
+#   absent      the status when the component is absent: NOT APPLICABLE
+#               (default), or NOT RUN with `not-run-when`, components whose
+#               presence makes the absence a gap rather than nothing to do
+#   platforms   where it runs, natively
+#   toolchain   none, compiler (jasminc, jasmin-ct, jasmin2ec) or switch
+#               (the opam switch too: EasyCrypt, the provers, the
+#               analysers' libraries)
+#   opam        run inside the switch's environment (toolchain.sh exec)
+#   keep        files of the run a later job reads, as recorded
+#   skip        paths the check provably does not read
+
+[checks.test-hash]
+recipe = "test-hash"
+component = "hash"
+platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
+toolchain = "compiler"
+# The hash tests build src/hash with tests/hash and read nothing else.
+skip = ["src/slhdsa", "capi", "include", "tests/core", "tests/negative", "tests/abi",
+        "analysis", "proofs", "third_party"]
+
+[checks.analysis-hash]
+recipe = "analysis-hash"
+component = "hash"
+platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
+toolchain = "compiler"
+# jasmin-ct and --sct on the hash test exports: src/hash and tests/hash.
+skip = ["src/slhdsa", "capi", "include", "tests/core", "tests/negative", "tests/abi",
+        "analysis", "proofs", "third_party"]
+
+[checks.test-core]
+recipe = "test-core"
+component = "core"
+platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
+toolchain = "compiler"
+keep = ["build/ci/transcript-{target}.txt"]
+# make check: the library (src, capi, include) and tests/{core,negative,abi}.
+skip = ["tests/hash", "analysis", "proofs", "third_party", "tools/ci/hash-sets.toml"]
+
+[checks.test-acvp]
+recipe = "test-acvp"
+component = "acvp"
+needs = ["core"]
+platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
+toolchain = "compiler"
+skip = ["tests/hash", "analysis", "proofs", "third_party", "tools/ci/hash-sets.toml"]
+
+[checks.analysis-units]
+recipe = "analysis-units"
+component = "slhdsa"
+platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
+toolchain = "compiler"
+# make ct: the Jasmin units of src with analysis/ct/ct.mk.
+skip = ["capi", "include", "tests", "analysis/asm", "proofs", "third_party",
+        "tools/ci/hash-sets.toml"]
+
+[checks.asm-policy]
+recipe = "asm-policy"
+component = "asm"
+platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
+toolchain = "compiler"
+# make asm-policy: the assembly of the units of src, the rules of analysis/asm.
+skip = ["capi", "include", "tests", "analysis/ct", "proofs", "third_party",
+        "tools/ci/hash-sets.toml"]
+
+[checks.differential]
+recipe = "differential"
+component = "diff"
+needs = ["core"]
+platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
+toolchain = "compiler"
+skip = ["tests/hash", "analysis", "proofs", "third_party", "tools/ci/hash-sets.toml"]
+
+[checks.generated]
+recipe = "generated"
+component = "gen"
+platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
+toolchain = "compiler"
+skip = ["tests", "proofs", "third_party", "tools/ci/hash-sets.toml"]
+
+# jasmin-checksafety. Until the safety component lands, the Jasmin code has
+# no safety verdict and the constant-time results are conditional on one:
+# NOT RUN, not NOT APPLICABLE.
+[checks.safety]
+recipe = "safety"
+component = "safety"
+absent = "NOT RUN"
+not-run-when = ["hash", "slhdsa"]
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+skip = ["capi", "include", "tests/core", "tests/negative", "tests/abi", "proofs", "third_party",
+        "tools/ci/hash-sets.toml"]
+
+# Proof shards, all on linux-x86_64 (the pinned provers), each checking its
+# files in parallel (proofs/Makefile, check-shard). A shard can load only
+# the theories under its own load path, which is why the rest of proofs/
+# and third_party/ can be left out of its inputs.
+
+[checks.proofs-sphincs]
+recipe = "proofs"
+shard = "sphincs"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["src", "capi", "include", "tests", "analysis", "third_party/crypto-specs",
+        "proofs/spec", "proofs/security", "proofs/correctness", "proofs/extracted",
+        "proofs/inventory", "tools/ci/hash-sets.toml"]
+
+[checks.proofs-crypto-specs]
+recipe = "proofs"
+shard = "crypto-specs"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["src", "capi", "include", "tests", "analysis", "third_party/formosa-slhdsa",
+        "proofs/spec", "proofs/security", "proofs/correctness", "proofs/extracted",
+        "proofs/inventory", "tools/ci/hash-sets.toml"]
+
+[checks.proofs-spec]
+recipe = "proofs"
+shard = "spec"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["src", "capi", "include", "tests", "analysis", "proofs/correctness",
+        "proofs/extracted", "proofs/inventory", "tools/ci/hash-sets.toml"]
+
+# A pair shard checks the correctness proofs against one architecture's
+# extracted models, then the inventory, which loads every theory.
+[checks.proofs-x86_64]
+recipe = "proofs"
+shard = "x86_64"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["src", "capi", "include", "tests", "analysis", "tools/ci/hash-sets.toml"]
+
+[checks.proofs-aarch64]
+recipe = "proofs"
+shard = "aarch64"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["src", "capi", "include", "tests", "analysis", "tools/ci/hash-sets.toml"]
+
+# The committed models against a fresh extraction of the Jasmin sources
+# proofs/tools/extract.sh reads: the hash layer and the SLH-DSA core
+# (src/hash, src/slhdsa, through extracted/*.jazz).
+[checks.proofs-extraction]
+recipe = "proofs"
+shard = "extraction"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "compiler"
+skip = ["capi", "include", "tests", "analysis", "third_party",
+        "proofs/spec", "proofs/security", "proofs/correctness", "proofs/inventory",
+        "tools/ci/hash-sets.toml"]
+
+# The platforms against each other: the same extracted compiler and
+# assumptions, the same core transcripts. Its inputs are the keys of the
+# test-core legs and the toolchain identity (tools/ci/key.py).
+[agree]
+component = "core"
+over = "test-core"
