@@ -56,25 +56,31 @@ inline fn __keccak_init(reg mut ptr u64[25] st) -> reg ptr u64[25]
 }
 
 /*
- * XOR n bytes from memory at in into st, starting at state byte pos.
+ * XOR n bytes from memory at in + off into st, starting at state byte pos.
  * Requires pos + n <= 200.
  *
  * Lanes are little-endian in both the state and the byte string, so whole
  * lanes are XORed as u64 words once pos reaches a multiple of 8; only the
  * unaligned head and the tail go byte by byte.
+ *
+ * in itself never moves; off advances instead, so every address is in
+ * plus an offset and keeps in as its base. That is the form in which
+ * jasmin-checksafety can relate an access to the caller's buffer: a
+ * pointer advanced by a length computed at run time has no known base for
+ * it.
  */
 inline fn __keccak_xor_mem(
   reg mut ptr u64[25] st,
-  reg u64 pos_ in_ n_,
+  reg u64 pos_ in off_ n_,
   reg u64 ms
 ) -> reg ptr u64[25], reg u64
 {
-  reg u64 pos in n head end t v;
+  reg u64 pos off n head end t v;
   reg bool more;
 
-  /* Work on copies: the caller still needs pos, in and n afterwards. */
+  /* Work on copies: the caller still needs pos, off and n afterwards. */
   pos = pos_;
-  in = in_;
+  off = off_;
   n = n_;
 
   head = pos;
@@ -88,22 +94,22 @@ inline fn __keccak_xor_mem(
   while { more = pos < end; } (more) {
     ms = #update_msf(more, ms);
     t = (64u)st[:u8 pos];
-    v = (64u)[:u8 in];
+    v = (64u)[:u8 in + off];
     t ^= v;
     st[:u8 pos] = (8u)t;
     pos += 1;
-    in += 1;
+    off += 1;
   }
   ms = #update_msf(!more, ms);
 
   while { more = n >= 8; } (more) {
     ms = #update_msf(more, ms);
     t = st.[:u64 pos];
-    v = [:u64 in];
+    v = [:u64 in + off];
     t ^= v;
     st.[:u64 pos] = t;
     pos += 8;
-    in += 8;
+    off += 8;
     n -= 8;
   }
   ms = #update_msf(!more, ms);
@@ -113,11 +119,11 @@ inline fn __keccak_xor_mem(
   while { more = pos < end; } (more) {
     ms = #update_msf(more, ms);
     t = (64u)st[:u8 pos];
-    v = (64u)[:u8 in];
+    v = (64u)[:u8 in + off];
     t ^= v;
     st[:u8 pos] = (8u)t;
     pos += 1;
-    in += 1;
+    off += 1;
   }
   ms = #update_msf(!more, ms);
 
@@ -125,20 +131,21 @@ inline fn __keccak_xor_mem(
 }
 
 /*
- * Copy n state bytes starting at pos to memory at out.
- * Requires pos + n <= 200. Same head, lanes, tail shape as __keccak_xor_mem.
+ * Copy n state bytes starting at pos to memory at out + off.
+ * Requires pos + n <= 200. Same head, lanes, tail shape as __keccak_xor_mem,
+ * and the same fixed base: out stays put and off advances.
  */
 inline fn __keccak_extract_mem(
-  reg u64 out_,
+  reg u64 out off_,
   reg const ptr u64[25] st,
   reg u64 pos_ n_,
   reg u64 ms
 ) -> reg u64
 {
-  reg u64 out pos n head end t;
+  reg u64 off pos n head end t;
   reg bool more;
 
-  out = out_;
+  off = off_;
   pos = pos_;
   n = n_;
 
@@ -153,18 +160,18 @@ inline fn __keccak_extract_mem(
   while { more = pos < end; } (more) {
     ms = #update_msf(more, ms);
     t = (64u)st[:u8 pos];
-    [:u8 out] = (8u)t;
+    [:u8 out + off] = (8u)t;
     pos += 1;
-    out += 1;
+    off += 1;
   }
   ms = #update_msf(!more, ms);
 
   while { more = n >= 8; } (more) {
     ms = #update_msf(more, ms);
     t = st.[:u64 pos];
-    [:u64 out] = t;
+    [:u64 out + off] = t;
     pos += 8;
-    out += 8;
+    off += 8;
     n -= 8;
   }
   ms = #update_msf(!more, ms);
@@ -174,9 +181,9 @@ inline fn __keccak_extract_mem(
   while { more = pos < end; } (more) {
     ms = #update_msf(more, ms);
     t = (64u)st[:u8 pos];
-    [:u8 out] = (8u)t;
+    [:u8 out + off] = (8u)t;
     pos += 1;
-    out += 1;
+    off += 1;
   }
   ms = #update_msf(!more, ms);
 
@@ -189,6 +196,9 @@ inline fn __keccak_extract_mem(
  * Each iteration fills the current block as far as the input allows and
  * permutes when the block is complete, so on return pos < rate again.
  * inlen = 0 returns the state unchanged.
+ *
+ * off counts the bytes absorbed so far and inlen the bytes still to come;
+ * in itself never moves (see __keccak_xor_mem).
  */
 #[sct = "{ ptr: public, val: secret } × public × public × public × public × msf →
          { ptr: public, val: secret } × public × msf"]
@@ -198,18 +208,19 @@ fn _keccak_absorb_mem(
   reg u64 ms
 ) -> reg ptr u64[25], reg u64, reg u64
 {
-  reg u64 n;
+  reg u64 n off;
   reg bool more full;
 
+  off = 0;
   while { more = inlen != 0; } (more) {
     ms = #update_msf(more, ms);
 
     n = rate;
     n -= pos;
     n = inlen < n ? inlen : n;
-    st, ms = __keccak_xor_mem(st, pos, in, n, ms);
+    st, ms = __keccak_xor_mem(st, pos, in, off, n, ms);
     pos += n;
-    in += n;
+    off += n;
     inlen -= n;
 
     full = pos == rate;
@@ -219,11 +230,12 @@ fn _keccak_absorb_mem(
        * Loop state crosses the call through the stack and is protected on
        * reload.
        */
-      () = #spill(rate, in, inlen);
+      () = #spill(rate, in, off, inlen);
       st, ms = _keccakf1600(st, ms);
-      () = #unspill(rate, in, inlen);
+      () = #unspill(rate, in, off, inlen);
       rate = #protect(rate, ms);
       in = #protect(in, ms);
+      off = #protect(off, ms);
       inlen = #protect(inlen, ms);
       pos = 0;
     } else {
@@ -276,6 +288,9 @@ fn _keccak_finalize(
  * The permutation runs lazily, when output is needed and the current block
  * is used up (pos = rate). A squeeze that ends exactly at a block boundary
  * therefore leaves pos = rate, and the next call permutes first.
+ *
+ * As in _keccak_absorb_mem, out stays fixed and off counts the bytes
+ * written.
  */
 #[sct = "{ ptr: public, val: secret } × public × public × public × public × msf →
          { ptr: public, val: secret } × public × msf"]
@@ -285,20 +300,22 @@ fn _keccak_squeeze_mem(
   reg u64 ms
 ) -> reg ptr u64[25], reg u64, reg u64
 {
-  reg u64 n;
+  reg u64 n off;
   reg bool more empty;
 
+  off = 0;
   while { more = outlen != 0; } (more) {
     ms = #update_msf(more, ms);
 
     empty = pos == rate;
     if (empty) {
       ms = #update_msf(empty, ms);
-      () = #spill(rate, out, outlen);
+      () = #spill(rate, out, off, outlen);
       st, ms = _keccakf1600(st, ms);
-      () = #unspill(rate, out, outlen);
+      () = #unspill(rate, out, off, outlen);
       rate = #protect(rate, ms);
       out = #protect(out, ms);
+      off = #protect(off, ms);
       outlen = #protect(outlen, ms);
       pos = 0;
     } else {
@@ -308,9 +325,9 @@ fn _keccak_squeeze_mem(
     n = rate;
     n -= pos;
     n = outlen < n ? outlen : n;
-    ms = __keccak_extract_mem(out, st, pos, n, ms);
+    ms = __keccak_extract_mem(out, off, st, pos, n, ms);
     pos += n;
-    out += n;
+    off += n;
     outlen -= n;
   }
   ms = #update_msf(!more, ms);

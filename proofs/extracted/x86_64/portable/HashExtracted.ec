@@ -21,7 +21,7 @@
  *     4e61d1f0f7c98e07dcddaf09f9adaf0067373be370c599ac8666d5e2144dc46f  ./keccak/keccak_constants.jinc
  *     1e1b0ab610fa23c397d91d82d9b2c6a159d94d756a48be726a114eacabbcc7d1  ./keccak/keccakf1600.jinc
  *     720d2ed87aa816547feff0d63944d0385ee8b93387540c54324d28d2a65e4549  ./keccak/keccakf1600_x4.jinc
- *     129ceb951beb2c167af5cf4e90ee1aaeec7be74c267375fc8792347c2a7d07b9  ./keccak/sponge.jinc
+ *     e1e197db1f9068984e3b47ec996c72f37788cd77e538e5e4f3984f77fefcf07c  ./keccak/sponge.jinc
  *     9170acfa610c761afb06682b96dbf98c686313d114c8409af16be31f119d277b  ./keccak/sponge_array.jinc
  *     b48c65bcff9925e7842cfa8b430b1c14c0ad92f17aaf472ef4d3457ca9e6c9a7  ./keccak/sponge_x4.jinc
  *     0e9882b894c4069590749e796b5245a0631de2a70d5c0dda54a080bafb5c123d  ./keccak/sponge_x4_array.jinc
@@ -1109,10 +1109,10 @@ module M = {
     }
     return st;
   }
-  proc __keccak_xor_mem (st:BArray200.t, pos_:W64.t, in_:W64.t, n_:W64.t,
-                         ms:W64.t) : BArray200.t * W64.t = {
+  proc __keccak_xor_mem (st:BArray200.t, pos_:W64.t, in_0:W64.t, off_:W64.t,
+                         n_:W64.t, ms:W64.t) : BArray200.t * W64.t = {
     var pos:W64.t;
-    var in_0:W64.t;
+    var off:W64.t;
     var n:W64.t;
     var head:W64.t;
     var end_0:W64.t;
@@ -1120,7 +1120,7 @@ module M = {
     var t:W64.t;
     var v:W64.t;
     pos <- pos_;
-    in_0 <- in_;
+    off <- off_;
     n <- n_;
     head <- pos;
     head <- (- head);
@@ -1133,11 +1133,11 @@ module M = {
     while (more) {
       ms <- (update_msf more ms);
       t <- (zeroextu64 (BArray200.get8 st (W64.to_uint pos)));
-      v <- (zeroextu64 (loadW8 Glob.mem (W64.to_uint in_0)));
+      v <- (zeroextu64 (loadW8 Glob.mem (W64.to_uint (in_0 + off))));
       t <- (t `^` v);
       st <- (BArray200.set8 st (W64.to_uint pos) (truncateu8 t));
       pos <- (pos + (W64.of_int 1));
-      in_0 <- (in_0 + (W64.of_int 1));
+      off <- (off + (W64.of_int 1));
       more <- (pos \ult end_0);
     }
     ms <- (update_msf (! more) ms);
@@ -1145,11 +1145,11 @@ module M = {
     while (more) {
       ms <- (update_msf more ms);
       t <- (BArray200.get64d st (W64.to_uint pos));
-      v <- (loadW64 Glob.mem (W64.to_uint in_0));
+      v <- (loadW64 Glob.mem (W64.to_uint (in_0 + off)));
       t <- (t `^` v);
       st <- (BArray200.set64d st (W64.to_uint pos) t);
       pos <- (pos + (W64.of_int 8));
-      in_0 <- (in_0 + (W64.of_int 8));
+      off <- (off + (W64.of_int 8));
       n <- (n - (W64.of_int 8));
       more <- ((W64.of_int 8) \ule n);
     }
@@ -1160,26 +1160,26 @@ module M = {
     while (more) {
       ms <- (update_msf more ms);
       t <- (zeroextu64 (BArray200.get8 st (W64.to_uint pos)));
-      v <- (zeroextu64 (loadW8 Glob.mem (W64.to_uint in_0)));
+      v <- (zeroextu64 (loadW8 Glob.mem (W64.to_uint (in_0 + off))));
       t <- (t `^` v);
       st <- (BArray200.set8 st (W64.to_uint pos) (truncateu8 t));
       pos <- (pos + (W64.of_int 1));
-      in_0 <- (in_0 + (W64.of_int 1));
+      off <- (off + (W64.of_int 1));
       more <- (pos \ult end_0);
     }
     ms <- (update_msf (! more) ms);
     return (st, ms);
   }
-  proc __keccak_extract_mem (out_:W64.t, st:BArray200.t, pos_:W64.t,
-                             n_:W64.t, ms:W64.t) : W64.t = {
-    var out:W64.t;
+  proc __keccak_extract_mem (out:W64.t, off_:W64.t, st:BArray200.t,
+                             pos_:W64.t, n_:W64.t, ms:W64.t) : W64.t = {
+    var off:W64.t;
     var pos:W64.t;
     var n:W64.t;
     var head:W64.t;
     var end_0:W64.t;
     var more:bool;
     var t:W64.t;
-    out <- out_;
+    off <- off_;
     pos <- pos_;
     n <- n_;
     head <- pos;
@@ -1193,9 +1193,10 @@ module M = {
     while (more) {
       ms <- (update_msf more ms);
       t <- (zeroextu64 (BArray200.get8 st (W64.to_uint pos)));
-      Glob.mem <- (storeW8 Glob.mem (W64.to_uint out) (truncateu8 t));
+      Glob.mem <-
+      (storeW8 Glob.mem (W64.to_uint (out + off)) (truncateu8 t));
       pos <- (pos + (W64.of_int 1));
-      out <- (out + (W64.of_int 1));
+      off <- (off + (W64.of_int 1));
       more <- (pos \ult end_0);
     }
     ms <- (update_msf (! more) ms);
@@ -1203,9 +1204,9 @@ module M = {
     while (more) {
       ms <- (update_msf more ms);
       t <- (BArray200.get64d st (W64.to_uint pos));
-      Glob.mem <- (storeW64 Glob.mem (W64.to_uint out) t);
+      Glob.mem <- (storeW64 Glob.mem (W64.to_uint (out + off)) t);
       pos <- (pos + (W64.of_int 8));
-      out <- (out + (W64.of_int 8));
+      off <- (off + (W64.of_int 8));
       n <- (n - (W64.of_int 8));
       more <- ((W64.of_int 8) \ule n);
     }
@@ -1216,9 +1217,10 @@ module M = {
     while (more) {
       ms <- (update_msf more ms);
       t <- (zeroextu64 (BArray200.get8 st (W64.to_uint pos)));
-      Glob.mem <- (storeW8 Glob.mem (W64.to_uint out) (truncateu8 t));
+      Glob.mem <-
+      (storeW8 Glob.mem (W64.to_uint (out + off)) (truncateu8 t));
       pos <- (pos + (W64.of_int 1));
-      out <- (out + (W64.of_int 1));
+      off <- (off + (W64.of_int 1));
       more <- (pos \ult end_0);
     }
     ms <- (update_msf (! more) ms);
@@ -1227,18 +1229,20 @@ module M = {
   proc _keccak_absorb_mem (st:BArray200.t, pos:W64.t, rate:W64.t, in_0:W64.t,
                            inlen:W64.t, ms:W64.t) : BArray200.t * W64.t *
                                                     W64.t = {
+    var off:W64.t;
     var more:bool;
     var n:W64.t;
     var full:bool;
+    off <- (W64.of_int 0);
     more <- (inlen <> (W64.of_int 0));
     while (more) {
       ms <- (update_msf more ms);
       n <- rate;
       n <- (n - pos);
       n <- ((inlen \ult n) ? inlen : n);
-      (st, ms) <@ __keccak_xor_mem (st, pos, in_0, n, ms);
+      (st, ms) <@ __keccak_xor_mem (st, pos, in_0, off, n, ms);
       pos <- (pos + n);
-      in_0 <- (in_0 + n);
+      off <- (off + n);
       inlen <- (inlen - n);
       full <- (pos = rate);
       if (full) {
@@ -1248,6 +1252,7 @@ module M = {
         (* Erased call to unspill *)
         rate <- (protect_64 rate ms);
         in_0 <- (protect_64 in_0 ms);
+        off <- (protect_64 off ms);
         inlen <- (protect_64 inlen ms);
         pos <- (W64.of_int 0);
       } else {
@@ -1274,9 +1279,11 @@ module M = {
   proc _keccak_squeeze_mem (st:BArray200.t, pos:W64.t, rate:W64.t, out:W64.t,
                             outlen:W64.t, ms:W64.t) : BArray200.t * W64.t *
                                                       W64.t = {
+    var off:W64.t;
     var more:bool;
     var empty:bool;
     var n:W64.t;
+    off <- (W64.of_int 0);
     more <- (outlen <> (W64.of_int 0));
     while (more) {
       ms <- (update_msf more ms);
@@ -1288,6 +1295,7 @@ module M = {
         (* Erased call to unspill *)
         rate <- (protect_64 rate ms);
         out <- (protect_64 out ms);
+        off <- (protect_64 off ms);
         outlen <- (protect_64 outlen ms);
         pos <- (W64.of_int 0);
       } else {
@@ -1296,9 +1304,9 @@ module M = {
       n <- rate;
       n <- (n - pos);
       n <- ((outlen \ult n) ? outlen : n);
-      ms <@ __keccak_extract_mem (out, st, pos, n, ms);
+      ms <@ __keccak_extract_mem (out, off, st, pos, n, ms);
       pos <- (pos + n);
-      out <- (out + n);
+      off <- (off + n);
       outlen <- (outlen - n);
       more <- (outlen <> (W64.of_int 0));
     }
