@@ -213,13 +213,15 @@ inventory-pair:
 # Extraction
 #
 # Each (architecture, variant) pair is one extraction of extracted/hash.jazz
-# into extracted/<arch>/<variant>/, under the include roots that select its
-# kernels. The theory of the extracted program is always HashExtracted, so
-# the correctness proofs, which require it by that name, are checked once
-# per pair against that pair's model. tools/extract.sh adds the generated-
-# file headers.
+# and extracted/address.jazz into extracted/<arch>/<variant>/, the first
+# under the include roots that select the pair's kernels. The theories of
+# the extracted programs are always HashExtracted and AddressExtracted, so
+# the correctness proofs, which require them by those names, are checked
+# once per pair against that pair's models. tools/extract.sh adds the
+# generated-file headers.
 
-HASH_SRC := $(JASMIN_SRC)/hash
+HASH_SRC   := $(JASMIN_SRC)/hash
+SLHDSA_SRC := $(JASMIN_SRC)/slhdsa
 
 # <arch>/<variant>:<jasmin arch>:<KeccakKernel>:<KeccakKernelX>:<Sha2Kernel>:<Sha2KernelX>
 EXTRACTIONS := \
@@ -229,13 +231,13 @@ EXTRACTIONS := \
 .PHONY: extract check-extraction
 extract:
 	@for e in $(EXTRACTIONS); do \
-	  JASMIN2EC="$(JASMIN2EC)" HASH_SRC="$(HASH_SRC)" sh tools/extract.sh "$$e" extracted || exit 1; \
+	  JASMIN2EC="$(JASMIN2EC)" HASH_SRC="$(HASH_SRC)" SLHDSA_SRC="$(SLHDSA_SRC)" sh tools/extract.sh "$$e" extracted || exit 1; \
 	done
 
 check-extraction:
 	@tmp=$$(mktemp -d) || exit 1; \
 	for e in $(EXTRACTIONS); do \
-	  JASMIN2EC="$(JASMIN2EC)" HASH_SRC="$(HASH_SRC)" sh tools/extract.sh "$$e" "$$tmp" || { rm -rf "$$tmp"; exit 1; }; \
+	  JASMIN2EC="$(JASMIN2EC)" HASH_SRC="$(HASH_SRC)" SLHDSA_SRC="$(SLHDSA_SRC)" sh tools/extract.sh "$$e" "$$tmp" || { rm -rf "$$tmp"; exit 1; }; \
 	  d=$${e%%:*}; \
 	  diff -r "$$tmp/$$d" "extracted/$$d" > /dev/null \
 	    || { echo "check-extraction: FAIL ($$d differs from a fresh extraction)"; rm -rf "$$tmp"; exit 1; }; \

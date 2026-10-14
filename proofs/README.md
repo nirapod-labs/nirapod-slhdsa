@@ -31,7 +31,7 @@ is verified.
 | `spec/slhdsa/` | FIPS 205: parameter sets, Algorithms 1 to 25, addresses, the section 11 hash instantiations, context framing and pre-hash |
 | `spec/validation/` | checks of parts of the specification against the standard (below) |
 | `security/` | EUF-CMA of the specification, from the imported SPHINCS+ proof |
-| `extracted/` | the extraction entry and the models `jasmin2ec` extracts from the Jasmin sources, one directory per (architecture, variant) |
+| `extracted/` | the extraction entries and the models `jasmin2ec` extracts from the Jasmin sources, one directory per (architecture, variant) |
 | `correctness/` | functional-correctness proofs of the extracted models |
 | `inventory/` | per (architecture, variant): every axiom in scope and the claimed theorem statements, as EasyCrypt prints them |
 | `tools/` | the proof-hole scan, the FIPS 180-4 constant derivation, the extraction script, the inventory generator |
@@ -175,13 +175,16 @@ Limits:
 
 ## Extracted models and correctness proofs
 
-`make extract` runs `jasmin2ec` on `extracted/hash.jazz`, an entry that only
-requires the production hash sources, once per (architecture, variant)
-pair listed in the Makefile (`EXTRACTIONS`), under the include roots that
-select that pair's kernels. Each model is written to
-`extracted/<arch>/<variant>/` as `HashExtracted.ec` plus the array theories
-it uses, with a header naming the generator, the command and the SHA-256 of
-the sources. `make check-extraction` re-extracts into a scratch directory
+`make extract` runs `jasmin2ec` on two entries, once per (architecture,
+variant) pair listed in the Makefile (`EXTRACTIONS`):
+`extracted/hash.jazz`, which only requires the production hash sources and
+is extracted under the include roots that select that pair's kernels, and
+`extracted/address.jazz`, which only requires the address code of the
+SLH-DSA core (`src/slhdsa/address.jinc`; it depends on no parameter set).
+The models are written to `extracted/<arch>/<variant>/` as
+`HashExtracted.ec` and `AddressExtracted.ec` plus the array theories they
+use, each with a header naming the generator, the command and the SHA-256
+of the sources. `make check-extraction` re-extracts into a scratch directory
 and fails if any committed model differs: a model can never silently lag
 behind its source. Both targets need `JASMIN2EC` (the pinned `jasmin2ec`)
 and `JASMIN_SRC` (default `../src`).

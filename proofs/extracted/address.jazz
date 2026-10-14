@@ -1,0 +1,16 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * address.jazz
+ * ============
+ *
+ * Extraction entry for the correctness proofs of the hash address code of
+ * the SLH-DSA core. It contains no code of its own: it requires the
+ * production source, so that jasmin2ec extracts the address functions from
+ * the file every parameter set compiles. address.jinc depends on no
+ * parameter set and on no other file, so one model per architecture serves
+ * all twelve sets. `make -C proofs extract` runs it; see proofs/README.md.
+ */
+
+from Slhdsa require "address.jinc"
