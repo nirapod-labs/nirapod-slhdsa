@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# .github/workflows/changelog.yml
+# ===============================
+#
+# The changelog check of a pull request, a status check of its own that
+# branch protection requires beside `all-checks` (ci.yml). A pull request
+# that changes the sources, the build, the toolchain, the proofs, the
+# analyses or the public interface adds a change entry under changes/, or
+# carries the label `no-changelog` (tools/ci/changelog.py).
+#
+# It runs on label events as well as on pushes, and reads the labels from
+# the API when it runs, so adding or removing the label re-runs it without
+# a push. It is a workflow of its own so that a label event never starts
+# the merge gate. A newer event on the same pull request cancels the run
+# of an older one.
+
+name: changelog
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions: {}
+
+concurrency:
+  group: changelog-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  changelog:
+    name: changelog
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The merge commit and both its parents: the change is the merge
+          # against its first parent, the base branch.
+          fetch-depth: 2
+
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Changes users can notice have a changelog entry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_EVENT: ${{ github.event_name }}
+          CI_HEAD: ${{ github.event.pull_request.head.sha }}
+          CI_PR: ${{ github.event.pull_request.number }}
+        run: python3 -I tools/ci/changelog.py

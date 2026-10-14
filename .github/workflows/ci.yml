@@ -13,9 +13,9 @@
 #                                      for it)
 #   macos-aarch64   macos-26           AArch64, macOS, Mach-O
 #
-# Order, cheapest first: the lint of the automation, the REUSE check, the
-# changelog check and the source checks need no compiler and fail within
-# minutes; the vectors are fetched once. Only when all of these have passed
+# Order, cheapest first: the lint of the automation, the REUSE check and
+# the source checks need no compiler and fail within minutes; the vectors
+# are fetched once. Only when all of these have passed
 # does each platform build or restore the pinned toolchain and run its
 # tests, analyses and checks (platform.yml), so that a change that fails a
 # quick check does not hold runners for hours. Then the EasyCrypt proofs
@@ -30,10 +30,8 @@
 # (tools/ci/Makefile). So this workflow protects every change from the
 # toolchain onwards, before the other components have been merged.
 #
-# A pull request that changes src, toolchain, proofs, third_party,
-# analysis, include, the top-level Makefile or a *.mk file also adds a
-# change entry under changes/, unless it carries the label no-changelog
-# (job `changelog`).
+# The changelog check of a pull request is a workflow of its own
+# (changelog.yml), so that a label event does not start this one.
 #
 # The job `all-checks` succeeds only when every other job of this file
 # succeeded, and it checks that it depends on every other job of this file
@@ -66,6 +64,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
   schedule:
@@ -114,6 +113,12 @@ jobs:
       - name: Check the workflows, shell scripts and Python scripts
         run: tools/ci/lint.sh
 
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Run the tests of the CI scripts
+        run: python3 -I -m unittest discover -s tools/ci/tests
+
   reuse:
     name: reuse
     runs-on: ubuntu-24.04
@@ -139,33 +144,6 @@ jobs:
 
       - name: Component map, kernel sets, constant tables, generated sources, proof holes
         run: make -f tools/ci/Makefile ci-source
-
-  # A pull request that changes the sources, the build, the toolchain, the
-  # proofs, the analyses or the public interface describes the change in a
-  # new file under changes/, unless it is labelled no-changelog
-  # (tools/ci/changelog.sh).
-  # On other events the job states that the check does not apply, and
-  # succeeds.
-  changelog:
-    name: changelog
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # The merge commit and both its parents: the change is the merge
-          # against its first parent, the base branch.
-          fetch-depth: 2
-
-      - name: Changes users can notice have a changelog entry
-        env:
-          CI_EVENT: ${{ github.event_name }}
-          CI_HEAD: ${{ github.event.pull_request.head.sha }}
-          CI_PR: ${{ github.event.pull_request.number }}
-          CI_NO_CHANGELOG: ${{ contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
-        run: tools/ci/changelog.sh
 
   vectors:
     name: vectors
@@ -215,7 +193,7 @@ jobs:
 
   linux-x86_64:
     name: linux-x86_64
-    needs: [lint, reuse, changelog, source, vectors]
+    needs: [lint, reuse, source, vectors]
     permissions:
       contents: read
       actions: read
@@ -231,7 +209,7 @@ jobs:
 
   linux-aarch64:
     name: linux-aarch64
-    needs: [lint, reuse, changelog, source, vectors]
+    needs: [lint, reuse, source, vectors]
     permissions:
       contents: read
       actions: read
@@ -247,7 +225,7 @@ jobs:
 
   macos-aarch64:
     name: macos-aarch64
-    needs: [lint, reuse, changelog, source, vectors]
+    needs: [lint, reuse, source, vectors]
     permissions:
       contents: read
       actions: read
@@ -382,7 +360,7 @@ jobs:
   all-checks:
     name: all-checks
     if: always()
-    needs: [lint, reuse, changelog, source, vectors, linux-x86_64, linux-aarch64, macos-aarch64, proofs, agree]
+    needs: [lint, reuse, source, vectors, linux-x86_64, linux-aarch64, macos-aarch64, proofs, agree]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

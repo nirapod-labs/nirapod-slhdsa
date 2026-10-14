@@ -201,7 +201,8 @@ endif
 #                 the tests, the analyses, gen/ or the benchmarks
 #
 # CI_VERDICT_SKIP holds what no check reads: documentation, change entries,
-# licensing and repository metadata, and the scripts of the cheap jobs.
+# licensing and repository metadata, the scripts of the cheap jobs, and
+# the workflows that run no check of ci.yml.
 # Files are named one by one, never by extension: Jasmin `require`, C
 # `#include` and make `include` read a file of any name, so a *.md file
 # outside the places listed is an input like any other.
@@ -214,7 +215,9 @@ CI_VERDICT_SKIP := docs changes LICENSES \
                    README.md CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md \
                    AUTHORS NOTICE LICENSE CITATION.cff REUSE.toml \
                    .github/CODEOWNERS .github/ISSUE_TEMPLATE .github/pull_request_template.md \
-                   tools/ci/lint.sh tools/ci/changelog.sh tools/ci/require-success.py \
+                   .github/workflows/changelog.yml \
+                   tools/ci/lint.sh tools/ci/changelog.py tools/ci/ghapi.py tools/ci/require-success.py \
+                   tools/ci/tests \
                    tools/changes.sh
 
 CI_VERDICT_SKIP_test         := bench $(CI_DIRS_proofs)
