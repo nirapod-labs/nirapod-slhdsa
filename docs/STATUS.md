@@ -12,8 +12,14 @@ summary per parameter set is in the [README](../README.md#status).
 | `slh_sign`, hedged | — | — | — |
 | `slh_sign`, deterministic | — | — | — |
 | `slh_verify` | — | — | — |
-| `hash_slh_sign`, every allowed pre-hash | — | — | — |
-| `hash_slh_verify`, every allowed pre-hash | — | — | — |
+| `hash_slh_sign`, the 12 pre-hash functions | — | — | — |
+| `hash_slh_verify`, the 12 pre-hash functions | — | — | — |
+
+The pre-hash rows cover the twelve functions of `nirapod_slhdsa_prehash`, which are the ones NIST's
+ACVP vectors test: SHA-224, SHA-256, SHA-384, SHA-512, SHA-512/224, SHA-512/256, SHA3-224,
+SHA3-256, SHA3-384, SHA3-512, SHAKE128 and SHAKE256, each at every parameter set. FIPS 205
+section 10.2 allows any approved hash function or XOF; choosing one strong enough for the
+parameter set is the caller's, and the library does not check it.
 
 ## Internal functions (FIPS 205, section 9)
 
