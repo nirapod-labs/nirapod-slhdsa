@@ -215,8 +215,9 @@ CI_VERDICT_SKIP := docs changes LICENSES \
                    README.md CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md \
                    AUTHORS NOTICE LICENSE CITATION.cff REUSE.toml \
                    .github/CODEOWNERS .github/ISSUE_TEMPLATE .github/pull_request_template.md \
+                   .github/dependabot.yml .github/zizmor.yml \
                    .github/workflows/changelog.yml .github/workflows/ci-retry.yml .github/workflows/drift.yml \
-                   tools/ci/lint.sh tools/ci/changelog.py tools/ci/ghapi.py tools/ci/require-success.py \
+                   tools/ci/lint.py tools/ci/changelog.py tools/ci/ghapi.py tools/ci/require-success.py \
                    tools/ci/retry.py tools/ci/drift.py tools/ci/tests \
                    tools/changes.sh
 

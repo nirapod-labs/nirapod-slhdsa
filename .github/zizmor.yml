@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# zizmor configuration (tools/ci/lint.py runs zizmor on .github).
+#
+# self-repository: the `$/...` form for actions of this repository is not
+# accepted by actionlint 1.7.12, the newest release, which the lint job also
+# runs. The local actions here are used only after a checkout of the same
+# commit as the workflow, and no step writes into .github/actions, so the
+# `./...` form loads the reviewed action. Revisit when actionlint accepts
+# the new form.
+rules:
+  self-repository:
+    disable: true

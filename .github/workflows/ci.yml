@@ -107,14 +107,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install actionlint and ShellCheck
-        run: tools/ci/lint.sh install "$RUNNER_TEMP/lint"
-
-      - name: Check the workflows, shell scripts and Python scripts
-        run: tools/ci/lint.sh
-
       - name: Python
         uses: ./.github/actions/python
+
+      - name: Install actionlint, ShellCheck and zizmor
+        run: python3 -I tools/ci/lint.py install "$RUNNER_TEMP/lint"
+
+      - name: Check the workflows, shell scripts and Python scripts
+        run: python3 -I tools/ci/lint.py
 
       - name: Run the tests of the CI scripts
         run: python3 -I -m unittest discover -s tools/ci/tests
@@ -129,8 +129,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Python
+        uses: ./.github/actions/python
+
       - name: Copyright and licence information of every file
-        run: tools/ci/lint.sh reuse
+        run: python3 -I tools/ci/lint.py reuse
 
   source:
     name: source

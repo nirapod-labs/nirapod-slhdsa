@@ -1,10 +1,16 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# Keep the pinned GitHub Actions used by CI up to date.
+# Keep the pinned GitHub Actions used by CI up to date: one pull request a
+# week for all of them, for releases at least a week old.
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    directories: ["/", "/.github/actions/*"]
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
