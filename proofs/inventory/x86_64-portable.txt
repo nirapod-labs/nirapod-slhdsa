@@ -1729,6 +1729,31 @@ lemma sha512_compress_total:
                   (BitEncoding.BitChunking.chunk 8 (BArray128.to_list blk)))] = (
     Real.(%r) 1).
 
+(* Keccakf1600_Portable.keccak_round_correct *)
+lemma keccak_round_correct:
+  forall (a0 : BArray200.t),
+    hoare[ HashExtracted.M.__keccak_round :
+            a = a0 ==>
+            KeccakState.lanes res =
+            Keccakf1600_Spec.keccak_pround_op (KeccakState.lanes a0) ].
+
+(* Keccakf1600_Portable.keccakf1600_correct *)
+lemma keccakf1600_correct:
+  forall (s0 : BArray200.t),
+    hoare[ HashExtracted.M._keccakf1600 :
+            st = s0 ==>
+            KeccakState.lanes res.`1 =
+            Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ].
+
+(* Keccakf1600_Portable.keccakf1600_total *)
+lemma keccakf1600_total:
+  forall (s0 : BArray200.t),
+    phoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0)] = (
+    Real.(%r) 1).
+
 (* ADRS.adrs_zero_correct *)
 lemma adrs_zero_correct:
   forall (a0 : BArray32.t),
@@ -13732,7 +13757,7 @@ lemma spec_hedged_eq:
 
 * In [operators, predicates or exceptions]:
 
-definitions 2665
+definitions 2672
 
 ADRS.bytes_of abbrev d514b4f2c8f7c3d4
 Array200.Array200."_.[_<-_]" op fdaf541d35ff6144
@@ -14582,6 +14607,13 @@ Keccak1600_arrays.init_200_8 op a3dbed692d489057
 Keccak1600_arrays.init_24_64 op 9f89762da0e3fb79
 Keccak1600_arrays.init_25_64 op a5078cadc6794c05
 Keccak1600_arrays.init_5_64 op 8cb06c4696e1d4a5
+KeccakState.all_lanes op eec44f59f09a185e
+KeccakState.lanes op 3831b98474a6f1de
+KeccakState.rho_step op 8b449eb475e85cd2
+KeccakState.rho_walk op 2606ecf186c47b63
+KeccakState.rounds op 186f65caa90f8335
+KeccakState.rpt op 7e8fddd87045a0d7
+Keccakf1600_Portable.rotl_ref op 2e8ba187583c4725
 Keccakf1600_Spec.finc op 14cdba0bf9daf7b7
 Keccakf1600_Spec.flipbit op 7c8038abdf6c1ad7
 Keccakf1600_Spec.getbit op 68272fb859637b68

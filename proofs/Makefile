@@ -186,6 +186,10 @@ THEOREMS := \
   SHA512_Compress.sha512_rounds_correct SHA512_Compress.sha512_compress_correct \
   SHA512_Compress.sha512_compress_total
 
+# Keccak-f[1600] of the shared scalar kernel.
+THEOREMS += Keccakf1600_Portable.keccak_round_correct Keccakf1600_Portable.keccakf1600_correct \
+            Keccakf1600_Portable.keccakf1600_total
+
 # The address setters of the SLH-DSA core against FIPS 205 Table 1.
 ADRS_THEOREMS := adrs_zero_correct adrs_set_layer_correct adrs_set_tree_correct \
                  adrs_set_type_and_clear_correct adrs_set_keypair_correct \

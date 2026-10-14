@@ -9,9 +9,9 @@
 [[aarch64.line]]
 what = "correctness proofs against the aarch64 portable model, every file checked"
 pattern = '^check-pair aarch64/portable: PASS (\d+) files$'
-minimum = 15
+minimum = 17
 
 [[aarch64.line]]
-what = "theorems in the unchanged inventory of aarch64/portable (6 SHA-2, 11 address setters, 72 FIPS 205)"
+what = "theorems in the unchanged inventory of aarch64/portable (6 SHA-2, 3 Keccak-f, 11 address setters, 72 FIPS 205)"
 pattern = '^inventory aarch64/portable: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 89
+minimum = 92

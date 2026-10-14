@@ -15,8 +15,9 @@ implementation.
 theorems of the specification for all twelve parameter sets are written and
 check. The implementation theorems so far cover the one-block entry points
 `_sha256_compress` and `_sha512_compress` of the portable SHA-256 and
-SHA-512 kernels, their round functions, and the hash address (ADRS)
-setters of the SLH-DSA core (below). The kernels' other
+SHA-512 kernels, their round functions, the Keccak-f[1600] permutation of
+the shared scalar Keccak kernel, and the hash address (ADRS) setters of
+the SLH-DSA core (below). The kernels' other
 entry points, `_sha256_compress_blocks` and `_sha512_compress_blocks`, which
 the streaming hash uses for every whole block of input in memory, and
 `_sha256_compress_one` and `_sha512_compress_one`, have no proof yet.
@@ -222,6 +223,18 @@ Theorems so far, each checked on `x86_64/portable` and
   `sha512_compress_total` (`correctness/hash/SHA512_Compress.ec`): the same
   three statements for the SHA-512 kernel, section 6.4.2, on its 128-byte
   block;
+- `keccak_round_correct`, `keccakf1600_correct`, `keccakf1600_total`
+  (`correctness/hash/Keccakf1600_Portable.ec`): one round of the shared scalar
+  kernel `src/hash/keccak/keccakf1600.jinc` computes `keccak_pround_op`
+  (θ, ρ, π and χ), and `_keccakf1600` computes `keccak_f1600_op`, the
+  Keccak-f[1600] of the imported FIPS 202 theories, on the 25 64-bit lanes
+  of its state, then the same with termination. crypto-specs proves
+  `keccak_f1600_op` equal to its procedure for FIPS 202 sections 3.3 and
+  3.4 (`keccak_f1600_ph`), which `make check-imported` re-checks here. The
+  x86-64 library builds this kernel; the AArch64 library builds another
+  one, which keeps the state in registers and has no proof yet. The state
+  facts the proof uses (the lane view, the ρ offsets against FIPS 202
+  Algorithm 2, the round constants) are in `correctness/hash/KeccakState.ec`;
 - the eleven `adrs_*_correct` theorems (`correctness/slhdsa/ADRS.ec`):
   every procedure of `src/slhdsa/address.jinc` (zeroing, the setters of
   FIPS 205 Table 1, the key pair copy and the address copy) returns the
@@ -233,13 +246,14 @@ Theorems so far, each checked on `x86_64/portable` and
   address code is the same for all twelve parameter sets, so they hold
   for each.
 
-The SHA-2 `_correct` theorems are partial-correctness (Hoare) statements about
-the extracted model: when the procedure returns, its result is the
-specified value. Every loop of the kernels runs over a constant range, so
-`_sha256_compress` and `_sha512_compress` terminate from every initial
-state (`sha256_compress_ll`, `sha512_compress_ll`), and the `_total`
-theorems combine the two: the procedure returns, with the specified result,
-with probability 1. Memory safety is a separate obligation.
+The SHA-2 and Keccak `_correct` theorems are partial-correctness (Hoare)
+statements about the extracted model: when the procedure returns, its
+result is the specified value. Every loop of the kernels runs over a
+constant range, so `_sha256_compress`, `_sha512_compress` and
+`_keccakf1600` terminate from every initial state (`sha256_compress_ll`,
+`sha512_compress_ll`, `keccakf1600_ll`), and the `_total` theorems combine
+the two: the procedure returns, with the specified result, with
+probability 1. Memory safety is a separate obligation.
 
 The address theorems are about the address procedures themselves. That
 the rest of the core passes them the values FIPS 205 prescribes is part of
@@ -248,11 +262,14 @@ the proofs of the algorithms that call them, which do not exist yet.
 Not proven yet: the memory entry points `_sha256_compress_one`,
 `_sha256_compress_blocks`, `_sha512_compress_one` and
 `_sha512_compress_blocks`; padding, the one-shot and multi-way functions,
-HMAC, MGF1, SHA-3 and SHAKE; and the kernels that replace the portable ones:
-SHA-NI for SHA-256 in the x86-64 `shani` variant, the SHA-2 instruction
-kernels for SHA-256 and SHA-512 in the AArch64 `sha2` variant, and the A64
-base-ISA kernels, which only the hash tests select. The scalar variant of
-every unit runs the portable kernels.
+HMAC, MGF1, the Keccak sponge (absorb, padding, squeeze), SHA-3 and SHAKE;
+the four-way Keccak-f[1600] kernels (portable, AVX2 and A64 SHA-3) the
+multi-way code uses; and the kernels that replace the portable ones: SHA-NI
+for SHA-256 in the x86-64 `shani` variant, the SHA-2 instruction kernels
+for SHA-256 and SHA-512 and the single-way Keccak-f[1600] kernel on the
+SHA-3 instructions in the AArch64 `sha2` and `sha3` variants, and the A64
+base-ISA SHA-2 kernels, which only the hash tests select. The scalar
+variant of every unit runs the portable SHA-2 kernels.
 
 `spec/hash/FIPS180_SHA2_Blocks.ec` states, at the level of the
 specification, how a hash splits into a first block compressed once and a
