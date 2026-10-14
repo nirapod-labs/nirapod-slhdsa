@@ -16,6 +16,9 @@
 #   make check-formosa    the imported SPHINCS+ security proof, re-checked here
 #   make check-correctness the correctness proofs, once per extracted model
 #   make check-pair PAIR=<arch>/<variant>   one model only
+#   make check-shard SHARD=<shard>  one shard of CI (below), J files at once
+#   make list-shards      the shards
+#   make shard-files      every file each shard checks, "<shard> <path>"
 #   make scan-admits      fail if any checked file contains a proof hole or
 #                         a command that skips checking (admit, admitted,
 #                         pragma, exit, fail)
@@ -23,6 +26,8 @@
 #   make check-inventory  fail unless EasyCrypt's list of the axioms in scope,
 #                         the claimed theorem statements and the definitions
 #                         equal the committed inventory/<arch>-<variant>.txt
+#   make check-inventory-files  fail if an inventory file is not that of a
+#                         pair in EXTRACTIONS (no EasyCrypt needed)
 #   make inventory        rewrite the inventory files
 #   make extract          regenerate extracted/<arch>/<variant>/ with jasmin2ec
 #   make check-extraction re-extract into a scratch directory and fail if the
@@ -35,6 +40,9 @@
 # stale result; compiling every file separately is what makes a passing run
 # mean that every proof in the tree was checked by this run.
 #
+# Files are checked J at a time (default 1; tools/check_files.py), each in
+# its own EasyCrypt process.
+#
 # Variables: EASYCRYPT (the binary of the pinned toolchain), EC_PROVERS and
 # EC_TIMEOUT (this project's theories), IMPORTED_PROVERS and
 # IMPORTED_TIMEOUT (the imported crypto-specs theories), FORMOSA_PROVERS
@@ -46,6 +54,7 @@ EASYCRYPT  ?= easycrypt
 JASMIN2EC  ?= jasmin2ec
 PYTHON     ?= python3
 JASMIN_SRC ?= ../src
+J          ?= 1
 
 CRYPTO_SPECS := ../third_party/crypto-specs
 FORMOSA      := ../third_party/formosa-slhdsa
@@ -63,8 +72,13 @@ EC_TIMEOUT       ?= 10
 IMPORTED_PROVERS ?= -p CVC5@1.2 -p Z3@4.8
 IMPORTED_TIMEOUT ?= 30
 
+# The imported crypto-specs theories load only their own roots, so that
+# they can be checked, and keyed in CI, apart from this project's theories.
+IMPORTED_PATH := -R $(CRYPTO_SPECS)/common -R $(CRYPTO_SPECS)/fips202 \
+                 -I JazzEC:$(CRYPTO_SPECS)/arrays
+
 OWN_FLAGS      := -no-eco $(EC_PATH) $(EC_PROVERS) -timeout $(EC_TIMEOUT)
-IMPORTED_FLAGS := -no-eco $(EC_PATH) $(IMPORTED_PROVERS) -timeout $(IMPORTED_TIMEOUT)
+IMPORTED_FLAGS := -no-eco $(IMPORTED_PATH) $(IMPORTED_PROVERS) -timeout $(IMPORTED_TIMEOUT)
 
 # The SPHINCS+ security proof keeps the prover selection and timeout of its
 # own easycrypt.project.
@@ -199,16 +213,20 @@ inventory:
 	  $(MAKE) --no-print-directory PAIR=$$p MODE=write inventory-pair || exit 1; \
 	done
 
-check-inventory:
+check-inventory: check-inventory-files
 	@for p in $(PAIRS); do \
 	  $(MAKE) --no-print-directory PAIR=$$p MODE=check inventory-pair || exit 1; \
 	done
+	@echo "check-inventory: PASS"
+
+.PHONY: check-inventory-files
+check-inventory-files:
 	@expected="$(foreach p,$(PAIRS),$(call inventory_file,$(p)))"; \
 	for f in inventory/*; do \
 	  case " $$expected " in *" $$f "*) ;; \
-	    *) echo "check-inventory: FAIL ($$f is not the inventory of a pair in EXTRACTIONS)"; exit 1;; \
+	    *) echo "check-inventory-files: FAIL ($$f is not the inventory of a pair in EXTRACTIONS)"; exit 1;; \
 	  esac; \
-	done; echo "check-inventory: PASS"
+	done; echo "check-inventory-files: PASS"
 
 inventory-pair:
 	@test -n "$(PAIR)" || { echo "inventory-pair: PAIR not set"; exit 1; }
@@ -255,23 +273,70 @@ check-extraction:
 	  case " $$expected " in *" $$d "*) ;; \
 	    *) echo "check-extraction: FAIL ($$d is not a pair in EXTRACTIONS)"; exit 1;; \
 	  esac; \
-	done; echo "check-extraction: PASS"
+	done; echo "check-extraction: PASS ($(words $(EXTRACTIONS)) pairs)"
 
 .PHONY: compile-files
-# Each file is checked from a scratch copy that ends with a trivial lemma.
-# EasyCrypt accepts a file that ends while obligations of a `clone ...
-# proof *` are still unrealized, and then treats them as proven; any
-# command after them is rejected ("cannot process [axiom] inside a proof
-# script"). The sentinel lemma makes such a file fail.
+# Each file is checked on its own, from a scratch copy that ends with a
+# trivial lemma, J at a time (tools/check_files.py): EasyCrypt accepts a
+# file that ends while obligations of a `clone ... proof *` are still
+# unrealized, and then treats them as proven; any command after them is
+# rejected ("cannot process [axiom] inside a proof script"). The sentinel
+# lemma makes such a file fail.
 compile-files:
 	@test -n "$(LABEL)" || { echo "compile-files: LABEL not set"; exit 1; }
-	@test -n "$(FILES)" || { echo "$(LABEL): no files"; exit 1; }
-	@n=0; for f in $(FILES); do \
-	  printf 'check %s\n' "$$f"; \
-	  tmp=$$(mktemp -d) || exit 1; \
-	  cp "$$f" "$$tmp/" && \
-	  printf '\n(* gate: end of file *)\nlemma end_of_file_gate : true by trivial.\n' >> "$$tmp/$$(basename "$$f")"; \
-	  $(EASYCRYPT) compile $(FLAGS) -I "$$(dirname "$$f")" "$$tmp/$$(basename "$$f")" \
-	    || { echo "FAIL $$f"; rm -rf "$$tmp"; exit 1; }; \
-	  rm -rf "$$tmp"; n=$$((n+1)); \
-	done; echo "$(LABEL): PASS $$n files"
+	@$(PYTHON) -I tools/check_files.py --label "$(LABEL)" --jobs $(J) \
+	  --easycrypt "$(EASYCRYPT)" --flags "$(FLAGS)" $(FILES)
+
+# ------------------------------------------------------------------
+# Shards
+#
+# CI checks the development in shards, in parallel jobs, each keyed on the
+# files it can load (tools/ci/checks.toml); together they check what
+# `check` checks, apart from the scans and the constant check, which CI
+# runs without EasyCrypt:
+#
+#   sphincs       the imported SPHINCS+ proof (check-formosa)
+#   crypto-specs  the imported crypto-specs theories (check-imported)
+#   spec          this project's specification and security theories
+#                 (check-own)
+#   x86_64        the correctness proofs against every x86-64 model, then
+#                 the inventory of each such pair
+#   aarch64       the same for AArch64
+#   extraction    the committed models against a fresh extraction
+#
+# Every .ec and .eca file under this directory and ../third_party belongs
+# to exactly one shard, except the shared correctness proofs, which every
+# pair shard checks against its own model (`shard-files`; CI checks this).
+
+SHARDS := sphincs crypto-specs spec x86_64 aarch64 extraction
+pairs_of = $(filter $(1)/%,$(PAIRS))
+
+.PHONY: list-shards shard-files check-shard
+list-shards:
+	@echo $(SHARDS)
+
+# Paths from the repository root.
+root_path = $(patsubst ../%,%,$(patsubst %,proofs/%,$(filter-out ../%,$(1))) $(filter ../%,$(1)))
+shard-files:
+	@$(foreach f,$(call root_path,$(FORMOSA_FILES)),echo "sphincs $(f)";)
+	@$(foreach f,$(call root_path,$(IMPORTED_FILES)),echo "crypto-specs $(f)";)
+	@$(foreach f,$(call root_path,$(OWN_FILES)),echo "spec $(f)";)
+	@$(foreach a,$(ARCHS),$(foreach p,$(call pairs_of,$(a)),$(foreach f,$(call root_path,$(call pair_files,$(p))),echo "$(a) $(f)";)))
+
+check-shard:
+	@case " $(SHARDS) " in *" $(SHARD) "*) ;; *) echo "check-shard: unknown shard '$(SHARD)' (one of: $(SHARDS))"; exit 1;; esac
+ifeq ($(SHARD),sphincs)
+	@$(MAKE) --no-print-directory LABEL="shard sphincs" FILES="$(FORMOSA_FILES)" FLAGS="$(FORMOSA_FLAGS)" compile-files
+else ifeq ($(SHARD),crypto-specs)
+	@$(MAKE) --no-print-directory LABEL="shard crypto-specs" FILES="$(IMPORTED_FILES)" FLAGS="$(IMPORTED_FLAGS)" compile-files
+else ifeq ($(SHARD),spec)
+	@$(MAKE) --no-print-directory LABEL="shard spec" FILES="$(OWN_FILES)" FLAGS="$(OWN_FLAGS)" compile-files
+else ifeq ($(SHARD),extraction)
+	@$(MAKE) --no-print-directory check-extraction
+else
+	@test -n "$(call pairs_of,$(SHARD))" || { echo "check-shard: no pair of $(SHARD) in EXTRACTIONS"; exit 1; }
+	@for p in $(call pairs_of,$(SHARD)); do \
+	  $(MAKE) --no-print-directory PAIR=$$p check-pair || exit 1; \
+	  $(MAKE) --no-print-directory PAIR=$$p MODE=check inventory-pair || exit 1; \
+	done
+endif

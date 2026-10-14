@@ -283,8 +283,20 @@ Proofs:weak` turns checking off), `exit` (ends the file early with success)
 and `fail` (expects a command to fail, so a statement it prefixes is never
 established). `check-spec` limits the compilation to `spec/`;
 `check-formosa` re-checks the imported SPHINCS+ proof alone, the longest
-part of `check`. Variables: `EASYCRYPT`, `EC_PROVERS`, `EC_TIMEOUT`,
-`JASMIN2EC`, `JASMIN_SRC`, `PYTHON`.
+part of `check`. `J=<n>` checks n files at a time, each in its own
+EasyCrypt process, and prints each file's time and peak memory. Variables:
+`EASYCRYPT`, `EC_PROVERS`, `EC_TIMEOUT`, `JASMIN2EC`, `JASMIN_SRC`,
+`PYTHON`, `J`.
+
+CI checks the same files in shards, in parallel jobs (`make list-shards`,
+`make check-shard SHARD=<shard>`): the SPHINCS+ proof, the crypto-specs
+theories, this directory's specification and security theories, each
+architecture's correctness proofs with its inventory, and the extraction
+check. Each shard loads only the theories under its own load path, so CI
+can tell from a change which shards it affects; `make shard-files` lists
+every file of every shard, and CI checks that each file belongs to exactly
+one, except the shared correctness proofs, which each architecture's shard
+checks against its own model.
 
 `check-inventory` requires, for each pair, every theory that pair is
 checked with, has EasyCrypt print every axiom then in scope, the statement
