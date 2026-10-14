@@ -9,10 +9,10 @@
 # comes from GH_TOKEN (the workflow's GITHUB_TOKEN); the API root from
 # GITHUB_API_URL, as GitHub sets it on its runners.
 #
-# Every failure raises ApiError: a network or HTTP error, or an answer that
-# is not what the endpoint returns. Callers decide
-# what an error means for them; none of them reads an error as "nothing
-# found".
+# Every failure raises ApiError: an HTTP error, a network error that
+# persists after one retry, or an answer that is not what the endpoint
+# returns. Callers decide what an error means for them; none of them reads
+# an error as "nothing found".
 #
 # The token is sent to the API host only. Artifact downloads answer with a
 # redirect to a storage URL that carries its own signature; the token is
@@ -21,6 +21,7 @@
 import io
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -32,13 +33,14 @@ class ApiError(Exception):
 
 
 class Api:
-    def __init__(self, repository, token=None, root=None, timeout=60):
+    def __init__(self, repository, token=None, root=None, timeout=60, pause=5):
         if not repository or repository.count("/") != 1:
             raise ApiError(f"repository must be owner/name, not {repository!r}")
         self.repository = repository
         self.token = token if token is not None else os.environ.get("GH_TOKEN", "")
         self.root = (root or os.environ.get("GITHUB_API_URL") or "https://api.github.com").rstrip("/")
         self.timeout = timeout
+        self.pause = pause
         self.calls = 0
 
     def _request(self, method, url, data=None):
@@ -48,14 +50,22 @@ class Api:
         req.add_header("User-Agent", "nirapod-slhdsa-ci")
         if self.token:
             req.add_unredirected_header("Authorization", f"Bearer {self.token}")
-        self.calls += 1
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                return resp.status, resp.read()
-        except urllib.error.HTTPError as e:
-            raise ApiError(f"{method} {url}: HTTP {e.code} {e.reason}") from None
-        except (urllib.error.URLError, OSError) as e:
-            raise ApiError(f"{method} {url}: {e}") from None
+        # A GET that meets a server error or a lost connection is tried once
+        # more after a pause; a client error (4xx), and any POST, is not.
+        last = 2 if method == "GET" else 1
+        for attempt in range(1, last + 1):
+            self.calls += 1
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    return resp.status, resp.read()
+            except urllib.error.HTTPError as e:
+                e.close()
+                if e.code < 500 or attempt == last:
+                    raise ApiError(f"{method} {url}: HTTP {e.code} {e.reason}") from None
+            except (urllib.error.URLError, OSError) as e:
+                if attempt == last:
+                    raise ApiError(f"{method} {url}: {e}") from None
+            time.sleep(self.pause)
 
     def url(self, path, **query):
         q = urllib.parse.urlencode({k: v for k, v in query.items() if v is not None})
