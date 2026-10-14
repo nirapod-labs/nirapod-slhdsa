@@ -167,8 +167,7 @@ const nirapod_slhdsa_impl *nirapod_slhdsa_select(nirapod_slhdsa_set set)
 {
     /*
      * The features are read only when the set has a variant besides
-     * scalar: on AArch64, where none is built yet, an operation makes no
-     * feature query.
+     * scalar, which every set has on both architectures today.
      */
     unsigned cpu = nirapod_slhdsa_impl_variant(set, 1) != NULL ? nirapod_slhdsa_cpu_features() : 0;
 

@@ -8,8 +8,10 @@
 
 include ci/mk/common.mk
 
+# The runner must have every variant's features (as in test-core.mk), so
+# that the vectors run on the accelerated variant, never on scalar alone.
 CI_CORE_CPU_x86_64  := avx2 sha_ni
-CI_CORE_CPU_aarch64 :=
+CI_CORE_CPU_aarch64 := sha512 sha3
 
 .PHONY: ci-test-acvp
 ci-test-acvp:

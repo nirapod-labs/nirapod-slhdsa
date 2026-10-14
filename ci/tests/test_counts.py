@@ -51,7 +51,7 @@ class Counts(unittest.TestCase):
         self.rules = "analysis-units.toml"
         with tempfile.TemporaryDirectory() as d:
             os.makedirs(os.path.join(d, "aarch64-elf", "ct"))
-            for i in range(12):
+            for i in range(24):
                 for ext in ("ok", "ct.log", "sct.log"):
                     open(os.path.join(d, "aarch64-elf", "ct", f"u{i}.{ext}"), "w").close()
             rules = counts.load(os.path.join(ROOT, "ci/rules/analysis-units.toml"), "ct")

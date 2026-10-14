@@ -341,13 +341,29 @@ static void test_public_api(size_t index)
  * combination of the features variants require on this architecture.
  * The expected choice is written out per family: on x86-64 the SHA2 sets
  * take "shani" exactly when the SHA extensions are present, the SHAKE
- * sets "avx2" exactly when AVX2 is; elsewhere every set has only "scalar".
+ * sets "avx2" exactly when AVX2 is; on AArch64 the SHA2 sets take "sha2"
+ * exactly when Advanced SIMD, FEAT_SHA256 and FEAT_SHA512 are all present,
+ * the SHAKE sets "sha3" exactly when Advanced SIMD and FEAT_SHA3 are.
  */
 static void test_dispatch(void)
 {
 #if defined(__x86_64__)
     static const unsigned MASKS[4] = { 0, NIRAPOD_SLHDSA_CPU_AVX2, NIRAPOD_SLHDSA_CPU_SHANI,
                                        NIRAPOD_SLHDSA_CPU_AVX2 | NIRAPOD_SLHDSA_CPU_SHANI };
+#elif defined(__aarch64__)
+    enum {
+        ASIMD = NIRAPOD_SLHDSA_CPU_ASIMD,
+        SHA256 = NIRAPOD_SLHDSA_CPU_SHA256,
+        SHA512 = NIRAPOD_SLHDSA_CPU_SHA512,
+        SHA3 = NIRAPOD_SLHDSA_CPU_SHA3
+    };
+    /* every combination of the four features */
+    static const unsigned MASKS[16] = {
+        0, ASIMD, SHA256, ASIMD | SHA256, SHA512, ASIMD | SHA512, SHA256 | SHA512,
+        ASIMD | SHA256 | SHA512, SHA3, ASIMD | SHA3, SHA256 | SHA3, ASIMD | SHA256 | SHA3,
+        SHA512 | SHA3, ASIMD | SHA512 | SHA3, SHA256 | SHA512 | SHA3,
+        ASIMD | SHA256 | SHA512 | SHA3
+    };
 #else
     static const unsigned MASKS[1] = { 0 };
 #endif
@@ -368,6 +384,12 @@ static void test_dispatch(void)
                 expect = "avx2";
             } else if (!shake && (MASKS[m] & NIRAPOD_SLHDSA_CPU_SHANI) != 0) {
                 expect = "shani";
+            }
+#elif defined(__aarch64__)
+            if (shake && (MASKS[m] & (ASIMD | SHA3)) == (ASIMD | SHA3)) {
+                expect = "sha3";
+            } else if (!shake && (MASKS[m] & (ASIMD | SHA256 | SHA512)) == (ASIMD | SHA256 | SHA512)) {
+                expect = "sha2";
             }
 #else
             (void)shake;

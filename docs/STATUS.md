@@ -37,6 +37,8 @@ The constant-time rows come from CI run
 [38404907277](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38404907277):
 `jasmin-ct` and `jasmin-ct --sct` on all 12 units for AArch64 Linux and macOS and all 24 units
 for x86-64 Linux. They assume memory safety, which no tool has checked on these exports yet.
+AArch64 now also builds an accelerated variant of each set (`sha2`, `sha3`), so it has 24 units;
+those rows predate them and are refreshed from the first CI run on `main` that includes them.
 
 ## Toolchain
 

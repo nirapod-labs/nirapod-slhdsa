@@ -46,7 +46,8 @@
  *
  *     The same calls give the stack depth of each public function, C
  *     frames included: the deepest over all sets is printed per function.
- *     docs/API.md records those of test_stack_production.
+ *     docs/API.md records the larger of test_stack_production and
+ *     test_stack_base, the deepest over the variants a CPU can select.
  *
  * Builds
  *
@@ -56,6 +57,11 @@
  *                         the application library alone: the public
  *                         functions only, so that the scan and the depths
  *                         are those of the code applications link
+ *     test_stack_base (NIRAPOD_SLHDSA_STACK_PRODUCTION and _STACK_BASE)
+ *                         the same, with the application library's
+ *                         dispatch replaced by one that reports no CPU
+ *                         extension (dispatch_base.c): the public
+ *                         functions on the scalar variant of every set
  *     test_stack_control (NIRAPOD_SLHDSA_STACK_CONTROL)
  *                         two units built without stack zeroization, the
  *                         negative control below
@@ -112,6 +118,13 @@ typedef struct {
 #define UNIT(set, label, n_, pk_, sk_, sig_) UNITV(set, scalar, 0u, label, n_, pk_, sk_, sig_)
 
 /*
+ * The features of the AArch64 extension variants, the values of their
+ * records in capi/sets.c; a unit whose features this host lacks is skipped.
+ */
+#define A64_SHA2 (NIRAPOD_SLHDSA_CPU_ASIMD | NIRAPOD_SLHDSA_CPU_SHA256 | NIRAPOD_SLHDSA_CPU_SHA512)
+#define A64_SHA3 (NIRAPOD_SLHDSA_CPU_ASIMD | NIRAPOD_SLHDSA_CPU_SHA3)
+
+/*
  * The negative-control binary is built from two units compiled without
  * stack zeroization (NIRAPOD_SLHDSA_STACK_CONTROL); the test binary from
  * every unit of the library. A unit whose CPU features this host lacks is
@@ -149,6 +162,19 @@ static const unit UNITS[] = {
     UNITV(shake_256s, avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHAKE-256s", 32, 64, 128, 29792),
     UNITV(sha2_256f,  shani, NIRAPOD_SLHDSA_CPU_SHANI, "SLH-DSA-SHA2-256f",  32, 64, 128, 49856),
     UNITV(shake_256f, avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHAKE-256f", 32, 64, 128, 49856),
+#elif defined(__aarch64__)
+    UNITV(sha2_128s,  sha2,  A64_SHA2, "SLH-DSA-SHA2-128s",  16, 32, 64, 7856),
+    UNITV(shake_128s, sha3,  A64_SHA3, "SLH-DSA-SHAKE-128s", 16, 32, 64, 7856),
+    UNITV(sha2_128f,  sha2,  A64_SHA2, "SLH-DSA-SHA2-128f",  16, 32, 64, 17088),
+    UNITV(shake_128f, sha3,  A64_SHA3, "SLH-DSA-SHAKE-128f", 16, 32, 64, 17088),
+    UNITV(sha2_192s,  sha2,  A64_SHA2, "SLH-DSA-SHA2-192s",  24, 48, 96, 16224),
+    UNITV(shake_192s, sha3,  A64_SHA3, "SLH-DSA-SHAKE-192s", 24, 48, 96, 16224),
+    UNITV(sha2_192f,  sha2,  A64_SHA2, "SLH-DSA-SHA2-192f",  24, 48, 96, 35664),
+    UNITV(shake_192f, sha3,  A64_SHA3, "SLH-DSA-SHAKE-192f", 24, 48, 96, 35664),
+    UNITV(sha2_256s,  sha2,  A64_SHA2, "SLH-DSA-SHA2-256s",  32, 64, 128, 29792),
+    UNITV(shake_256s, sha3,  A64_SHA3, "SLH-DSA-SHAKE-256s", 32, 64, 128, 29792),
+    UNITV(sha2_256f,  sha2,  A64_SHA2, "SLH-DSA-SHA2-256f",  32, 64, 128, 49856),
+    UNITV(shake_256f, sha3,  A64_SHA3, "SLH-DSA-SHAKE-256f", 32, 64, 128, 49856),
 #endif
 };
 #endif
@@ -491,7 +517,12 @@ int main(int argc, char **argv)
 #endif
 
 #if defined(NIRAPOD_SLHDSA_STACK_PRODUCTION)
+#if defined(NIRAPOD_SLHDSA_STACK_BASE)
+    printf("test_stack (application library, scalar variant selected): %s\n",
+           failures == 0 ? "PASS" : "FAIL");
+#else
     printf("test_stack (application library): %s\n", failures == 0 ? "PASS" : "FAIL");
+#endif
 #else
     printf("test_stack%s: %s\n", expect_residue ? " (negative control)" : "",
            failures == 0 ? "PASS" : "FAIL");

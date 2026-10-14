@@ -91,35 +91,51 @@ SETS := sha2_128s shake_128s sha2_128f shake_128f \
         sha2_256s shake_256s sha2_256f shake_256f
 
 # Hash variants (src/hash/README.md; capi/sets.c). scalar is built
-# for every set and runs on every CPU of the architecture. On x86-64 each
-# set also has an accelerated variant, selected at run time on CPUs with
-# the extension (capi/dispatch.c):
+# for every set and runs on every CPU of the architecture. Each set also
+# has an accelerated variant, selected at run time on CPUs with the
+# extensions it needs (capi/dispatch.c):
 #
-#     avx2    SHAKE sets: the four-way Keccak kernel in AVX2
-#     shani   SHA2 sets: the SHA-256 kernel on the SHA extensions
+#     x86-64   avx2    SHAKE sets: the four-way Keccak kernel in AVX2
+#              shani   SHA2 sets: the SHA-256 kernel on the SHA extensions
+#     AArch64  sha3    SHAKE sets: single-way and four-way Keccak on the
+#                      SHA-3 instructions (FEAT_SHA3)
+#              sha2    SHA2 sets: SHA-256 and SHA-512 on the SHA-2
+#                      instructions (FEAT_SHA256, FEAT_SHA512)
 SHAKE_SETS := $(filter shake_%,$(SETS))
 SHA2_SETS  := $(filter sha2_%,$(SETS))
 
 UNITS := $(addsuffix -scalar,$(SETS))
 ifeq ($(ARCH),x86_64)
 UNITS += $(addsuffix -avx2,$(SHAKE_SETS)) $(addsuffix -shani,$(SHA2_SETS))
+else
+UNITS += $(addsuffix -sha3,$(SHAKE_SETS)) $(addsuffix -sha2,$(SHA2_SETS))
 endif
 
 # Kernel roots. A rule that compiles or analyses unit <set>-<variant> has
 # the unit as its stem ($*), and JASMIN_INCLUDES below takes the kernels of
 # that variant from here: the scalar default of each root, unless the
-# variant names a replacement as KX_<variant> or S1_<variant>. This is the
-# one place a variant's kernels are named, so every rule that builds or
-# checks a unit sees the kernels the library ships. On AArch64 the
-# single-way Keccak kernel is the one that keeps the state in registers.
+# variant names a replacement as K1_<variant>, KX_<variant> or
+# S1_<variant>. This is the one place a variant's kernels are named, so
+# every rule that builds or checks a unit sees the kernels the library
+# ships. On AArch64 the scalar single-way Keccak is the one that keeps the
+# state in registers. SHA-2 stays on the portable kernels in the scalar
+# variant on both architectures: their compression functions are the ones
+# proven against FIPS 180-4 (proofs/README.md), and the A64 kernels in
+# sha2/aarch64/scalar are tested but not yet proven.
 ifeq ($(ARCH),aarch64)
-VARIANT_K1 = $(HASH_SRC)/keccak/aarch64/scalar
+SCALAR_K1 = $(HASH_SRC)/keccak/aarch64/scalar
 else
-VARIANT_K1 = $(HASH_SRC)/keccak
+SCALAR_K1 = $(HASH_SRC)/keccak
 endif
 KX_avx2  = $(HASH_SRC)/keccak/x86_64/avx2
 S1_shani = $(HASH_SRC)/sha2/x86_64/shani
+# The sha3 variant takes both kernels of keccak/aarch64/sha3, single-way
+# and four-way.
+K1_sha3  = $(HASH_SRC)/keccak/aarch64/sha3
+KX_sha3  = $(HASH_SRC)/keccak/aarch64/sha3
+S1_sha2  = $(HASH_SRC)/sha2/aarch64/sha2
 UNIT_VARIANT = $(lastword $(subst -, ,$*))
+VARIANT_K1 = $(or $(K1_$(UNIT_VARIANT)),$(SCALAR_K1))
 VARIANT_KX = $(or $(KX_$(UNIT_VARIANT)),$(HASH_SRC)/keccak)
 VARIANT_S1 = $(or $(S1_$(UNIT_VARIANT)),$(HASH_SRC)/sha2)
 
@@ -174,9 +190,15 @@ else
 ASM_DIR := $(OUT)/asm
 endif
 
+# The Linux assemblers accept the mnemonics of the AArch64 crypto-extension
+# kernels only with those extensions enabled (+sha2: FEAT_SHA256; +sha3:
+# FEAT_SHA512 and FEAT_SHA3). The option only widens what the assembler
+# accepts: the instructions are those of the .s file.
+UNIT_ASFLAGS := $(if $(filter aarch64-elf,$(TARGET)),-march=armv8.2-a+sha2+sha3)
+
 $(OUT)/obj/%.o: $(ASM_DIR)/%.s
 	@mkdir -p $(@D)
-	$(CC) -c -o $@ $<
+	$(CC) $(UNIT_ASFLAGS) -c -o $@ $<
 
 # --------------------------------------------------------------------
 # C wrapper and libraries
@@ -291,13 +313,15 @@ $(EXPORTS_CONTROL): $(LIB_OBJ)
 # deterministic signing and verification for every set),
 # test_acvp_production (the known answers below run once on each library),
 # test_stack_production (the secret scan and the stack depth of the public
-# functions) and test_entropy (the operating system's random source made to
+# functions; test_stack_base the same with the scalar variant selected for
+# every set, see tests/abi/dispatch_base.c) and test_entropy (the operating system's random source made to
 # fail).
 
 CORE_TESTS := $(OUT)/tests/test_core $(OUT)/tests/test_negative \
               $(OUT)/tests/test_stack $(OUT)/tests/test_registers \
               $(OUT)/tests/test_acvp $(OUT)/tests/test_acvp_production \
               $(OUT)/tests/test_production $(OUT)/tests/test_stack_production \
+              $(OUT)/tests/test_stack_base \
               $(OUT)/tests/test_entropy
 
 PRODUCTION_TEST_CC = $(CC) -I$(INCLUDE_DIR) $(CWARN) $(CFLAGS)
@@ -329,6 +353,20 @@ ACVP_CONTROL := $(TESTS_DIR)/core/acvp-control.sh
 $(OUT)/tests/test_production: $(TESTS_DIR)/core/test_production.c $(LIB)
 	@mkdir -p $(@D)
 	$(PRODUCTION_TEST_CC) -o $@ $< $(LIB)
+
+# The application library's C objects with dispatch.o replaced, and its
+# units, linked directly: the code is that of the library, so the depths
+# are those of the public functions on a CPU without the extensions.
+BASE_COBJ := $(filter-out $(OUT)/obj/c/dispatch.o,$(COBJ)) $(OUT)/obj/c-base/dispatch_base.o
+
+$(OUT)/obj/c-base/dispatch_base.o: $(TESTS_DIR)/abi/dispatch_base.c $(CAPI_SRC)/dispatch.c $(CAPI_DEPS)
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CWARN) $(CFLAGS) -c -o $@ $<
+
+$(OUT)/tests/test_stack_base: $(TESTS_DIR)/abi/test_stack.c $(BASE_COBJ) $(JOBJ)
+	@mkdir -p $(@D)
+	$(PRODUCTION_TEST_CC) -DNIRAPOD_SLHDSA_STACK_PRODUCTION -DNIRAPOD_SLHDSA_STACK_BASE \
+	  -o $@ $< $(BASE_COBJ) $(JOBJ)
 
 $(OUT)/tests/test_stack_production: $(TESTS_DIR)/abi/test_stack.c $(LIB)
 	@mkdir -p $(@D)
@@ -427,6 +465,7 @@ check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
 	$(OUT)/tests/test_core $(TEST_CORE_FLAGS) --transcript $(OUT)/transcript-core.txt
 	$(OUT)/tests/test_stack
 	$(OUT)/tests/test_stack_production
+	$(OUT)/tests/test_stack_base
 	$(OUT)/tests/test_registers
 	$(OUT)/tests/test_entropy
 ifeq ($(strip $(JASMINC)),)

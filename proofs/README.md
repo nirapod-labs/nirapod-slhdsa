@@ -248,10 +248,11 @@ the proofs of the algorithms that call them, which do not exist yet.
 Not proven yet: the memory entry points `_sha256_compress_one`,
 `_sha256_compress_blocks`, `_sha512_compress_one` and
 `_sha512_compress_blocks`; padding, the one-shot and multi-way functions,
-HMAC, MGF1, SHA-3 and SHAKE; and the kernels that replace the portable ones
-(SHA-NI on x86-64, the A64 kernels on AArch64), which the x86-64 and
-AArch64 test configurations select for SHA-256, and on AArch64 also for
-SHA-512.
+HMAC, MGF1, SHA-3 and SHAKE; and the kernels that replace the portable ones:
+SHA-NI for SHA-256 in the x86-64 `shani` variant, the SHA-2 instruction
+kernels for SHA-256 and SHA-512 in the AArch64 `sha2` variant, and the A64
+base-ISA kernels, which only the hash tests select. The scalar variant of
+every unit runs the portable kernels.
 
 `spec/hash/FIPS180_SHA2_Blocks.ec` states, at the level of the
 specification, how a hash splits into a first block compressed once and a

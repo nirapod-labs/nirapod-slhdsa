@@ -10,9 +10,10 @@
 include ci/mk/common.mk
 
 # The CPU features the variants of each architecture need on the runner,
-# so that a variant that cannot run fails with the reason.
+# so that a variant that cannot run fails with the reason. On AArch64,
+# sha512 implies the SHA-256 instructions (FEAT_SHA512 needs FEAT_SHA256).
 CI_CORE_CPU_x86_64  := avx2 sha_ni
-CI_CORE_CPU_aarch64 :=
+CI_CORE_CPU_aarch64 := sha512 sha3
 CI_CORE_TRANSCRIPT  := build/$(CI_TARGET)/transcript-core.txt
 
 .PHONY: ci-test-core

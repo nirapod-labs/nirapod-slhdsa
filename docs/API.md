@@ -62,9 +62,12 @@ the running CPU's features and caches nothing.
 | AArch64, x86-64 | `scalar` | all | nothing beyond the base architecture |
 | x86-64 | `avx2` | SHAKE | AVX2, with the YMM state enabled by the operating system |
 | x86-64 | `shani` | SHA2 | the SHA extensions and AVX |
+| AArch64 | `sha3` | SHAKE | Advanced SIMD and FEAT_SHA3 |
+| AArch64 | `sha2` | SHA2 | Advanced SIMD, FEAT_SHA256 and FEAT_SHA512 |
 
-On x86-64 a set runs its accelerated variant when the CPU has the feature and
-the scalar variant otherwise. `make check` runs every variant the host
+A set runs its accelerated variant when the CPU has every feature it
+needs, as the operating system reports them (`capi/dispatch.c`), and the
+scalar variant otherwise. `make check` runs every variant the host
 supports, and requires the accelerated variants to produce the scalar
 variant's keys and deterministic signatures byte for byte.
 
@@ -208,15 +211,17 @@ in bytes, over all parameter sets and variants of the architecture:
 | verification | 6112 | 6056 | SLH-DSA-SHA2-256f |
 
 Measured on these Jasmin sources with the pinned Jasmin toolchain, on an
-Apple M4 (macOS) and an AMD Ryzen 7 7700X (Linux, WSL2 guest). The figures
+Apple M4 (macOS) and an AMD EPYC 7763 (Linux, KVM guest). The figures
 change with the Jasmin sources and the compiler, and must be measured again
 when either changes; `make check` prints them for the build at hand, one line
 per export in the output of `test_stack`.
 
 For the public functions, C frames included, the same test built against the
-application library (`test_stack_production`) runs every function on the
-painted stack. The deepest stack, in bytes, over all parameter sets, with the
-variant this host selects:
+application library runs every function on the painted stack, once as the
+host dispatches it (`test_stack_production`) and once with the scalar
+variant selected for every set (`test_stack_base`). The deepest stack, in
+bytes, over all parameter sets and both runs, so over every variant a CPU of
+the architecture can select:
 
 | Function | AArch64 (macOS) | x86-64 (Linux) | Deepest set |
 |---|---:|---:|---|
@@ -226,9 +231,10 @@ variant this host selects:
 | `verify` | 6464 | 6520 | SLH-DSA-SHA2-256f |
 | `hash_verify` | 6480 | 6520 | SLH-DSA-SHA2-256f |
 
-Measured on the same hosts, where the x86-64 figures are those of the `shani`
-variant; `make check` prints the figures of the build at hand in the lines
-starting with `public-depth`.
+Measured on the same hosts. The deepest path is the scalar variant on
+AArch64 and the `shani` variant on x86-64; `make check` prints the figures
+of the build at hand in the lines starting with `public-depth`, those of
+`test_stack_base` after the line naming the scalar variant.
 
 ## What is cleared
 
