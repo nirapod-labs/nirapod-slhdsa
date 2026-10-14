@@ -9,13 +9,18 @@
 # how a harness program is linked against it:
 #
 #   IMPL=slhdsa-c     BASELINES=<workdir>
+#   IMPL=openssl      BASELINES=<workdir> [OPENSSL=openssl-4.0.3]
+#   IMPL=wolfssl      BASELINES=<workdir> [WOLFSSL=wolfssl-5.9.4]
+#   IMPL=boringssl    BASELINES=<workdir>
+#   IMPL=sphincsplus  BASELINES=<workdir> SPX_VARIANT=<dir> SPX_SET=<set name>
 #   IMPL=nirapod      [NIRAPOD_ROOT=<tree with the library built>]
 #   IMPL=stub         fake implementation for the drivers' verdict-rule checks
 #
 # <workdir> is the directory prepared by bench/baselines.py. Each baseline is
 # compiled with its own project's compiler and flags, read from its own
 # Makefile, so it is tested as its authors build it. Harness sources use
-# HARNESS_CFLAGS.
+# HARNESS_CFLAGS, except with sphincsplus, whose Makefiles link each program
+# in a single -flto compiler call; the harness follows that.
 #
 # The including Makefile sets PROG (output name) and PROG_SRC (its main
 # source) and then uses the rule defined at the end.
@@ -58,6 +63,52 @@ $(OBJDIR)/%.o: $(UP_DIR)/%.c $(wildcard $(UP_DIR)/*.h) $(ADAPTERS)/adapters.mk
 	$(UP_CC) $(UP_CFLAGS) -c $< -o $@
 endif
 
+ifeq ($(IMPL),openssl)
+OPENSSL ?= openssl-4.0.3
+TAG := $(OPENSSL)
+PREFIX := $(BASELINES)/out/$(OPENSSL)
+ADAPTER := $(ADAPTERS)/impl_openssl.c
+ADAPTER_INC := -I$(PREFIX)/include
+LINK_IN := $(PREFIX)/lib/libcrypto.a
+endif
+
+ifeq ($(IMPL),wolfssl)
+WOLFSSL ?= wolfssl-5.9.4
+TAG := $(WOLFSSL)
+PREFIX := $(BASELINES)/out/$(WOLFSSL)
+ADAPTER := $(ADAPTERS)/impl_wolfssl.c
+ADAPTER_INC := -I$(PREFIX)/include
+LINK_IN := $(PREFIX)/lib/libwolfssl.a
+LINK_LIBS := -lm
+endif
+
+ifeq ($(IMPL),boringssl)
+TAG := boringssl
+PREFIX := $(BASELINES)/out/boringssl
+ADAPTER := $(ADAPTERS)/impl_boringssl.c
+ADAPTER_INC := -I$(PREFIX)/include
+LINK_IN := $(PREFIX)/lib/libcrypto.a
+# BoringSSL's libcrypto is C++ and needs the C++ runtime.
+LINK_LIBS := $(if $(filter Darwin,$(shell uname -s)),-lc++,-lstdc++)
+endif
+
+ifeq ($(IMPL),sphincsplus)
+ifndef SPX_VARIANT
+$(error SPX_VARIANT is required for IMPL=sphincsplus)
+endif
+ifndef SPX_SET
+$(error SPX_SET is required for IMPL=sphincsplus)
+endif
+SPX_PARAMS := sphincs-$(shell echo $(SPX_SET) | sed 's/^SLH-DSA-//' | tr A-Z a-z)
+TAG := sphincsplus-$(SPX_VARIANT)-$(SPX_PARAMS)
+UP_DIR := $(BASELINES)/src/sphincsplus/$(SPX_VARIANT)
+UP_CC := $(shell cd $(UP_DIR) && $(PRINT) print-CC PARAMS=$(SPX_PARAMS))
+UP_CFLAGS := $(shell cd $(UP_DIR) && $(PRINT) print-CFLAGS PARAMS=$(SPX_PARAMS))
+UP_SOURCES := $(shell cd $(UP_DIR) && $(PRINT) print-SOURCES PARAMS=$(SPX_PARAMS))
+UP_PREBUILT := $(filter %.o,$(UP_SOURCES))
+ADAPTER := $(ADAPTERS)/impl_sphincsplus.c
+endif
+
 # A fake implementation for checking the drivers' verdict rules only.
 ifeq ($(IMPL),stub)
 TAG := stub
@@ -91,7 +142,19 @@ TARGET := $(OUT)/$(PROG)
 .PHONY: all
 all: $(TARGET)
 
+ifeq ($(IMPL),sphincsplus)
+# Upstream sources and headers are prerequisites, so a changed checkout rebuilds.
+$(TARGET): $(HDR) $(TABLES) $(ADAPTER) $(PROG_SRC) $(ADAPTERS)/adapters.mk \
+    $(addprefix $(UP_DIR)/,$(filter-out %.o,$(UP_SOURCES))) $(wildcard $(UP_DIR)/*.h)
+	@mkdir -p $(@D)
+	$(if $(UP_PREBUILT),cd $(UP_DIR) && $(MAKE) PARAMS=$(SPX_PARAMS) $(UP_PREBUILT))
+	cd $(UP_DIR) && $(UP_CC) $(UP_CFLAGS) -I. -I$(ADAPTERS) \
+	    -DSPX_SET_NAME='"$(SPX_SET)"' -DSPX_VARIANT_NAME='"$(SPX_VARIANT)"' \
+	    -DSPX_FAMILY_$(if $(findstring sha2,$(SPX_PARAMS)),SHA2,SHAKE) \
+	    -o $@ $(UP_SOURCES) $(TABLES) $(ADAPTER) $(PROG_SRC) $(SYSLIBS)
+else
 $(TARGET): $(HDR) $(TABLES) $(ADAPTER) $(LINK_IN) $(PROG_SRC) $(ADAPTERS)/adapters.mk
 	@mkdir -p $(@D)
 	$(CC) $(HARNESS_CFLAGS) -I$(ADAPTERS) $(ADAPTER_INC) -o $@ \
 	    $(PROG_SRC) $(TABLES) $(ADAPTER) $(LINK_IN) $(LINK_LIBS) $(SYSLIBS)
+endif
