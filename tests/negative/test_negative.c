@@ -16,8 +16,8 @@
  *                 nothing is written past a passed length
  *     precedence  several wrong arguments at once: the status of the first
  *                 failing check in the documented order
- *     tampering   one flipped bit in R, in the FORS part, in the first and
- *                 last hypertree layers, and in the last byte; a changed
+ *     tampering   one flipped bit in R, in the FORS part, in the first, a
+ *                 middle and the last hypertree layer; a changed
  *                 message, context, public key; truncated and extended
  *                 signatures, also through verify_internal
  *
@@ -218,6 +218,32 @@ static void test_arguments(nirapod_slhdsa_set set, const uint8_t *pk, const uint
     CHECK(st == NIRAPOD_SLHDSA_ERROR_INVALID_PREHASH, "%s hash_verify ph 255: %d", name, st);
 }
 
+/*
+ * Offset of SIG_HT, the first byte of hypertree layer 0, in a signature of
+ * the set: n bytes of R, then k(1 + a) n bytes of SIG_FORS (FIPS 205
+ * section 9.2). The tree parameters are those of FIPS 205 Table 2, per
+ * security level and s or f; the function checks them against the
+ * library's signature size, n + k(1 + a) n + d (len + h') n with len =
+ * 2n + 3, and returns 0 when they disagree.
+ */
+static size_t ht_offset(nirapod_slhdsa_set set)
+{
+    static const struct { unsigned k, a, d, hp; } table[6] = {
+        { 14, 12, 7, 9 },   /* 128s */
+        { 33, 6, 22, 3 },   /* 128f */
+        { 17, 14, 7, 9 },   /* 192s */
+        { 33, 8, 22, 3 },   /* 192f */
+        { 22, 14, 8, 8 },   /* 256s */
+        { 35, 9, 17, 4 },   /* 256f */
+    };
+    size_t n = nirapod_slhdsa_public_key_bytes(set) / 2;
+    unsigned row = ((unsigned)set - 1) / 2;
+    size_t fors = (size_t)table[row].k * (1 + table[row].a) * n;
+    size_t ht = (size_t)table[row].d * (2 * n + 3 + table[row].hp) * n;
+
+    return n + fors + ht == nirapod_slhdsa_signature_bytes(set) ? n + fors : 0;
+}
+
 static void test_tampering(nirapod_slhdsa_set set, const uint8_t *pk, const uint8_t *sk)
 {
     const char *name = nirapod_slhdsa_set_name(set);
@@ -226,7 +252,7 @@ static void test_tampering(nirapod_slhdsa_set set, const uint8_t *pk, const uint
     size_t sig_len = nirapod_slhdsa_signature_bytes(set);
     size_t n = pk_len / 2;
     uint8_t msg[40], ctx[4] = { 'c', 't', 'x', '!' }, pk2[64];
-    size_t positions[6];
+    size_t positions[7];
     nirapod_slhdsa_status st;
     size_t i;
 
@@ -236,16 +262,22 @@ static void test_tampering(nirapod_slhdsa_set set, const uint8_t *pk, const uint
     CHECK(nirapod_slhdsa_verify(set, sig, sig_len, msg, sizeof(msg), ctx, 4, pk, pk_len) == NIRAPOD_SLHDSA_OK,
           "%s verify untouched", name);
 
-    /* R, FORS secret, FORS auth path, first hypertree layer, last byte */
+    /*
+     * R, FORS secret, FORS auth path, the first byte of hypertree layer 0,
+     * the middle byte, which falls in a middle layer, and the last byte, in
+     * the last layer's authentication path.
+     */
 
     positions[0] = 0;
     positions[1] = n - 1;
     positions[2] = n;
     positions[3] = 2 * n + 3;
-    positions[4] = sig_len / 2;
-    positions[5] = sig_len - 1;
+    positions[4] = ht_offset(set);
+    positions[5] = sig_len / 2;
+    positions[6] = sig_len - 1;
+    CHECK(positions[4] != 0, "%s Table 2 parameters disagree with the signature size", name);
 
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < 7; i++) {
         sig[positions[i]] ^= 0x10;
         st = nirapod_slhdsa_verify(set, sig, sig_len, msg, sizeof(msg), ctx, 4, pk, pk_len);
         CHECK(st == NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE, "%s bit flip at %zu: %d", name, positions[i], st);
