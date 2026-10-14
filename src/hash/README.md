@@ -32,8 +32,10 @@ keccak/fips202.jinc        one-shot SHA-3 and SHAKE from memory
 keccak/sponge_x4.jinc      4-way sponge: init and finalize
 keccak/sponge_x4_array.jinc 4-way absorb and squeeze of fixed-length arrays (instance file)
 keccak/aarch64/scalar/     Keccak-f[1600] kernel for AArch64 with the state in registers
+keccak/aarch64/sha3/       single-way and 4-way Keccak-f[1600] kernels on the A64 SHA-3 instructions
 keccak/x86_64/avx2/        4-way Keccak-f[1600] kernel in AVX2
 sha2/aarch64/scalar/       SHA-256 and SHA-512 kernels in A64 three-operand form
+sha2/aarch64/sha2/         SHA-256 and SHA-512 kernels on the A64 SHA-2 instructions
 sha2/sha256_k.jinc         SHA-256 round constants, shared by its kernels
 sha2/sha256_compress.jinc  SHA-256 compression kernel (scalar)
 sha2/sha256.jinc           SHA-224/256 initial values, buffering, padding
@@ -69,8 +71,8 @@ for every target and variant.
 | `x86_64/avx2` | x86-64 | 4-way Keccak (AVX2 required); single-way Keccak stays scalar | implemented, `keccak/x86_64/avx2/` |
 | `x86_64/avx2` | x86-64 | 8-way SHA-256, 4-way SHA-512 (AVX2 required) | implemented, `sha2/x86_64/avx2/` |
 | `x86_64/shani` | x86-64 | single-stream SHA-256 (SHA and AVX required); SHA-512 stays scalar | implemented, `sha2/x86_64/shani/` |
-| `sha3` | AArch64 | NEON Keccak with EOR3/RAX1/XAR/BCAX | planned |
-| `sha2` | AArch64 | SHA256H/H2/SU0/SU1, SHA512H/H2/SU0/SU1 | planned |
+| `aarch64/sha3` | AArch64 | 4-way Keccak as two 2-way passes with EOR3, RAX1, XAR and BCAX, and single-way Keccak on the same round with both halves equal (FEAT_SHA3 required) | implemented, `keccak/aarch64/sha3/` |
+| `aarch64/sha2` | AArch64 | single-way SHA-256 and SHA-512 on SHA256H/H2/SU0/SU1 and SHA512H/H2/SU0/SU1 (FEAT_SHA256 and FEAT_SHA512 required) | implemented, `sha2/aarch64/sha2/` |
 
 Variants live in `keccak/<arch>/<variant>/` and `sha2/<arch>/<variant>/` and
 provide the entry points of the scalar kernel they replace, with the same
@@ -79,6 +81,11 @@ contracts, so the build selects a variant through include roots only.
 A variant's required CPU features are a caller obligation: the build or the
 run-time dispatch must select a variant only on CPUs that have them. The
 kernels do not check.
+
+The `aarch64/sha2` and `aarch64/sha3` kernels use Advanced SIMD and
+crypto-extension instructions that the compiler has through the armv8a
+SIMD patches of the pinned toolchain (`toolchain/jasmin/patches-simd`,
+applied by `toolchain/jasmin/SERIES`).
 
 ## Building against these files
 
@@ -166,6 +173,8 @@ also keeps secret-derived data on return:
 | `_keccakf1600_x4` (`x86_64/avx2`) | the four states after round 23 |
 | `_sha256_x8_compress`, `_sha512_x4_compress` (`x86_64/avx2`) | 16 schedule words of every instance: W_47 .. W_62 (SHA-512: W_63 .. W_78) |
 | `_sha256_compress*` (`x86_64/shani`) | no message word or chaining value is stored to the stack |
+| `_sha256_compress*`, `_sha512_compress*` (`aarch64/sha2`) | nothing is stored to the stack |
+| `_keccakf1600`, `_keccakf1600_x4` (`aarch64/sha3`) | nothing is stored to the stack |
 
 A function's residue includes the residue of every function it calls.
 Clearing that stack is an obligation of the export that runs these
@@ -554,6 +563,13 @@ Mach-O output; the pattern accepts both.
   shifted operand, Ch is AND plus BIC, Maj carries `a ^ b` into the next
   round, and the round constants are read through a pointer argument. The
   emitted rounds have no register copies.
+- **SHA-2 and Keccak, AArch64 crypto extensions.** The emitted
+  `aarch64/sha2` and `aarch64/sha3` kernels have no stack references: the
+  state and the message schedule stay in vector registers, and the round
+  constants are loaded from their tables. The SHA-256 kernel copies abcd once per four
+  rounds (16 copies), which SHA256H2 needs after SHA256H has overwritten
+  it, and saves abcd and efgh for the feed-forward; the SHA-512 kernel's
+  only copies are the four state vectors saved for the feed-forward.
 - **Protected reloads.** A protected reload is ORR plus CSDB on AArch64.
   Absorb therefore hands all its whole blocks to one `_sha*_compress_blocks`
   call, made only when there is at least one, and saves and protects its
