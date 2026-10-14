@@ -81,7 +81,7 @@ SPEC_FILES     := $(filter spec/%,$(OWN_FILES))
 #
 # Layout and naming (one convention for every proof of extracted code):
 #
-#   extracted/<arch>/<variant>/       the model: HashExtracted (+ arrays)
+#   extracted/<arch>/<variant>/       the models: HashExtracted, AddressExtracted (+ arrays)
 #   correctness/<area>/...            shared proofs, any directory whose
 #                                     path has no architecture component;
 #                                     checked against every pair

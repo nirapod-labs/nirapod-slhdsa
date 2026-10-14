@@ -233,7 +233,7 @@ Theorems so far, each checked on `x86_64/portable` and
   address code is the same for all twelve parameter sets, so they hold
   for each.
 
-The `_correct` theorems are partial-correctness (Hoare) statements about
+The SHA-2 `_correct` theorems are partial-correctness (Hoare) statements about
 the extracted model: when the procedure returns, its result is the
 specified value. Every loop of the kernels runs over a constant range, so
 `_sha256_compress` and `_sha512_compress` terminate from every initial
