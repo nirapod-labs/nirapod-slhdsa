@@ -35,6 +35,27 @@ inline fn __state_store(reg u64 p, reg ptr u64[25] st)
   }
 }
 
+/*
+ * Finalize requires 0 <= pos < rate <= 168 (src/hash/README.md). An export
+ * argument can hold any value, so the finalize exports clamp pos and rate
+ * into that range first, which states the precondition in a form the
+ * safety checker reads. The harness passes values inside the range, which
+ * the clamps leave unchanged.
+ */
+inline fn __finalize_args(reg u64 pos rate) -> reg u64, reg u64
+{
+  reg u64 t;
+
+  t = 168;
+  rate = rate < t ? rate : t;
+  t = 1;
+  rate = rate < t ? t : rate;
+  t = 0;
+  pos = pos < rate ? pos : t;
+
+  return pos, rate;
+}
+
 #[ct = "public -> ()"]
 export fn nirapod_slhdsa_hashtest_keccakf1600(reg u64 p)
 {
@@ -86,6 +107,7 @@ export fn nirapod_slhdsa_hashtest_keccak_finalize(reg u64 p pos rate ds)
   pos = #protect(pos, ms);
   rate = #protect(rate, ms);
   ds = #protect(ds, ms);
+  pos, rate = __finalize_args(pos, rate);
 
   st = __state_load(st, p);
   () = #spill(p);

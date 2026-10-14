@@ -1443,6 +1443,8 @@ export fn nirapod_slhdsa_hashtest_keccak_x4_finalize(reg u64 p pos rate ds)
   pos = #protect(pos, ms);
   rate = #protect(rate, ms);
   ds = #protect(ds, ms);
+  /* the finalize precondition, as in test_keccak.jinc */
+  pos, rate = __finalize_args(pos, rate);
   st = __x4_state_load(st, p);
   () = #spill(p);
   st, ms = _keccak_x4_finalize(st, pos, rate, ds, ms);
