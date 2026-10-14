@@ -1,0 +1,231 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# .github/workflows/drift.yml
+# ===========================
+#
+# How the project fares on upstream Jasmin and EasyCrypt heads, ahead of a
+# re-pin. Weekly, and by hand by a maintainer for a branch, a commit or a
+# pull request of either project (tools/ci/drift.py):
+#
+#   jasmin      the patch series tried on the Jasmin ref, patch by patch
+#               (applies, already upstream, conflicts), then the toolchain
+#               built from a scratch copy of toolchain/ with that pin and
+#               the patches that still apply: the Rocq proofs, extraction,
+#               the assumption and admit lists, the compiler's tests; on
+#               linux-x86_64, the hash and core tests, the analyses and the
+#               extraction check with that compiler
+#   easycrypt   the toolchain with EasyCrypt at the ref and the pinned
+#               provers: the check of the Jasmin EasyCrypt library, then
+#               the proofs
+#
+# It records nothing and changes nothing: no pin is edited, the scratch
+# copy is never pushed, its artifacts are named drift-* and no other
+# workflow reads them, and the token can only read. A red run reports
+# drift; it is not a check any pull request needs.
+#
+# A second manual run with the same component and refs cancels the first.
+
+name: drift
+
+on:
+  schedule:
+    - cron: "41 5 * * 6"
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "Lane: jasmin, easycrypt or both"
+        type: choice
+        options: [both, jasmin, easycrypt]
+        default: both
+      jasmin_ref:
+        description: "Jasmin branch, commit (7-40 hex) or pull/<n>/head"
+        type: string
+        default: main
+      easycrypt_ref:
+        description: "EasyCrypt branch, commit (7-40 hex) or pull/<n>/head"
+        type: string
+        default: main
+      jasmin_drop:
+        description: "Patches to leave out of the series, e.g. patches/0001 patches/0002"
+        type: string
+        default: ""
+      platforms:
+        description: "Platforms of the Jasmin lane"
+        type: choice
+        options: [linux-x86_64, all]
+        default: linux-x86_64
+
+permissions: {}
+
+concurrency:
+  group: drift-${{ github.event_name }}-${{ inputs.component || 'both' }}-${{ inputs.jasmin_ref || 'main' }}-${{ inputs.easycrypt_ref || 'main' }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  setup:
+    name: setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      jasmin: ${{ steps.setup.outputs.jasmin }}
+      easycrypt: ${{ steps.setup.outputs.easycrypt }}
+      jasmin-platforms: ${{ steps.setup.outputs.jasmin-platforms }}
+      jasmin-drop: ${{ steps.setup.outputs.jasmin-drop }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Who started the run, and what runs
+        id: setup
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          MAINTAINERS: athexweb3 orvenweb3
+          COMPONENT: ${{ inputs.component }}
+          JASMIN_REF: ${{ inputs.jasmin_ref }}
+          EASYCRYPT_REF: ${{ inputs.easycrypt_ref }}
+          JASMIN_DROP: ${{ inputs.jasmin_drop }}
+          PLATFORMS: ${{ inputs.platforms }}
+        run: python3 -I tools/ci/drift.py setup
+
+  jasmin:
+    name: jasmin ${{ matrix.platform.platform }}
+    needs: setup
+    if: needs.setup.outputs.jasmin == 'true'
+    runs-on: ${{ matrix.platform.runner }}
+    # Switch, Rocq proofs, extraction and compiler from scratch, then the
+    # checks: up to two hours on the slowest platform, measured on main.
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(needs.setup.outputs.jasmin-platforms) }}
+    env:
+      PLATFORM: ${{ matrix.platform.platform }}
+      JOBS: ${{ matrix.platform.jobs }}
+      TOOLCHAIN_OPTIONS: ${{ matrix.platform.options }}
+      REF: ${{ inputs.jasmin_ref || 'main' }}
+      DROP: ${{ needs.setup.outputs.jasmin-drop }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Install build dependencies
+        run: |
+          tools/ci/toolchain.sh deps build
+          echo "WORK=$RUNNER_TEMP/drift-work" >> "$GITHUB_ENV"
+
+      - name: Fetch upstream Jasmin at the ref
+        run: python3 -I tools/ci/drift.py resolve jasmin "$REF" "$RUNNER_TEMP/upstream"
+
+      - name: Try the patch series on it
+        run: python3 -I tools/ci/drift.py series "$RUNNER_TEMP/upstream" "$RUNNER_TEMP/drift" "$DROP"
+
+      - name: Build the toolchain from the scratch copy
+        run: |
+          "$RUNNER_TEMP/drift/tree/toolchain/build.sh" ${TOOLCHAIN_OPTIONS:+"$TOOLCHAIN_OPTIONS"} all
+
+      - name: Install test dependencies
+        if: matrix.platform.platform == 'linux-x86_64'
+        run: tools/ci/toolchain.sh deps run
+
+      - name: Put the drift compiler on the PATH
+        if: matrix.platform.platform == 'linux-x86_64'
+        run: tools/ci/toolchain.sh bin-path
+
+      - name: Tests and analyses with the drift compiler
+        if: matrix.platform.platform == 'linux-x86_64'
+        run: make -f tools/ci/Makefile ci-vectors ci-test ci-analysis
+
+      - name: Extraction check with the drift compiler
+        if: matrix.platform.platform == 'linux-x86_64'
+        run: make -C proofs check-extraction
+
+      - name: Upload the report and the build record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: drift-jasmin-${{ matrix.platform.platform }}
+          path: |
+            ${{ runner.temp }}/drift/report.md
+            ${{ runner.temp }}/drift-work/logs
+          if-no-files-found: warn
+          retention-days: 30
+
+  easycrypt:
+    name: easycrypt
+    needs: setup
+    if: needs.setup.outputs.easycrypt == 'true'
+    runs-on: ubuntu-24.04
+    # Switch with EasyCrypt at the ref, the compiler, the Jasmin EasyCrypt
+    # library check, then every proof: about two hours.
+    timeout-minutes: 330
+    permissions:
+      contents: read
+    env:
+      PLATFORM: linux-x86_64
+      JOBS: 4
+      REF: ${{ inputs.easycrypt_ref || 'main' }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Install build dependencies
+        run: |
+          tools/ci/toolchain.sh deps build
+          echo "WORK=$RUNNER_TEMP/drift-work" >> "$GITHUB_ENV"
+
+      - name: Resolve the EasyCrypt ref
+        id: ref
+        run: python3 -I tools/ci/drift.py resolve easycrypt "$REF" "$RUNNER_TEMP/upstream"
+
+      - name: Scratch copy of the toolchain with that EasyCrypt
+        env:
+          COMMIT: ${{ steps.ref.outputs.commit }}
+        run: python3 -I tools/ci/drift.py easycrypt "$COMMIT" "$RUNNER_TEMP/drift"
+
+      - name: Build the toolchain and check the Jasmin EasyCrypt library
+        run: |
+          "$RUNNER_TEMP/drift/tree/toolchain/build.sh" all
+
+      - name: Put the compiler on the PATH
+        run: tools/ci/toolchain.sh bin-path
+
+      - name: Check the proofs with that EasyCrypt
+        run: tools/ci/toolchain.sh exec make -f tools/ci/Makefile ci-proofs
+
+      - name: Upload the report and the build record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: drift-easycrypt
+          path: |
+            ${{ runner.temp }}/drift/report.md
+            ${{ runner.temp }}/drift-work/logs
+          if-no-files-found: warn
+          retention-days: 30
