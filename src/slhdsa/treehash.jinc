@@ -41,6 +41,32 @@
 param int SLH_FOLD_SLOTS = SLH_A + 1;
 
 /*
+ * Byte offset of fold slot z, with z clamped to SLH_A.
+ *
+ * z counts the trailing one bits of a leaf index below 2^t, so z <= t <=
+ * SLH_A holds at every use and the clamp never changes it. Safety-checker
+ * workaround: neither the intervals nor the polyhedra of the pinned
+ * toolchain's jasmin-checksafety can express that bound on a counter
+ * driven by the bits of idx, and without the clamp it reports
+ * nodes[off : SLH_N] and auth[off : SLH_N] as possibly out of bounds.
+ * slot_plain and slot_clamp in tests/core/checker/workarounds.jazz
+ * reproduce both verdicts (`make checker-repro`). z is public; the clamp is
+ * a conditional move, so the branch and address traces are those of z
+ * itself.
+ */
+inline fn __fold_slot(reg u32 z) -> reg u64
+{
+  reg u32 cap;
+  reg u64 off;
+
+  cap = SLH_A;
+  z = z < SLH_A ? z : cap;
+  off = __offset(z, SLH_N);
+
+  return off;
+}
+
+/*
  * Fold node, a leaf with index idx in its tree, into nodes and auth.
  *
  * node_adrs carries the type and key-pair fields of the tree's node
@@ -86,7 +112,7 @@ fn _treehash_fold(
     found = idx == sib;
     if (found) {
       ms = #update_msf(found, ms);
-      off = __offset(z, SLH_N);
+      off = __fold_slot(z);
       auth[off : SLH_N] = __node_copy(auth[off : SLH_N], node);
     } else {
       ms = #update_msf(!found, ms);
@@ -97,7 +123,7 @@ fn _treehash_fold(
   } (odd) {
     ms = #update_msf(odd, ms);
 
-    off = __offset(z, SLH_N);
+    off = __fold_slot(z);
     pair[0 : SLH_N] = __node_copy(pair[0 : SLH_N], nodes[off : SLH_N]);
     pair[SLH_N : SLH_N] = __node_copy(pair[SLH_N : SLH_N], node);
 
@@ -125,7 +151,7 @@ fn _treehash_fold(
 
   /* node has an even index at height z: park it. */
 
-  off = __offset(z, SLH_N);
+  off = __fold_slot(z);
   nodes[off : SLH_N] = __node_copy(nodes[off : SLH_N], node);
 
   return nodes, auth, node, node_adrs, ms;
