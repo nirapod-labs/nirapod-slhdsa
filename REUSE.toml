@@ -16,6 +16,6 @@ SPDX-FileCopyrightText = "National Institute of Standards and Technology (ACVP-S
 SPDX-License-Identifier = "NIST-Software"
 
 [[annotations]]
-path = ["tools/ci/tests/fixtures/**"]
+path = ["ci/tests/fixtures/**"]
 SPDX-FileCopyrightText = "nirapod-slhdsa contributors"
 SPDX-License-Identifier = "Apache-2.0"

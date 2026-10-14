@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/toolchain.py
-# =====================
+# ci/toolchain.py
+# ===============
 #
 # The pinned toolchain in CI: its build keys, where a built one is found,
 # and the checks on a built one. toolchain/build.sh builds it; the glue in
-# tools/ci/toolchain.sh installs packages, packs and unpacks it.
+# ci/toolchain.sh installs packages, packs and unpacks it.
 #
 # Build keys. A built toolchain depends on its sources (every file under
 # toolchain/) and on the host it was built on. Two keys per platform:
@@ -30,7 +30,7 @@
 # artifacts, tc-switch-<platform>-<switch key> (the opam root, tar.zst)
 # and tc-compiler-<platform>-<compiler key> (the binaries and the build
 # record, tar.gz). Any run takes them only from runs of ci.yml on main
-# (tools/ci/store.py), and the binaries are checked against the build
+# (ci/store.py), and the binaries are checked against the build
 # record of the same archive (`verify`). A pull request that changes the
 # toolchain builds its own in the run, which no later run can take.
 #

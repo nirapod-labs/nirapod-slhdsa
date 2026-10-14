@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_components.py
-# =================================
+# ci/tests/test_components.py
+# ===========================
 #
-# tools/ci/components.py and its negative controls: an unknown directory
+# ci/components.py and its negative controls: an unknown directory
 # fails; a required component deleted fails; an absent component is NOT
 # APPLICABLE, and safety NOT RUN while Jasmin code is present; a check
 # whose `needs` is unmet is an error; a kernel variant no set selects

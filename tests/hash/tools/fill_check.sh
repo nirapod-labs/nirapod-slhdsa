@@ -22,7 +22,7 @@
 # A substitution that does not match its expected number of sites fails
 # the build step. The build records how many sites it filled in
 # <work dir>/sites and the run prints that count on its PASS line, where
-# tools/ci/counts.py holds it to a minimum.
+# ci/counts.py holds it to a minimum.
 
 set -eu
 

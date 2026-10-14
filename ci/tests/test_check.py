@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_check.py
-# ============================
+# ci/tests/test_check.py
+# ======================
 #
-# tools/ci/check.py: a check runs only with the plan's key and only when it
+# ci/check.py: a check runs only with the plan's key and only when it
 # applies, its pass is recorded with status PASS and its kept files, a
 # failure leaves no record; agree compares the transcripts of every
 # platform, from this run's records or reused ones, and fails on one byte

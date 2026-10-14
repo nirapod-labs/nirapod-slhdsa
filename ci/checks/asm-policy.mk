@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/checks/asm-policy.mk: the emitted-code rules on the assembly of
+# ci/checks/asm-policy.mk: the emitted-code rules on the assembly of
 # every unit, and their negative controls (`make asm-policy`,
 # analysis/asm/asm.mk).
 
-include tools/ci/mk/common.mk
+include ci/mk/common.mk
 
 .PHONY: ci-asm-policy
 ci-asm-policy:

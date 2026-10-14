@@ -2,12 +2,12 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/toolchain.sh
-# =====================
+# ci/toolchain.sh
+# ===============
 #
 # Glue between a hosted runner and the pinned toolchain: system packages,
 # packing and unpacking a built toolchain, and running a command in its
-# environment. toolchain/build.sh builds the toolchain; tools/ci/toolchain.py
+# environment. toolchain/build.sh builds the toolchain; ci/toolchain.py
 # computes its build keys, finds bundles and checks them. Nothing here
 # decides anything: each subcommand runs its steps and stops on the first
 # error.
@@ -29,7 +29,7 @@
 #                   every job of the repository checks out at the same path
 #   prune           remove from the opam root what only an installation
 #                   reads (download cache, package sources, documentation);
-#                   tools/ci/toolchain.py puts this list in the switch key
+#                   ci/toolchain.py puts this list in the switch key
 #   bin-path        put toolchain/work/bin on the PATH of the following
 #                   workflow steps
 #   exec CMD...     run CMD in the opam switch, in the isolated environment
@@ -41,7 +41,7 @@
 set -euo pipefail
 umask 022
 
-ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SWITCH=${SWITCH:-nirapod-slhdsa}   # the default of toolchain/build.sh
 WORK=${WORK:-$ROOT/toolchain/work}
 export OPAMROOT=${OPAMROOT:-$WORK/opam}

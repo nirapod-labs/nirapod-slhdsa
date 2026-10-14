@@ -47,7 +47,7 @@ runs:
     - name: Unpack the switch
       if: inputs.need == 'switch'
       shell: bash
-      run: tools/ci/toolchain.sh unpack "$RUNNER_TEMP/tc-switch/switch.tar.zst"
+      run: ci/toolchain.sh unpack "$RUNNER_TEMP/tc-switch/switch.tar.zst"
 
     - name: Download the compiler bundle
       uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -62,6 +62,6 @@ runs:
       env:
         NEED: ${{ inputs.need }}
       run: |
-        tools/ci/toolchain.sh unpack "$RUNNER_TEMP/tc-compiler/compiler.tar.gz"
-        python3 -I tools/ci/toolchain.py verify "$NEED"
-        tools/ci/toolchain.sh bin-path
+        ci/toolchain.sh unpack "$RUNNER_TEMP/tc-compiler/compiler.tar.gz"
+        python3 -I ci/toolchain.py verify "$NEED"
+        ci/toolchain.sh bin-path

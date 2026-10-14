@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/checks/differential.mk: the library against slhdsa-c (PQ Code
+# ci/checks/differential.mk: the library against slhdsa-c (PQ Code
 # Package), a portable C implementation that shares no code with this one,
 # fetched and checked by bench/baselines.sh against the pins of
 # bench/baselines.lock: every set, every one of the 28 interface
 # combinations once; then the negative control, which must report
 # mismatches and exit 1 (both checked by the rules).
 
-include tools/ci/mk/common.mk
+include ci/mk/common.mk
 
 CI_BASELINES      := $(abspath build/baselines)
 CI_DIFF_SEED      ?= 20261012

@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/fakeapi.py
-# =========================
+# ci/tests/fakeapi.py
+# ===================
 #
 # A stand-in for the GitHub REST API, for the tests: an HTTP server on the
 # loopback interface that answers each path from `routes` and records

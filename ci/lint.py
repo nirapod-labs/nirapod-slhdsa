@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/lint.py
-# ================
+# ci/lint.py
+# ==========
 #
 # Correctness checks of the repository's automation and metadata, run from
 # the repository root:
@@ -16,7 +16,7 @@
 #     excessive permissions. Its default audits, offline; a finding is
 #     either fixed or carries an ignore comment that says why it does not
 #     apply;
-#   - the rules of tools/ci/policy.py: no Actions cache, no secret, the
+#   - the rules of ci/policy.py: no Actions cache, no secret, the
 #     permissions each job may hold;
 #   - ShellCheck on every tracked shell script (a *.sh file, or a file whose
 #     first line names sh or bash), at severity "warning" and above: quoting
@@ -34,7 +34,7 @@
 #     pinned by the digest of its image index; the runtime pulls the image
 #     by that digest and verifies the content against it.
 #
-# Usage: python3 -I tools/ci/lint.py [install DIR | reuse]
+# Usage: python3 -I ci/lint.py [install DIR | reuse]
 #
 #   install DIR   download the pinned actionlint, ShellCheck and zizmor
 #                 (Linux x86-64 release archives) into DIR/bin, after
@@ -176,7 +176,7 @@ def checks():
     print("actionlint: PASS")
     run(zizmor, "--offline", "--no-progress", "--config", ".github/zizmor.yml", ".github")
     print("zizmor: PASS")
-    run(sys.executable, "-I", "tools/ci/policy.py")
+    run(sys.executable, "-I", "ci/policy.py")
     files = [f for f in tracked() if os.path.isfile(f)]
     shell = [f for f in files if is_shell(f)]
     if not shell:

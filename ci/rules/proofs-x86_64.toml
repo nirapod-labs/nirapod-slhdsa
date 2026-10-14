@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/rules/proofs-x86_64.toml: the x86_64 pair shard: correctness files and the inventory
-# (tools/ci/counts.py). A minimum is the count of the complete run on the
+# ci/rules/proofs-x86_64.toml: the x86_64 pair shard: correctness files and the inventory
+# (ci/counts.py). A minimum is the count of the complete run on the
 # current tree; lowering one is a reviewed change.
 
 [x86_64]

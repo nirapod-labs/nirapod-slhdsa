@@ -1,19 +1,19 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/policy.py
-# ==================
+# ci/policy.py
+# ============
 #
-# Usage: python3 -I tools/ci/policy.py
+# Usage: python3 -I ci/policy.py
 #
 # Rules for the workflows and actions under .github that the linters do not
-# know, checked by the lint job (tools/ci/lint.py):
+# know, checked by the lint job (ci/lint.py):
 #
 #   - no workflow or action uses the Actions cache (actions/cache, its
 #     restore and save actions, or the `cache` input of a setup action): a
 #     pull request's run can save an entry that a later run restores, so
 #     the only results a run takes from other runs are artifacts of runs on
-#     main (tools/ci/store.py);
+#     main (ci/store.py);
 #   - every workflow sets `permissions: {}` at the top, and every job
 #     states its own, from the set PERMISSIONS allows for that job, and no
 #     more;
@@ -121,17 +121,17 @@ def check_file(path, rel):
             problems.append(f"{rel}: top-level permissions must be {{}}, not {top!r}")
         allowed = PERMISSIONS.get(name)
         if allowed is None:
-            problems.append(f"{rel}: a workflow tools/ci/policy.py has no permissions for")
+            problems.append(f"{rel}: a workflow ci/policy.py has no permissions for")
             return problems
         for job, perms in jobs.items():
             if job not in allowed:
-                problems.append(f"{rel}: job {job} has no permissions in tools/ci/policy.py")
+                problems.append(f"{rel}: job {job} has no permissions in ci/policy.py")
             elif not isinstance(perms, dict):
                 problems.append(f"{rel}: job {job} states no permissions mapping ({perms!r})")
             elif perms != allowed[job]:
                 problems.append(f"{rel}: job {job} has permissions {perms}, allowed {allowed[job]}")
         for job in sorted(set(allowed) - set(jobs)):
-            problems.append(f"{rel}: tools/ci/policy.py lists a job {job} the workflow lacks")
+            problems.append(f"{rel}: ci/policy.py lists a job {job} the workflow lacks")
     return problems
 
 

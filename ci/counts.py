@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/counts.py
-# ==================
+# ci/counts.py
+# ============
 #
-# Usage: python3 -I tools/ci/counts.py RULES SECTION PATH [--target T] [--arch A]
+# Usage: python3 -I ci/counts.py RULES SECTION PATH [--target T] [--arch A]
 #
 # Checks that a test run covered at least the cases CI expects of it. A
 # suite that passes with fewer cases than its minimum has silently tested
@@ -13,8 +13,8 @@
 # complete run on the current vectors and settings; raising coverage needs
 # no change here, lowering it does.
 #
-# RULES is a check's own rules file, tools/ci/rules/<check>.toml, so that a
-# changed minimum re-runs that check and no other (tools/ci/key.py). Its
+# RULES is a check's own rules file, ci/rules/<check>.toml, so that a
+# changed minimum re-runs that check and no other (ci/key.py). Its
 # tables are sections, each with any of:
 #
 #   [[SECTION.line]]      what, pattern (a regular expression with one
@@ -29,7 +29,7 @@
 #
 # Exit status 0 when every rule holds, 1 otherwise (each failure printed),
 # 2 on a usage error or a malformed rules file. Each result line starts
-# with "counts ", which is how records keep them (tools/ci/record.py).
+# with "counts ", which is how records keep them (ci/record.py).
 
 import glob
 import os

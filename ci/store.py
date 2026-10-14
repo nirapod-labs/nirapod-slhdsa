@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/store.py
-# =================
+# ci/store.py
+# ===========
 #
 # The one place where a run takes results of other runs: the artifacts of
 # runs of this repository's .github/workflows/ci.yml on main, as the API
@@ -22,11 +22,11 @@
 # What is taken from there:
 #
 #   records    artifacts records-<job>: one directory per check, named by
-#              its key (tools/ci/record.py); a record counts only if its
+#              its key (ci/record.py); a record counts only if its
 #              status is PASS, its key text equals the one this run
 #              computed, and it names the run it came from
 #   bundles    artifacts tc-<part>-<platform>-<key>: the toolchain built
-#              by a run on main (tools/ci/toolchain.py)
+#              by a run on main (ci/toolchain.py)
 #
 # A key is answered by the newest trusted run that planned to run it (its
 # artifact `plan`): its PASS record if it left one, and otherwise nothing,

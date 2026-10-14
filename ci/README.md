@@ -26,14 +26,14 @@ pinned toolchain.
 ## Running a check
 
 With the pinned toolchain on the `PATH` (`toolchain/build.sh`, then
-`tools/ci/toolchain.sh bin-path`), from the repository root:
+`ci/toolchain.sh bin-path`), from the repository root:
 
 ```sh
-python3 tools/ci/check.py run test-hash linux-x86_64
-python3 tools/ci/key.py key test-hash linux-x86_64      # its key
-python3 tools/ci/key.py inputs test-hash linux-x86_64   # the files it reads
-python3 tools/ci/source.py                               # no toolchain needed
-python3 -m unittest discover -s tools/ci/tests           # the tests of this directory
+python3 ci/check.py run test-hash linux-x86_64
+python3 ci/key.py key test-hash linux-x86_64      # its key
+python3 ci/key.py inputs test-hash linux-x86_64   # the files it reads
+python3 ci/source.py                               # no toolchain needed
+python3 -m unittest discover -s ci/tests           # the tests of this directory
 ```
 
 ## How a run decides what to run

@@ -4,7 +4,7 @@
 # .github/actions/python/action.yml
 # =================================
 #
-# The Python that runs the CI scripts under tools/ci, one exact version on
+# The Python that runs the CI scripts under ci, one exact version on
 # every runner, so that a script behaves the same on all three platforms
 # and does not change with a runner image. Standard library only: nothing
 # is installed into it.

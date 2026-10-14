@@ -137,7 +137,7 @@ analysis/         constant-time analysis and emitted-code policies of the units
 proofs/           EasyCrypt specifications and proofs
 third_party/      imported EasyCrypt theories, with their provenance
 toolchain/        pinned Jasmin and EasyCrypt, the patch series, build.sh
-tools/            CI checks and release tooling
+ci/               CI checks and release tooling
 changes/          one entry per change, collected at release
 docs/             the C API, declassification, toolchain and status
 ```

@@ -6,7 +6,7 @@
 #
 # How the project fares on upstream Jasmin and EasyCrypt heads, ahead of a
 # re-pin. Weekly, and by hand by a maintainer for a branch, a commit or a
-# pull request of either project (tools/ci/drift.py):
+# pull request of either project (ci/drift.py):
 #
 #   jasmin      the patch series tried on the Jasmin ref, patch by patch
 #               (applies, already upstream, conflicts; a maintainer can leave
@@ -100,7 +100,7 @@ jobs:
           EASYCRYPT_REF: ${{ inputs.easycrypt_ref }}
           JASMIN_DROP: ${{ inputs.jasmin_drop }}
           PLATFORMS: ${{ inputs.platforms }}
-        run: python3 -I tools/ci/drift.py setup
+        run: python3 -I ci/drift.py setup
 
   jasmin:
     name: jasmin ${{ matrix.platform.platform }}
@@ -133,14 +133,14 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          tools/ci/toolchain.sh deps build
+          ci/toolchain.sh deps build
           echo "WORK=$RUNNER_TEMP/drift-work" >> "$GITHUB_ENV"
 
       - name: Fetch upstream Jasmin at the ref
-        run: python3 -I tools/ci/drift.py resolve jasmin "$REF" "$RUNNER_TEMP/upstream"
+        run: python3 -I ci/drift.py resolve jasmin "$REF" "$RUNNER_TEMP/upstream"
 
       - name: Try the patch series on it
-        run: python3 -I tools/ci/drift.py series "$RUNNER_TEMP/upstream" "$RUNNER_TEMP/drift" "$DROP"
+        run: python3 -I ci/drift.py series "$RUNNER_TEMP/upstream" "$RUNNER_TEMP/drift" "$DROP"
 
       - name: Build the toolchain from the scratch copy
         run: |
@@ -148,18 +148,18 @@ jobs:
 
       - name: Install test dependencies
         if: matrix.platform.platform == 'linux-x86_64'
-        run: tools/ci/toolchain.sh deps run
+        run: ci/toolchain.sh deps run
 
       - name: Put the drift compiler on the PATH
         if: matrix.platform.platform == 'linux-x86_64'
-        run: tools/ci/toolchain.sh bin-path
+        run: ci/toolchain.sh bin-path
 
       - name: Tests, analyses and the extraction check with the drift compiler
         if: matrix.platform.platform == 'linux-x86_64'
         env:
           CI_RUNNER: ubuntu-24.04
         run: >-
-          python3 -I tools/ci/check.py try linux-x86_64
+          python3 -I ci/check.py try linux-x86_64
           test-hash test-core analysis-hash analysis-units asm-policy proofs-extraction
 
       - name: Upload the report and the build record
@@ -198,30 +198,30 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          tools/ci/toolchain.sh deps build
+          ci/toolchain.sh deps build
           echo "WORK=$RUNNER_TEMP/drift-work" >> "$GITHUB_ENV"
 
       - name: Resolve the EasyCrypt ref
         id: ref
-        run: python3 -I tools/ci/drift.py resolve easycrypt "$REF" "$RUNNER_TEMP/upstream"
+        run: python3 -I ci/drift.py resolve easycrypt "$REF" "$RUNNER_TEMP/upstream"
 
       - name: Scratch copy of the toolchain with that EasyCrypt
         env:
           COMMIT: ${{ steps.ref.outputs.commit }}
-        run: python3 -I tools/ci/drift.py easycrypt "$COMMIT" "$RUNNER_TEMP/drift"
+        run: python3 -I ci/drift.py easycrypt "$COMMIT" "$RUNNER_TEMP/drift"
 
       - name: Build the toolchain and check the Jasmin EasyCrypt library
         run: |
           "$RUNNER_TEMP/drift/tree/toolchain/build.sh" all
 
       - name: Put the compiler on the PATH
-        run: tools/ci/toolchain.sh bin-path
+        run: ci/toolchain.sh bin-path
 
       - name: Check the proofs with that EasyCrypt
         env:
           CI_RUNNER: ubuntu-24.04
         run: >-
-          python3 -I tools/ci/check.py try linux-x86_64
+          python3 -I ci/check.py try linux-x86_64
           proofs-sphincs proofs-crypto-specs proofs-spec proofs-x86_64 proofs-aarch64
           proofs-extraction
 

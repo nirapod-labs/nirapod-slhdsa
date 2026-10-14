@@ -1,22 +1,22 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/source.py
-# ==================
+# ci/source.py
+# ============
 #
-# Usage: python3 -I tools/ci/source.py
+# Usage: python3 -I ci/source.py
 #
 # The checks that need no toolchain, run first on every event (the job
 # `source` of ci.yml):
 #
 #   components   every directory accounted for, required components
 #                present, every hash kernel variant selected by a kernel set
-#                (tools/ci/components.py)
+#                (ci/components.py)
 #   recipes      every check of the registry has its recipe; every recipe
 #                and rules file belongs to a check; a recipe includes
-#                tools/ci/mk/common.mk and nothing else, and names no other
+#                ci/mk/common.mk and nothing else, and names no other
 #                check's recipe or rules: so a recipe or a rules file is an
-#                input of its own check alone (tools/ci/key.py)
+#                input of its own check alone (ci/key.py)
 #   shards       proofs/Makefile's shards are the registry's, and every
 #                EasyCrypt file under proofs/ and third_party/ is checked
 #                by exactly one shard, except the shared correctness
@@ -38,31 +38,31 @@ import components  # noqa: E402
 import key  # noqa: E402
 import registry  # noqa: E402
 
-INCLUDE = "include tools/ci/mk/common.mk"
+INCLUDE = "include ci/mk/common.mk"
 
 
 def recipe_errors(reg, files):
     errors = []
     recipes = {f[len(key.RECIPES):-3] for f in files
-               if f.startswith(key.RECIPES) and f.endswith(".mk") and f.count("/") == 3}
+               if f.startswith(key.RECIPES) and f.endswith(".mk") and f.count("/") == 2}
     rules = {f[len(key.RULES):-5] for f in files
              if f.startswith(key.RULES) and f.endswith(".toml")}
     used = {c["recipe"] for c in reg["checks"].values()}
-    errors += [f"check recipe tools/ci/checks/{r}.mk is missing" for r in sorted(used - recipes)]
-    errors += [f"tools/ci/checks/{r}.mk is the recipe of no check" for r in sorted(recipes - used)]
-    errors += [f"tools/ci/rules/{r}.toml belongs to no check" for r in sorted(rules - set(reg["checks"]))]
+    errors += [f"check recipe ci/checks/{r}.mk is missing" for r in sorted(used - recipes)]
+    errors += [f"ci/checks/{r}.mk is the recipe of no check" for r in sorted(recipes - used)]
+    errors += [f"ci/rules/{r}.toml belongs to no check" for r in sorted(rules - set(reg["checks"]))]
     for f in sorted(files):
-        inside = f.startswith(key.RECIPES) or f == "tools/ci/mk/common.mk"
+        inside = f.startswith(key.RECIPES) or f == "ci/mk/common.mk"
         if not inside or not f.endswith(".mk"):
             continue
         with open(f, encoding="utf-8") as fh:
             text = fh.read()
         includes = [l.strip() for l in text.splitlines()
                     if re.match(r"^\s*-?(include|sinclude)\s", l)]
-        want = [] if f == "tools/ci/mk/common.mk" else [INCLUDE]
+        want = [] if f == "ci/mk/common.mk" else [INCLUDE]
         if includes != want:
             errors.append(f"{f}: includes {includes or 'nothing'}, expected {want or 'nothing'}")
-        for ref in re.findall(r"tools/ci/(?:checks|rules)/[A-Za-z0-9_.-]+", text):
+        for ref in re.findall(r"ci/(?:checks|rules)/[A-Za-z0-9_.-]+", text):
             if f.startswith(key.RECIPES) and ref not in (f,):
                 errors.append(f"{f}: names {ref}, another check's file")
     return errors

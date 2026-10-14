@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/rules/test-hash.toml: minimum case counts of tests/hash `check negative-control fill-check`, per kernel set
-# (tools/ci/counts.py). A minimum is the count of the complete run on the
+# ci/rules/test-hash.toml: minimum case counts of tests/hash `check negative-control fill-check`, per kernel set
+# (ci/counts.py). A minimum is the count of the complete run on the
 # current vectors and settings; lowering one is a reviewed change.
 
 [hash]

@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/changelog.py
-# =====================
+# ci/changelog.py
+# ===============
 #
-# Usage: python3 -I tools/ci/changelog.py
+# Usage: python3 -I ci/changelog.py
 #
 # A pull request that changes what users build, call or rely on describes
 # the change in an entry of its own, a new file
 # changes/<category>/<pull request number>-<slug>.md (changes/README.md,
-# tools/changes.sh). This check fails a pull request that changes
+# ci/changes.sh). This check fails a pull request that changes
 #
 #   a file under src/ toolchain/ proofs/ third_party/ analysis/ include/,
 #   the top-level Makefile, or a *.mk fragment anywhere
@@ -17,7 +17,7 @@
 # and adds no entry with its own number, unless the pull request carries
 # the label `no-changelog` (for a change with nothing to tell a user, such
 # as a comment fix). It also fails, label or not, when any file under
-# changes/ is malformed (`tools/changes.sh check`). Whether an entry says
+# changes/ is malformed (`ci/changes.sh check`). Whether an entry says
 # the right thing is for review; this only makes a missing one visible.
 #
 # Run from the repository root, with HEAD the merge commit GitHub builds
@@ -97,7 +97,7 @@ def pr_labels(repository, number):
     return [l.get("name") for l in labels]
 
 
-def check(env, labels_of=pr_labels, changes_check=("tools/changes.sh", "check")):
+def check(env, labels_of=pr_labels, changes_check=("ci/changes.sh", "check")):
     """(status, lines): status 0 for a pass, 1 for a failure."""
     event = env.get("CI_EVENT", "")
     if event != "pull_request":

@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/retry.py
-# =================
+# ci/retry.py
+# ===========
 #
-# Usage: python3 -I tools/ci/retry.py run RUN_ID [--dry-run]
-#        python3 -I tools/ci/retry.py classify RUN.json JOBS.json ANNOTATIONS_DIR
+# Usage: python3 -I ci/retry.py run RUN_ID [--dry-run]
+#        python3 -I ci/retry.py classify RUN.json JOBS.json ANNOTATIONS_DIR
 #
 # Decides whether a completed run of ci.yml failed only because GitHub lost
 # a job's runner or never gave it one, and if so re-runs it once

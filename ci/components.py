@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/components.py
-# ======================
+# ci/components.py
+# ================
 #
-# The components of the tree ([components] in tools/ci/checks.toml) and
+# The components of the tree ([components] in ci/checks.toml) and
 # what follows from them: which checks apply, and the source checks that
 # need no toolchain. A component is present when the commit tracks a file
 # under one of its directories.
@@ -18,7 +18,7 @@
 #                        required components that are absent
 #   hash_set_errors(...) variant directories of src/hash that no kernel set
 #                        selects, and selections of directories that do not
-#                        exist (tools/ci/hash-sets.toml)
+#                        exist (ci/hash-sets.toml)
 
 import os
 import sys
@@ -69,7 +69,7 @@ def layout_errors(reg, files):
              if f.count("/") >= 2 and f.split("/", 1)[0] in containers}
     unknown = sorted((roots - known - containers - other) | (inner - known))
     errors = [f"directory {d} is not accounted for: add it to its component in "
-              f"tools/ci/checks.toml, or to other-roots if it holds none" for d in unknown]
+              f"ci/checks.toml, or to other-roots if it holds none" for d in unknown]
     found = present(reg, files)
     errors += [f"required component {r} is absent (none of: {' '.join(comp['dirs'][r])})"
                for r in comp["required"] if not found[r]]

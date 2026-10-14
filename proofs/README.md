@@ -264,7 +264,7 @@ With the EasyCrypt of the pinned toolchain (`toolchain/build.sh`), from the
 repository root:
 
 ```sh
-tools/ci/toolchain.sh exec make -C proofs check check-inventory check-extraction
+ci/toolchain.sh exec make -C proofs check check-inventory check-extraction
 ```
 
 `toolchain.sh exec` runs the command in the toolchain's opam switch, so that

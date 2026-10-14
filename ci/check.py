@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/check.py
-# =================
+# ci/check.py
+# ===========
 #
 # Runs checks and records them. A check is one recipe,
-# `make -f tools/ci/checks/<recipe>.mk ci-<recipe>`, run with the
+# `make -f ci/checks/<recipe>.mk ci-<recipe>`, run with the
 # parameters of its platform; the same command runs on a workstation with
 # the pinned toolchain on the PATH (`check.py run`).
 #
@@ -17,14 +17,14 @@
 #       run the checks without recording them, for a toolchain other than
 #       the pinned one (.github/workflows/drift.yml); fails if any failed
 #   check.py run-planned PLAN PLATFORM [SHARD]
-#       the checks plan.json (tools/ci/plan.py) gives this platform (or the
+#       the checks plan.json (ci/plan.py) gives this platform (or the
 #       one proof shard), one after another; a failing check does not stop
 #       the others, and the command fails at the end if any failed
 #   check.py agree PLAN RECORDS BUILDS
 #       agree: the core transcripts of every platform (from the test-core
 #       records under RECORDS, of this run or reused) are byte-identical,
 #       and so are the extracted compiler and its assumptions in the build
-#       records BUILDS/buildrecord-<platform>/ (tools/ci/toolchain.py agree)
+#       records BUILDS/buildrecord-<platform>/ (ci/toolchain.py agree)
 #
 # Before a check runs, its key is computed again and compared with the
 # plan's, and so is its applicability: the plan and the jobs cannot
@@ -33,7 +33,7 @@
 # registry's (CI_RUNNER).
 #
 # A check that passed is recorded under build/records/<key>/ (record, log,
-# kept files; tools/ci/record.py), with status PASS. A check that failed
+# kept files; ci/record.py), with status PASS. A check that failed
 # leaves its log under build/records/failed/ and no record: FAIL is never
 # recorded. The workflow uploads build/records: as records-<job> from runs
 # on main, the ones pull requests reuse, and as results-<job> from every
@@ -78,9 +78,9 @@ def host_is(reg, plat):
 def make_command(reg, cid, plat):
     c, p = reg["checks"][cid], reg["platforms"][plat]
     jobs = c.get("jobs", p["jobs"])
-    cmd = ["make", "-f", f"tools/ci/checks/{c['recipe']}.mk", f"ci-{c['recipe']}",
+    cmd = ["make", "-f", f"ci/checks/{c['recipe']}.mk", f"ci-{c['recipe']}",
            f"CI_PLATFORM={plat}", f"CI_TARGET={p['target']}", f"CI_ARCH={p['arch']}",
-           f"CI_JOBS={jobs}", f"CI_RULES=tools/ci/rules/{cid}.toml"]
+           f"CI_JOBS={jobs}", f"CI_RULES=ci/rules/{cid}.toml"]
     if c.get("shard"):
         cmd.append(f"CI_SHARD={c['shard']}")
     if c["recipe"] in ("test-hash", "analysis-hash"):
@@ -91,7 +91,7 @@ def make_command(reg, cid, plat):
             cmd.append(f"CI_HASH_VARS_{n}=" + " ".join(sets[n]["vars"]))
             cmd.append(f"CI_HASH_CPU_{n}=" + " ".join(sets[n]["cpu"]))
     if c.get("opam"):
-        cmd = ["tools/ci/toolchain.sh", "exec"] + cmd
+        cmd = ["ci/toolchain.sh", "exec"] + cmd
     return cmd
 
 

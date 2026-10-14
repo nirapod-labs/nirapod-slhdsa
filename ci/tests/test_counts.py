@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_counts.py
-# =============================
+# ci/tests/test_counts.py
+# =======================
 #
-# tools/ci/counts.py on the rules of the checks: a count below its minimum,
+# ci/counts.py on the rules of the checks: a count below its minimum,
 # a missing line, a wrong exact count and a wrong number of files fail;
 # every rules file loads.
 
@@ -26,7 +26,7 @@ class Counts(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", delete=False, suffix=".log") as f:
             f.write(log_text)
         self.addCleanup(os.remove, f.name)
-        rules = counts.load(os.path.join(ROOT, "tools/ci/rules", self.rules), section)
+        rules = counts.load(os.path.join(ROOT, "ci/rules", self.rules), section)
         return counts.check(rules, section, f.name, **opts)[0]
 
     def test_hash_minimums(self):
@@ -54,17 +54,17 @@ class Counts(unittest.TestCase):
             for i in range(12):
                 for ext in ("ok", "ct.log", "sct.log"):
                     open(os.path.join(d, "aarch64-elf", "ct", f"u{i}.{ext}"), "w").close()
-            rules = counts.load(os.path.join(ROOT, "tools/ci/rules/analysis-units.toml"), "ct")
+            rules = counts.load(os.path.join(ROOT, "ci/rules/analysis-units.toml"), "ct")
             self.assertEqual(counts.check(rules, "ct", d, "aarch64-elf", "aarch64")[0], 0)
             os.remove(os.path.join(d, "aarch64-elf", "ct", "u3.sct.log"))
             self.assertEqual(counts.check(rules, "ct", d, "aarch64-elf", "aarch64")[0], 1)
 
     def test_every_rules_file_loads(self):
-        for f in os.listdir(os.path.join(ROOT, "tools/ci/rules")):
+        for f in os.listdir(os.path.join(ROOT, "ci/rules")):
             import tomllib
-            with open(os.path.join(ROOT, "tools/ci/rules", f), "rb") as fh:
+            with open(os.path.join(ROOT, "ci/rules", f), "rb") as fh:
                 for section in tomllib.load(fh):
-                    counts.load(os.path.join(ROOT, "tools/ci/rules", f), section)
+                    counts.load(os.path.join(ROOT, "ci/rules", f), section)
 
 
 if __name__ == "__main__":

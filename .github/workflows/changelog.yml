@@ -8,7 +8,7 @@
 # branch protection requires beside `all-checks` (ci.yml). A pull request
 # that changes the sources, the build, the toolchain, the proofs, the
 # analyses or the public interface adds a change entry under changes/, or
-# carries the label `no-changelog` (tools/ci/changelog.py).
+# carries the label `no-changelog` (ci/changelog.py).
 #
 # It runs on label events as well as on pushes, and reads the labels from
 # the API when it runs, so adding or removing the label re-runs it without
@@ -58,4 +58,4 @@ jobs:
           CI_EVENT: ${{ github.event_name }}
           CI_HEAD: ${{ github.event.pull_request.head.sha }}
           CI_PR: ${{ github.event.pull_request.number }}
-        run: python3 -I tools/ci/changelog.py
+        run: python3 -I ci/changelog.py

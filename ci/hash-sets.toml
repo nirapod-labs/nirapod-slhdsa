@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/hash-sets.toml
-# =======================
+# ci/hash-sets.toml
+# =================
 #
 # Hash kernel sets. A kernel set is one choice of the kernel roots of
 # tests/hash/Makefile. Each architecture is tested with the portable
@@ -10,11 +10,11 @@
 # all of them selected together. Between them, the CAVP and differential
 # tests run every kernel the architecture has; the source check fails when
 # a variant directory exists that no set selects, or a set selects one that
-# does not exist (tools/ci/components.py). `cpu` lists the CPU features the
-# set needs on the runner (tools/ci/cpu-has.sh): a runner without them
+# does not exist (ci/components.py). `cpu` lists the CPU features the
+# set needs on the runner (ci/cpu-has.sh): a runner without them
 # fails the check, it is never reduced to fewer kernels.
 #
-# Read by test-hash and analysis-hash (tools/ci/checks.toml).
+# Read by test-hash and analysis-hash (ci/checks.toml).
 
 [sets.scalar]
 arch = ["x86_64", "aarch64"]

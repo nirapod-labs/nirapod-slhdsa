@@ -39,7 +39,7 @@ a comment fix, carries the label `no-changelog` instead.
 
 ## Releasing
 
-`tools/changes.sh section vX.Y.Z YYYY-MM-DD` prints the section the
-entries make. `tools/changes.sh release vX.Y.Z YYYY-MM-DD` writes it into
+`ci/changes.sh section vX.Y.Z YYYY-MM-DD` prints the section the
+entries make. `ci/changes.sh release vX.Y.Z YYYY-MM-DD` writes it into
 `CHANGELOG.md` and removes the entries; that is the release commit, made
 before the tag.

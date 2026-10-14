@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_drift.py
-# ============================
+# ci/tests/test_drift.py
+# ======================
 #
-# tools/ci/drift.py on scratch repositories: an "upstream" with two
+# ci/drift.py on scratch repositories: an "upstream" with two
 # commits, and a toolchain/ whose series holds a patch upstream has since
 # taken, a changelog patch whose context upstream moved, a patch that
 # still applies, and (in one case) a patch upstream contradicts. The

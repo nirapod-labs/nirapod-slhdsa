@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/key.py
-# ===============
+# ci/key.py
+# =========
 #
 # The key of a check: the SHA-256 of everything the check reads, so that
 # two runs with the same key ran the same check on the same inputs, and a
 # pass recorded under a key on main can stand for a run on a pull request
-# with that key (tools/ci/record.py, tools/ci/plan.py).
+# with that key (ci/record.py, ci/plan.py).
 #
 # The key text of check C on platform P is
 #
@@ -39,13 +39,14 @@
 # The input set of C: every tracked file of the commit, minus
 #
 #   - the paths of [inputs] skip-all and of C's skip list (a path and
-#     everything under it; tools/ci/checks.toml),
+#     everything under it; ci/checks.toml),
 #   - the files under toolchain/ (they are the toolchain identity),
-#   - the recipes tools/ci/checks/*.mk other than C's own, and the rules
-#     tools/ci/rules/*.toml other than C's own,
+#   - the recipes ci/checks/*.mk other than C's own, and the rules
+#     ci/rules/*.toml other than C's own,
 #
-# except that every *.mk file one or two directories below the root stays
-# an input whatever the lists say: the top-level Makefile includes them all.
+# except that every *.mk file one or two directories below the root, outside
+# ci/, stays an input whatever the lists say: the top-level Makefile
+# includes them all.
 # So a path nobody listed is an input of every check.
 #
 # The key of agree is over the keys of the test-core legs instead of files:
@@ -68,8 +69,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import registry  # noqa: E402
 
 FORMAT = 2
-RECIPES = "tools/ci/checks/"
-RULES = "tools/ci/rules/"
+RECIPES = "ci/checks/"
+RULES = "ci/rules/"
 TOOLCHAIN = "toolchain/"
 
 
@@ -134,8 +135,8 @@ def under(path, entries):
 
 
 def included_by_top_makefile(path):
-    # The top-level Makefile includes */*.mk and */*/*.mk.
-    return path.endswith(".mk") and path.count("/") in (1, 2)
+    # The top-level Makefile includes */*.mk and */*/*.mk outside ci/.
+    return path.endswith(".mk") and path.count("/") in (1, 2) and not path.startswith("ci/")
 
 
 def input_set(tree, reg, check):

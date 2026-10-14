@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/gate.py
-# ================
+# ci/gate.py
+# ==========
 #
 # The gates of ci.yml: the jobs whose success stands for the others.
 #

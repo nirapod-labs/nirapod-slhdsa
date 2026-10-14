@@ -1,23 +1,23 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/plan.py
-# ================
+# ci/plan.py
+# ==========
 #
-# Usage: python3 -I tools/ci/plan.py OUT
+# Usage: python3 -I ci/plan.py OUT
 #
 # The plan of a run of ci.yml: for every check on every platform
-# (tools/ci/checks.toml) and for agree, its key (tools/ci/key.py) and what
+# (ci/checks.toml) and for agree, its key (ci/key.py) and what
 # this run does with it:
 #
-#   NOT APPLICABLE  its component is absent (tools/ci/components.py); this
+#   NOT APPLICABLE  its component is absent (ci/components.py); this
 #                   follows from the tree alone, so it is decided here on
 #                   every run, needs no runner, and is never recorded
 #   NOT RUN         its component is absent while code it would check is
 #                   present: a gap, reported as such on every run
 #   REUSED          a pull request, and the newest run of ci.yml on main
 #                   that ran the check under the same key recorded a pass
-#                   (tools/ci/store.py); the summary names that run, its
+#                   (ci/store.py); the summary names that run, its
 #                   commit and its runner image
 #   RUN             anything else, and everything on a push to main, the
 #                   schedule and a manual run: main never reuses

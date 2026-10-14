@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_changelog.py
-# ================================
+# ci/tests/test_changelog.py
+# ==========================
 #
-# tools/ci/changelog.py on a scratch repository: a base commit, a pull
+# ci/changelog.py on a scratch repository: a base commit, a pull
 # request head and the merge commit GitHub would build, with a local HTTP
 # server in place of the GitHub API that answers the pull request query
 # from a file. The labels are read when the check runs, so the same merge
@@ -18,7 +18,7 @@ import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 
 import fakeapi  # noqa: E402
 
@@ -35,10 +35,10 @@ class Changelog(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.repo = os.path.join(self.tmp, "repo")
-        os.makedirs(os.path.join(self.repo, "tools", "ci"))
+        os.makedirs(os.path.join(self.repo, "ci"))
         os.makedirs(os.path.join(self.repo, "changes"))
         os.makedirs(os.path.join(self.repo, "src"))
-        for f in ("tools/ci/changelog.py", "tools/ci/ghapi.py", "tools/changes.sh",
+        for f in ("ci/changelog.py", "ci/ghapi.py", "ci/changes.sh",
                   "changes/README.md"):
             shutil.copy(os.path.join(ROOT, f), os.path.join(self.repo, f))
         with open(os.path.join(self.repo, "src", "a.jinc"), "w") as f:
@@ -76,7 +76,7 @@ class Changelog(unittest.TestCase):
         env = dict(os.environ, GITHUB_API_URL=self.api.url, GH_TOKEN="t",
                    CI_EVENT="pull_request", CI_HEAD=head, CI_PR="5", GITHUB_REPOSITORY="o/r")
         env.pop("GITHUB_STEP_SUMMARY", None)
-        return subprocess.run(["python3", "-I", "tools/ci/changelog.py"], cwd=self.repo,
+        return subprocess.run(["python3", "-I", "ci/changelog.py"], cwd=self.repo,
                               env=env, capture_output=True, text=True)
 
     def test_label_read_when_the_check_runs(self):
@@ -122,7 +122,7 @@ class Changelog(unittest.TestCase):
     def test_other_events_do_not_apply(self):
         env = dict(os.environ, CI_EVENT="push")
         env.pop("GITHUB_STEP_SUMMARY", None)
-        r = subprocess.run(["python3", "-I", "tools/ci/changelog.py"], cwd=self.repo,
+        r = subprocess.run(["python3", "-I", "ci/changelog.py"], cwd=self.repo,
                            env=env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0)
         self.assertIn("NOT APPLICABLE", r.stdout)

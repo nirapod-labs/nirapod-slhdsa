@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_key.py
-# ==========================
+# ci/tests/test_key.py
+# ====================
 #
-# Negative controls of the check keys (tools/ci/key.py), on a scratch
+# Negative controls of the check keys (ci/key.py), on a scratch
 # repository holding a copy of this tree: one changed byte in a file of
 # each kind changes exactly the keys of the checks that read it, and no
 # other.
@@ -60,8 +60,8 @@ class Keys(unittest.TestCase):
                 shutil.copy2(src, dst)
         # Files that may not exist in the tree yet, so that each kind of
         # path is represented.
-        for f in ("tools/ci/checks/test-hash.mk", "tools/ci/checks/proofs.mk",
-                  "tools/ci/rules/test-hash.toml", "tools/ci/rules/proofs-spec.toml"):
+        for f in ("ci/checks/test-hash.mk", "ci/checks/proofs.mk",
+                  "ci/rules/test-hash.toml", "ci/rules/proofs-spec.toml"):
             p = os.path.join(cls.repo, f)
             if not os.path.exists(p):
                 os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -137,8 +137,8 @@ class Keys(unittest.TestCase):
         self.assertFalse(got & self.legs_of("test-hash", "proofs-spec", "analysis-units"))
 
     def test_b_skipped_paths_change_nothing(self):
-        for path in ("docs/API.md", "README.md", "changes/README.md", "tools/ci/retry.py",
-                     "tools/ci/tests/test_key.py", ".github/workflows/drift.yml",
+        for path in ("docs/API.md", "README.md", "changes/README.md", "ci/retry.py",
+                     "ci/tests/test_key.py", ".github/workflows/drift.yml",
                      "proofs/README.md"):
             self.assertEqual(self.changed_by(path), set(), path)
 
@@ -147,18 +147,29 @@ class Keys(unittest.TestCase):
         self.assertEqual(self.changed_by("newdir/x.c", "x"), self.all_legs())
 
     def test_recipe_and_rules_are_per_check(self):
-        self.assertEqual(self.changed_by("tools/ci/checks/test-hash.mk"),
+        self.assertEqual(self.changed_by("ci/checks/test-hash.mk"),
                          self.legs_of("test-hash"))
-        self.assertEqual(self.changed_by("tools/ci/rules/test-hash.toml"),
+        self.assertEqual(self.changed_by("ci/rules/test-hash.toml"),
                          self.legs_of("test-hash"))
-        self.assertEqual(self.changed_by("tools/ci/rules/proofs-spec.toml"),
+        self.assertEqual(self.changed_by("ci/rules/proofs-spec.toml"),
                          self.legs_of("proofs-spec"))
         shards = {c for c in self.reg["checks"] if self.reg["checks"][c]["recipe"] == "proofs"}
-        self.assertEqual(self.changed_by("tools/ci/checks/proofs.mk"), self.legs_of(*shards))
+        self.assertEqual(self.changed_by("ci/checks/proofs.mk"), self.legs_of(*shards))
 
     def test_included_makefile_fragments_change_every_key(self):
         self.assertEqual(self.changed_by("analysis/ct/ct.mk"), self.all_legs())
         self.assertEqual(self.changed_by("proofs/x.mk", "x"), self.all_legs())
+
+    def test_top_makefile_leaves_ci_out(self):
+        # key.py keeps every *.mk the top-level Makefile includes; the CI
+        # recipes under ci/ must not be among them, or they would be inputs
+        # of every check.
+        with open(os.path.join(ROOT, "Makefile")) as f:
+            includes = [l for l in f if l.startswith("-include ")]
+        self.assertEqual(includes, ["-include $(sort $(filter-out ci/%,$(wildcard */*.mk */*/*.mk)))\n"])
+        self.assertFalse(key.included_by_top_makefile("ci/checks/test-hash.mk"))
+        self.assertFalse(key.included_by_top_makefile("ci/mk/common.mk"))
+        self.assertTrue(key.included_by_top_makefile("analysis/ct/ct.mk"))
 
     def test_toolchain_changes_every_key(self):
         self.assertEqual(self.changed_by("toolchain/jasmin/PIN"), self.all_legs())
@@ -169,7 +180,7 @@ class Keys(unittest.TestCase):
                          {l for l in after if l[1] == "linux-aarch64"} | {("agree", "any")})
 
     def test_shared_ci_files_change_every_key(self):
-        for path in ("tools/ci/key.py", "tools/ci/checks.toml", ".github/workflows/ci.yml"):
+        for path in ("ci/key.py", "ci/checks.toml", ".github/workflows/ci.yml"):
             self.assertEqual(self.changed_by(path), self.all_legs(), path)
 
     def test_work_tree_plays_no_part(self):

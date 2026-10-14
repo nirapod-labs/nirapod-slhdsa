@@ -25,8 +25,8 @@ welcome.
 - In the CI tooling, shell is glue only: it installs packages, sets up the
   environment and runs steps in order. Anything that parses, computes keys
   or digests, generates files or decides whether a check passed is Python,
-  standard library only, with tests under `tools/ci/tests`. See
-  `tools/ci/README.md`.
+  standard library only, with tests under `ci/tests`. See
+  `ci/README.md`.
 
 ## Sign-off
 

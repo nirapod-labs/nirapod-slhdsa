@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/drift.py
-# =================
+# ci/drift.py
+# ===========
 #
 # How far upstream Jasmin and EasyCrypt have moved from the pins under
 # toolchain/ (.github/workflows/drift.yml). It prepares a scratch copy of
@@ -74,7 +74,7 @@ import shutil
 import subprocess
 import sys
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 # Commits made here have a fixed identity and are never signed or pushed.
 IDENTITY = {"GIT_AUTHOR_NAME": "drift", "GIT_AUTHOR_EMAIL": "drift@invalid",

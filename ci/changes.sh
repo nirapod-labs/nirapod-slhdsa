@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/changes.sh
-# ================
+# ci/changes.sh
+# =============
 #
 # The unreleased changelog lives in changes/, one file per pull request,
 # so that pull requests merged in parallel never edit the same lines. A
@@ -24,15 +24,15 @@
 #
 # Usage, from the repository root:
 #
-#   tools/changes.sh check
+#   ci/changes.sh check
 #       Fail unless every file under changes/ is changes/README.md or a
 #       well-formed entry as above, without a pull request link.
-#   tools/changes.sh section VERSION DATE
+#   ci/changes.sh section VERSION DATE
 #       Print the release section for VERSION (vMAJOR.MINOR.PATCH) dated
 #       DATE (YYYY-MM-DD): "## VERSION - DATE", then one "### <Category>"
 #       per category that has entries, its entries in pull request order,
 #       each list item closed by the link to its pull request.
-#   tools/changes.sh release VERSION DATE
+#   ci/changes.sh release VERSION DATE
 #       Put that section into CHANGELOG.md, above the newest release, and
 #       remove the entries it holds with `git rm`. The result is reviewed
 #       and committed as the release commit, before the tag.
@@ -178,5 +178,5 @@ case $CMD in
   (check)   shift; cmd_check "$@" ;;
   (section) shift; cmd_section "$@" ;;
   (release) shift; cmd_release "$@" ;;
-  (*) echo "usage: tools/changes.sh check | section VERSION DATE | release VERSION DATE" >&2; exit 2 ;;
+  (*) echo "usage: ci/changes.sh check | section VERSION DATE | release VERSION DATE" >&2; exit 2 ;;
 esac

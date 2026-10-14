@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/registry.py
-# ====================
+# ci/registry.py
+# ==============
 #
-# Reads tools/ci/checks.toml and tools/ci/hash-sets.toml, and refuses any
+# Reads ci/checks.toml and ci/hash-sets.toml, and refuses any
 # entry it does not know, so that a misspelt field fails instead of being
 # ignored (a skip list under a wrong name would otherwise silently widen a
 # check's inputs to everything, or a platform list to nothing).
@@ -12,9 +12,9 @@
 import os
 import tomllib
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-REGISTRY = "tools/ci/checks.toml"
-HASH_SETS = "tools/ci/hash-sets.toml"
+ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+REGISTRY = "ci/checks.toml"
+HASH_SETS = "ci/hash-sets.toml"
 
 PLATFORM_FIELDS = {"runner", "system", "machine", "arch", "target", "toolchain-options", "jobs"}
 CHECK_FIELDS = {"recipe", "shard", "component", "needs", "absent", "not-run-when", "platforms",

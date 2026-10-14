@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_lint.py
-# ===========================
+# ci/tests/test_lint.py
+# =====================
 #
-# tools/ci/lint.py: which files count as shell and Python scripts, and the
+# ci/lint.py: which files count as shell and Python scripts, and the
 # download check that refuses an archive whose SHA-256 is not the pinned
 # one.
 

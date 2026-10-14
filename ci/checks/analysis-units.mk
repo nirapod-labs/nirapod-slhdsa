@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/checks/analysis-units.mk: jasmin-ct and jasmin-ct --sct on every
+# ci/checks/analysis-units.mk: jasmin-ct and jasmin-ct --sct on every
 # parameter-set unit of the architecture (`make ct`, analysis/ct/ct.mk).
 # The records of an earlier run are removed first; the rules then require
 # one of each per unit, and as many units as the architecture has.
 
-include tools/ci/mk/common.mk
+include ci/mk/common.mk
 
 .PHONY: ci-analysis-units
 ci-analysis-units:

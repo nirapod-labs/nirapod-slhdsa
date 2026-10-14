@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_retry.py
-# ============================
+# ci/tests/test_retry.py
+# ======================
 #
-# The retry classifier (tools/ci/retry.py) on the jobs and annotations of
+# The retry classifier (ci/retry.py) on the jobs and annotations of
 # three real runs of ci.yml, as the API returned them (fields the
 # classifier does not read removed; the attempt set to 1, the state the
 # retry workflow sees):

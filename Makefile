@@ -513,4 +513,6 @@ clean:
 
 .SECONDARY:
 
--include $(sort $(wildcard */*.mk */*/*.mk))
+# ci/ holds the recipes of the CI checks (ci/checks/*.mk, ci/mk/common.mk),
+# which are not fragments of this build.
+-include $(sort $(filter-out ci/%,$(wildcard */*.mk */*/*.mk)))

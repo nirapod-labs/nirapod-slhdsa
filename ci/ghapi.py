@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/ghapi.py
-# =================
+# ci/ghapi.py
+# ===========
 #
 # A small client for the GitHub REST API, for the CI scripts that read runs,
 # jobs and artifacts of this repository. Standard library only. The token

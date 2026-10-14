@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_record.py
-# =============================
+# ci/tests/test_record.py
+# =======================
 #
-# Records (tools/ci/record.py) and where they may come from
-# (tools/ci/store.py), against a stand-in API:
+# Records (ci/record.py) and where they may come from
+# (ci/store.py), against a stand-in API:
 #
 #   - a record starts with its status, and a NOT RUN record reads NOT RUN
 #     and is never reused (control e); a record in the old format, whose

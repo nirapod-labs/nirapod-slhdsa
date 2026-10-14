@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/rules/proofs-sphincs.toml: files the proof shard sphincs checks
-# (tools/ci/counts.py). A minimum is the count of the complete run on the
+# ci/rules/proofs-sphincs.toml: files the proof shard sphincs checks
+# (ci/counts.py). A minimum is the count of the complete run on the
 # current tree; lowering one is a reviewed change.
 
 [sphincs]

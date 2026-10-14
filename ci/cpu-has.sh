@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/cpu-has.sh
-# ===================
+# ci/cpu-has.sh
+# =============
 #
-# Usage: tools/ci/cpu-has.sh FEATURE...
+# Usage: ci/cpu-has.sh FEATURE...
 #
 # Exits 0 when this CPU reports every FEATURE, and 1 naming the first one it
 # does not. A test run that needs an instruction-set extension calls this

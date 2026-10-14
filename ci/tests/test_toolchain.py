@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_toolchain.py
-# ================================
+# ci/tests/test_toolchain.py
+# ==========================
 #
-# tools/ci/toolchain.py: what changes the build keys, the check of packed
+# ci/toolchain.py: what changes the build keys, the check of packed
 # binaries against their build record, the comparison of two build
 # records, the agreement of the platforms, and the weekly cold comparison
 # against a stored bundle, with a stand-in API.
@@ -202,10 +202,10 @@ class BuildKeys(unittest.TestCase):
 
 class Prune(unittest.TestCase):
     def test_prune_list_is_the_one_in_the_key(self):
-        # tools/ci/toolchain.sh removes what toolchain.PRUNE says, which is
+        # ci/toolchain.sh removes what toolchain.PRUNE says, which is
         # in the switch key; the two must name the same paths.
         import re
-        with open(os.path.join(registry.ROOT, "tools/ci/toolchain.sh")) as f:
+        with open(os.path.join(registry.ROOT, "ci/toolchain.sh")) as f:
             sh = f.read()
         root = re.search(r'^PRUNE_ROOT="([^"]*)"$', sh, re.M).group(1)
         switch = re.search(r'^PRUNE_SWITCH="([^"]*)"$', sh, re.M).group(1)

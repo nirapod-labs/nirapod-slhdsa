@@ -291,7 +291,7 @@ compile-files:
 # Shards
 #
 # CI checks the development in shards, in parallel jobs, each keyed on the
-# files it can load (tools/ci/checks.toml); together they check what
+# files it can load (ci/checks.toml); together they check what
 # `check` checks, apart from the scans and the constant check, which CI
 # runs without EasyCrypt:
 #

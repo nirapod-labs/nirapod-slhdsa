@@ -10,7 +10,7 @@
 # job was not acquired by Runner of type hosted even after multiple
 # attempts"). A job with a failed step, a timeout, a cancellation by hand
 # or by a newer push, and any second attempt are never re-run.
-# tools/ci/retry.py classifies the jobs and states each class in the job
+# ci/retry.py classifies the jobs and states each class in the job
 # summary.
 #
 # A workflow_run workflow runs the file and code of the default branch,
@@ -61,4 +61,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
-        run: python3 -I tools/ci/retry.py run "$RUN_ID"
+        run: python3 -I ci/retry.py run "$RUN_ID"

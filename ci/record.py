@@ -1,17 +1,17 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/record.py
-# ==================
+# ci/record.py
+# ============
 #
 # The record of a check that finished: what a pull request reuses instead
-# of running the check again (tools/ci/plan.py). It is a text file whose
+# of running the check again (ci/plan.py). It is a text file whose
 # first line is the check's status, so that a record of a check that did
 # not run can never read as a pass:
 #
 #     status PASS | NOT APPLICABLE | NOT RUN
 #     key v2-<check>-<platform>-<hex>
-#     <the six lines of the key text, as tools/ci/key.py writes them>
+#     <the six lines of the key text, as ci/key.py writes them>
 #     run <run URL> attempt <n>
 #     commit <commit id>
 #     event <event> <ref>
@@ -19,7 +19,7 @@
 #     image <runner image name> <image version>
 #     host <a line describing the host>          (zero or more)
 #     build-key <the toolchain build key>        (zero or one)
-#     count <a line of tools/ci/counts.py>       (zero or more)
+#     count <a line of ci/counts.py>       (zero or more)
 #     file <path of a kept file>                 (zero or more)
 #
 # FAIL and INCONCLUSIVE are never recorded. The record sits in a directory
@@ -32,9 +32,9 @@
 # naming the run the record was downloaded from; the event a push, a
 # schedule or a manual run on main. The store has already checked, through
 # the API, that the run is this repository's ci.yml on main
-# (tools/ci/store.py). Checks write PASS records only; NOT APPLICABLE and
+# (ci/store.py). Checks write PASS records only; NOT APPLICABLE and
 # NOT RUN follow from the tree and are decided on every run
-# (tools/ci/plan.py). A record with any other status is never reused.
+# (ci/plan.py). A record with any other status is never reused.
 
 import datetime
 import os

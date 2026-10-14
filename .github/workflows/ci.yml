@@ -13,14 +13,14 @@
 #                                      for it)
 #   macos-aarch64   macos-26           AArch64, macOS, Mach-O
 #
-# What runs where is in one registry, tools/ci/checks.toml, and each check
-# is one recipe, tools/ci/checks/<recipe>.mk, which runs on a workstation
-# with the same command (tools/ci/README.md).
+# What runs where is in one registry, ci/checks.toml, and each check
+# is one recipe, ci/checks/<recipe>.mk, which runs on a workstation
+# with the same command (ci/README.md).
 #
 # Order, cheapest first. lint, reuse and source need no toolchain and
-# finish within a minute. Then `plan` (tools/ci/plan.py) computes the key
+# finish within a minute. Then `plan` (ci/plan.py) computes the key
 # of every check on every platform: the SHA-256 of what the check reads,
-# the toolchain's source files and the runner label (tools/ci/key.py). On
+# the toolchain's source files and the runner label (ci/key.py). On
 # a pull request it looks up, through the API, the records of runs of this
 # workflow on main; a check is reported with the pass the newest run on
 # main that ran it under the same key recorded, instead of running again,
@@ -42,11 +42,11 @@
 # (with `changelog`, a workflow of its own). It succeeds only when every
 # job the plan gave work succeeded, every other job was skipped, the plan
 # agrees with the tree, and every check has a PASS record from this run or
-# a valid reused record (tools/ci/gate.py).
+# a valid reused record (ci/gate.py).
 #
 # Weekly, the same workflow runs in cold mode: each platform builds its
 # toolchain from scratch, ignoring the stored builds, and compares the
-# result with the stored build (tools/ci/toolchain.py cold-compare).
+# result with the stored build (ci/toolchain.py cold-compare).
 #
 # No secrets are used and no job writes outside its own run: the token can
 # read the repository and its Actions runs and artifacts, and checkouts do
@@ -103,13 +103,13 @@ jobs:
         uses: ./.github/actions/python
 
       - name: Install actionlint, ShellCheck and zizmor
-        run: python3 -I tools/ci/lint.py install "$RUNNER_TEMP/lint"
+        run: python3 -I ci/lint.py install "$RUNNER_TEMP/lint"
 
       - name: Check the workflows, shell scripts and Python scripts
-        run: python3 -I tools/ci/lint.py
+        run: python3 -I ci/lint.py
 
       - name: Run the tests of the CI scripts
-        run: python3 -I -m unittest discover -s tools/ci/tests
+        run: python3 -I -m unittest discover -s ci/tests
 
   reuse:
     name: reuse
@@ -127,7 +127,7 @@ jobs:
         uses: ./.github/actions/python
 
       - name: Copyright and licence information of every file
-        run: python3 -I tools/ci/lint.py reuse
+        run: python3 -I ci/lint.py reuse
 
   source:
     name: source
@@ -145,7 +145,7 @@ jobs:
         uses: ./.github/actions/python
 
       - name: Components, recipes, proof shards, constant tables, generated sources, proof holes
-        run: python3 -I tools/ci/source.py
+        run: python3 -I ci/source.py
 
   plan:
     name: plan
@@ -179,10 +179,10 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -I tools/ci/plan.py build/plan
+        run: python3 -I ci/plan.py build/plan
 
       # Kept as long as the records on main: a later pull request reads it
-      # to tell which checks a run on main ran (tools/ci/store.py).
+      # to tell which checks a run on main ran (ci/store.py).
       - name: Upload the plan and the reused records
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -321,7 +321,7 @@ jobs:
 
       # The libraries the switch links against.
       - name: Install build dependencies
-        run: tools/ci/toolchain.sh deps build
+        run: ci/toolchain.sh deps build
 
       - name: Fetch the toolchain of this run
         uses: ./.github/actions/fetch-toolchain
@@ -342,7 +342,7 @@ jobs:
       - name: Check the shard
         env:
           CI_BUILD_KEY: ${{ needs.toolchain-x86.outputs.compiler-artifact }}
-        run: python3 -I tools/ci/check.py run-planned build/plan/plan.json linux-x86_64 "$SHARD"
+        run: python3 -I ci/check.py run-planned build/plan/plan.json linux-x86_64 "$SHARD"
 
       - name: Upload the result for this run
         if: always()
@@ -403,7 +403,7 @@ jobs:
       - name: Every shard passed
         env:
           NEEDS: ${{ toJSON(needs) }}
-        run: python3 -I tools/ci/gate.py proofs "$NEEDS" build/plan build/results
+        run: python3 -I ci/gate.py proofs "$NEEDS" build/plan build/results
 
   agree:
     name: agree
@@ -443,7 +443,7 @@ jobs:
           path: build/builds
 
       - name: Same extracted compiler, assumptions and core transcripts on every platform
-        run: python3 -I tools/ci/check.py agree build/plan/plan.json build/results build/builds
+        run: python3 -I ci/check.py agree build/plan/plan.json build/results build/builds
 
       - name: Upload the result for this run
         if: always()
@@ -503,4 +503,4 @@ jobs:
       - name: Every job the plan gave work succeeded, and every check passed or was reused
         env:
           NEEDS: ${{ toJSON(needs) }}
-        run: python3 -I tools/ci/gate.py all-checks .github/workflows/ci.yml "$NEEDS" build/plan build/results
+        run: python3 -I ci/gate.py all-checks .github/workflows/ci.yml "$NEEDS" build/plan build/results

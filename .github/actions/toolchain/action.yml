@@ -5,7 +5,7 @@
 # ====================================
 #
 # The pinned toolchain of one platform in toolchain/work, taken from a run
-# on main or built (tools/ci/toolchain.py):
+# on main or built (ci/toolchain.py):
 #
 #   - the build keys, from the toolchain's files and the runner's host
 #     identity;
@@ -66,7 +66,7 @@ runs:
   steps:
     - name: Install build dependencies
       shell: bash
-      run: tools/ci/toolchain.sh deps build
+      run: ci/toolchain.sh deps build
 
     - name: Compute the build keys and look up the bundles on main
       id: find
@@ -74,7 +74,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         PLATFORM: ${{ inputs.platform }}
-      run: python3 -I tools/ci/toolchain.py find "$PLATFORM"
+      run: python3 -I ci/toolchain.py find "$PLATFORM"
 
     - name: Download the switch bundle
       if: inputs.cold != 'true' && steps.find.outputs.switch-run != '' && (inputs.need == 'switch' || steps.find.outputs.compiler-run == '')
@@ -88,7 +88,7 @@ runs:
     - name: Unpack the switch
       if: inputs.cold != 'true' && steps.find.outputs.switch-run != '' && (inputs.need == 'switch' || steps.find.outputs.compiler-run == '')
       shell: bash
-      run: tools/ci/toolchain.sh unpack "$RUNNER_TEMP/tc-switch/switch.tar.zst"
+      run: ci/toolchain.sh unpack "$RUNNER_TEMP/tc-switch/switch.tar.zst"
 
     - name: Build the opam switch
       id: build-switch
@@ -99,8 +99,8 @@ runs:
         OPTIONS: ${{ steps.find.outputs.options }}
       run: |
         toolchain/build.sh ${OPTIONS:+"$OPTIONS"} switch
-        tools/ci/toolchain.sh prune
-        tools/ci/toolchain.sh pack-switch "$RUNNER_TEMP/switch.tar.zst"
+        ci/toolchain.sh prune
+        ci/toolchain.sh pack-switch "$RUNNER_TEMP/switch.tar.zst"
 
     - name: Download the compiler bundle
       if: inputs.cold != 'true' && steps.find.outputs.compiler-run != ''
@@ -114,7 +114,7 @@ runs:
     - name: Unpack the compiler
       if: inputs.cold != 'true' && steps.find.outputs.compiler-run != ''
       shell: bash
-      run: tools/ci/toolchain.sh unpack "$RUNNER_TEMP/tc-compiler/compiler.tar.gz"
+      run: ci/toolchain.sh unpack "$RUNNER_TEMP/tc-compiler/compiler.tar.gz"
 
     - name: Build and test the compiler (Rocq proofs, extraction, compiler, test suites)
       id: build-compiler
@@ -126,13 +126,13 @@ runs:
       run: |
         toolchain/build.sh ${OPTIONS:+"$OPTIONS"} jasmin
         toolchain/build.sh ${OPTIONS:+"$OPTIONS"} test
-        tools/ci/toolchain.sh pack-compiler "$RUNNER_TEMP/compiler.tar.gz"
+        ci/toolchain.sh pack-compiler "$RUNNER_TEMP/compiler.tar.gz"
 
     - name: Check the binaries against their build record
       shell: bash
       env:
         NEED: ${{ inputs.need }}
-      run: python3 -I tools/ci/toolchain.py verify "$NEED"
+      run: python3 -I ci/toolchain.py verify "$NEED"
 
     - name: Compare the cold build with the stored build
       id: cold
@@ -141,7 +141,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         PLATFORM: ${{ inputs.platform }}
-      run: python3 -I tools/ci/toolchain.py cold-compare "$PLATFORM" "$RUNNER_TEMP/compiler.tar.gz"
+      run: python3 -I ci/toolchain.py cold-compare "$PLATFORM" "$RUNNER_TEMP/compiler.tar.gz"
 
     - name: Upload the switch bundle
       if: ${{ !cancelled() && steps.build-switch.outcome == 'success' && (inputs.cold != 'true' || steps.cold.outputs.store == 'true') }}

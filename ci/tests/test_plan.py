@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_plan.py
-# ===========================
+# ci/tests/test_plan.py
+# =====================
 #
-# The plan (tools/ci/plan.py) and the gates (tools/ci/gate.py) on this
+# The plan (ci/plan.py) and the gates (ci/gate.py) on this
 # tree, with records served by a stand-in store, and the negative controls
 # of the gates:
 #

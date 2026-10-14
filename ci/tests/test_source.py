@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_source.py
-# =============================
+# ci/tests/test_source.py
+# =======================
 #
-# tools/ci/source.py and the recipes, with negative controls: a recipe
+# ci/source.py and the recipes, with negative controls: a recipe
 # including another file, or naming another check's recipe or rules,
 # fails, and so does a recipe or rules file of no check; a proof file in no
 # shard, one in two shards, a shared correctness proof missing from a pair
 # shard and an unknown shard fail. Recipes run with the parameters of their
-# platform, on the platform's host and runner only (tools/ci/check.py).
+# platform, on the platform's host and runner only (ci/check.py).
 
 import os
 import shutil
@@ -37,9 +37,9 @@ class Recipes(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp)
-        shutil.copytree(os.path.join(ROOT, "tools/ci/checks"), os.path.join(self.tmp, "tools/ci/checks"))
-        shutil.copytree(os.path.join(ROOT, "tools/ci/rules"), os.path.join(self.tmp, "tools/ci/rules"))
-        shutil.copytree(os.path.join(ROOT, "tools/ci/mk"), os.path.join(self.tmp, "tools/ci/mk"))
+        shutil.copytree(os.path.join(ROOT, "ci/checks"), os.path.join(self.tmp, "ci/checks"))
+        shutil.copytree(os.path.join(ROOT, "ci/rules"), os.path.join(self.tmp, "ci/rules"))
+        shutil.copytree(os.path.join(ROOT, "ci/mk"), os.path.join(self.tmp, "ci/mk"))
         self.reg = registry.load()
         self.cwd = os.getcwd()
         os.chdir(self.tmp)
@@ -47,7 +47,7 @@ class Recipes(unittest.TestCase):
 
     def files(self):
         out = []
-        for root, _, names in os.walk("tools"):
+        for root, _, names in os.walk("ci"):
             out += [os.path.join(root, n) for n in names]
         return out
 
@@ -59,25 +59,25 @@ class Recipes(unittest.TestCase):
         self.assertEqual(source.recipe_errors(self.reg, self.files()), [])
 
     def test_second_include_fails(self):
-        self.append("tools/ci/checks/test-hash.mk", "include tools/ci/checks/test-core.mk\n")
+        self.append("ci/checks/test-hash.mk", "include ci/checks/test-core.mk\n")
         errs = source.recipe_errors(self.reg, self.files())
         self.assertTrue(any("includes" in e for e in errs))
         self.assertTrue(any("another check's file" in e for e in errs))
 
     def test_naming_other_rules_fails(self):
-        self.append("tools/ci/checks/test-core.mk", "X := tools/ci/rules/test-hash.toml\n")
+        self.append("ci/checks/test-core.mk", "X := ci/rules/test-hash.toml\n")
         self.assertTrue(source.recipe_errors(self.reg, self.files()))
 
     def test_orphans_fail(self):
-        with open("tools/ci/checks/orphan.mk", "w") as f:
-            f.write("include tools/ci/mk/common.mk\n")
-        with open("tools/ci/rules/orphan.toml", "w") as f:
+        with open("ci/checks/orphan.mk", "w") as f:
+            f.write("include ci/mk/common.mk\n")
+        with open("ci/rules/orphan.toml", "w") as f:
             f.write("")
         errs = source.recipe_errors(self.reg, self.files())
         self.assertEqual(len(errs), 2)
 
     def test_missing_recipe_fails(self):
-        os.remove("tools/ci/checks/asm-policy.mk")
+        os.remove("ci/checks/asm-policy.mk")
         self.assertTrue(source.recipe_errors(self.reg, self.files()))
 
 class Shards(unittest.TestCase):
@@ -122,9 +122,9 @@ class Commands(unittest.TestCase):
         cmd = check.make_command(reg, "test-hash", "linux-x86_64")
         self.assertIn("CI_HASH_SETS=scalar x86_64", cmd)
         self.assertIn("CI_HASH_CPU_x86_64=avx avx2 sha_ni", cmd)
-        self.assertIn("CI_RULES=tools/ci/rules/test-hash.toml", cmd)
+        self.assertIn("CI_RULES=ci/rules/test-hash.toml", cmd)
         cmd = check.make_command(reg, "proofs-spec", "linux-x86_64")
-        self.assertEqual(cmd[:2], ["tools/ci/toolchain.sh", "exec"])
+        self.assertEqual(cmd[:2], ["ci/toolchain.sh", "exec"])
         self.assertIn("CI_SHARD=spec", cmd)
         self.assertIn("CI_JOBS=3", cmd)
         cmd = check.make_command(reg, "test-core", "macos-aarch64")

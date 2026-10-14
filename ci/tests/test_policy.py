@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/tests/test_policy.py
-# =============================
+# ci/tests/test_policy.py
+# =======================
 #
-# tools/ci/policy.py and its negative controls: the Actions cache, a secret,
+# ci/policy.py and its negative controls: the Actions cache, a secret,
 # a permission beyond the table, a workflow without `permissions: {}` and
 # pull_request_target each fail; the repository's workflows pass.
 

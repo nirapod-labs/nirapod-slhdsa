@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: nirapod-slhdsa contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tools/ci/checks/safety.mk: jasmin-checksafety on every export (`make
+# ci/checks/safety.mk: jasmin-checksafety on every export (`make
 # safety`, analysis/safety). Until that component lands the check is NOT
-# RUN, decided from the tree (tools/ci/checks.toml), and this recipe does
+# RUN, decided from the tree (ci/checks.toml), and this recipe does
 # not run.
 
-include tools/ci/mk/common.mk
+include ci/mk/common.mk
 
 .PHONY: ci-safety
 ci-safety:

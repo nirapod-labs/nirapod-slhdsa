@@ -6,20 +6,20 @@
 #
 # The checks of one platform, natively on a hosted runner of that platform,
 # in one job: called by ci.yml once per platform that has checks to run in
-# its plan (tools/ci/plan.py). One job per platform keeps a run to one
+# its plan (ci/plan.py). One job per platform keeps a run to one
 # macOS runner, the scarce one, and takes the toolchain once.
 #
 # The toolchain comes from the toolchain job of the run (linux-x86_64, whose
 # toolchain the proof shards use too) or is resolved here
 # (.github/actions/toolchain): taken from a run on main, or built. Then
-# tools/ci/check.py runs the platform's planned checks one after another,
+# ci/check.py runs the platform's planned checks one after another,
 # each with its own log and record; a failing check does not stop the
 # others, and the job fails at the end if any failed.
 #
 # Each check that passed leaves its record under build/records. They are
 # uploaded as results-native-<platform> for the gates of this run, and from
 # a run on main also as records-native-<platform>, the records pull
-# requests reuse (tools/ci/store.py). When agree runs, the job also uploads
+# requests reuse (ci/store.py). When agree runs, the job also uploads
 # its toolchain's build record.
 
 name: native
@@ -32,7 +32,7 @@ on:
         type: string
         required: true
       runner:
-        description: "Hosted runner label of the platform (tools/ci/checks.toml)"
+        description: "Hosted runner label of the platform (ci/checks.toml)"
         type: string
         required: true
       jobs:
@@ -105,7 +105,7 @@ jobs:
         uses: ./.github/actions/python
 
       - name: Install test dependencies
-        run: tools/ci/toolchain.sh deps run
+        run: ci/toolchain.sh deps run
 
       - name: Resolve or build the toolchain
         id: toolchain
@@ -121,7 +121,7 @@ jobs:
 
       - name: Put the compiler on the PATH
         if: inputs.resolve && inputs.need != 'none'
-        run: tools/ci/toolchain.sh bin-path
+        run: ci/toolchain.sh bin-path
 
       - name: Fetch the toolchain of this run
         if: ${{ !inputs.resolve && inputs.need != 'none' }}
@@ -143,7 +143,7 @@ jobs:
       - name: Run the planned checks of this platform
         env:
           CI_BUILD_KEY: ${{ steps.toolchain.outputs.compiler-artifact || inputs.compiler-artifact }}
-        run: python3 -I tools/ci/check.py run-planned build/plan/plan.json "$PLATFORM"
+        run: python3 -I ci/check.py run-planned build/plan/plan.json "$PLATFORM"
 
       - name: Upload the results for this run
         if: always()
@@ -155,7 +155,7 @@ jobs:
           retention-days: 7
           overwrite: true
 
-      # Only passed checks have a record (tools/ci/check.py), so the records
+      # Only passed checks have a record (ci/check.py), so the records
       # of the checks that passed are kept even when another one failed.
       - name: Upload the records for pull requests
         if: always() && inputs.main
