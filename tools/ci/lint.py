@@ -16,6 +16,8 @@
 #     excessive permissions. Its default audits, offline; a finding is
 #     either fixed or carries an ignore comment that says why it does not
 #     apply;
+#   - the rules of tools/ci/policy.py: no Actions cache, no secret, the
+#     permissions each job may hold;
 #   - ShellCheck on every tracked shell script (a *.sh file, or a file whose
 #     first line names sh or bash), at severity "warning" and above: quoting
 #     that splits or globs, unset variables, failing commands that are
@@ -174,6 +176,7 @@ def checks():
     print("actionlint: PASS")
     run(zizmor, "--offline", "--no-progress", "--config", ".github/zizmor.yml", ".github")
     print("zizmor: PASS")
+    run(sys.executable, "-I", "tools/ci/policy.py")
     files = [f for f in tracked() if os.path.isfile(f)]
     shell = [f for f in files if is_shell(f)]
     if not shell:

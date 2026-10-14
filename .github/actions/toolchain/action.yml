@@ -1,0 +1,177 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# .github/actions/toolchain/action.yml
+# ====================================
+#
+# The pinned toolchain of one platform in toolchain/work, taken from a run
+# on main or built (tools/ci/toolchain.py):
+#
+#   - the build keys, from the toolchain's files and the runner's host
+#     identity;
+#   - the bundles of those keys, looked up among the runs of ci.yml on
+#     main; with the compiler bundle found, it is downloaded, unpacked and
+#     its binaries checked against its build record, with the switch bundle
+#     as well when the caller needs the switch;
+#   - otherwise, and always in cold mode, the toolchain is built by
+#     toolchain/build.sh (the switch only when its bundle is missing, or in
+#     cold mode), packed and uploaded to this run: for 90 days from a run on
+#     main, which is where later runs take it from, for 7 days from any
+#     other run, whose bundles no other run takes;
+#   - in cold mode, the build from scratch is compared with the stored
+#     build (toolchain.py cold-compare) before anything is uploaded: a build
+#     that differs is never stored, and the job fails; one with nothing to
+#     compare with is stored, so that the next cold run compares, and the
+#     job fails all the same (INCONCLUSIVE).
+#
+# Outputs: the run and the artifact names that hold the compiler and the
+# switch now, for jobs that fetch them (.github/actions/fetch-toolchain).
+
+name: toolchain
+description: Take the pinned toolchain from a run on main, or build it
+inputs:
+  platform:
+    description: "linux-x86_64, linux-aarch64 or macos-aarch64"
+    required: true
+  jobs:
+    description: "Parallel jobs of a build"
+    required: true
+  need:
+    description: "compiler or switch"
+    required: true
+  cold:
+    description: "true: build from scratch and compare with the stored build"
+    required: true
+  main:
+    description: "true in a run on main: bundles are kept 90 days"
+    required: true
+  token:
+    description: "A token that can read this repository's Actions artifacts"
+    required: true
+outputs:
+  switch-run:
+    description: "Run holding the switch bundle"
+    value: ${{ steps.where.outputs.switch-run }}
+  compiler-run:
+    description: "Run holding the compiler bundle"
+    value: ${{ steps.where.outputs.compiler-run }}
+  switch-artifact:
+    description: "Name of the switch bundle"
+    value: ${{ steps.find.outputs.switch-artifact }}
+  compiler-artifact:
+    description: "Name of the compiler bundle"
+    value: ${{ steps.find.outputs.compiler-artifact }}
+runs:
+  using: composite
+  steps:
+    - name: Install build dependencies
+      shell: bash
+      run: tools/ci/toolchain.sh deps build
+
+    - name: Compute the build keys and look up the bundles on main
+      id: find
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        PLATFORM: ${{ inputs.platform }}
+      run: python3 -I tools/ci/toolchain.py find "$PLATFORM"
+
+    - name: Download the switch bundle
+      if: inputs.cold != 'true' && steps.find.outputs.switch-run != '' && (inputs.need == 'switch' || steps.find.outputs.compiler-run == '')
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: ${{ steps.find.outputs.switch-artifact }}
+        run-id: ${{ steps.find.outputs.switch-run }}
+        github-token: ${{ inputs.token }}
+        path: ${{ runner.temp }}/tc-switch
+
+    - name: Unpack the switch
+      if: inputs.cold != 'true' && steps.find.outputs.switch-run != '' && (inputs.need == 'switch' || steps.find.outputs.compiler-run == '')
+      shell: bash
+      run: tools/ci/toolchain.sh unpack "$RUNNER_TEMP/tc-switch/switch.tar.zst"
+
+    - name: Build the opam switch
+      id: build-switch
+      if: inputs.cold == 'true' || (steps.find.outputs.switch-run == '' && (inputs.need == 'switch' || steps.find.outputs.compiler-run == ''))
+      shell: bash
+      env:
+        JOBS: ${{ inputs.jobs }}
+        OPTIONS: ${{ steps.find.outputs.options }}
+      run: |
+        toolchain/build.sh ${OPTIONS:+"$OPTIONS"} switch
+        tools/ci/toolchain.sh prune
+        tools/ci/toolchain.sh pack-switch "$RUNNER_TEMP/switch.tar.zst"
+
+    - name: Download the compiler bundle
+      if: inputs.cold != 'true' && steps.find.outputs.compiler-run != ''
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: ${{ steps.find.outputs.compiler-artifact }}
+        run-id: ${{ steps.find.outputs.compiler-run }}
+        github-token: ${{ inputs.token }}
+        path: ${{ runner.temp }}/tc-compiler
+
+    - name: Unpack the compiler
+      if: inputs.cold != 'true' && steps.find.outputs.compiler-run != ''
+      shell: bash
+      run: tools/ci/toolchain.sh unpack "$RUNNER_TEMP/tc-compiler/compiler.tar.gz"
+
+    - name: Build and test the compiler (Rocq proofs, extraction, compiler, test suites)
+      id: build-compiler
+      if: inputs.cold == 'true' || steps.find.outputs.compiler-run == ''
+      shell: bash
+      env:
+        JOBS: ${{ inputs.jobs }}
+        OPTIONS: ${{ steps.find.outputs.options }}
+      run: |
+        toolchain/build.sh ${OPTIONS:+"$OPTIONS"} jasmin
+        toolchain/build.sh ${OPTIONS:+"$OPTIONS"} test
+        tools/ci/toolchain.sh pack-compiler "$RUNNER_TEMP/compiler.tar.gz"
+
+    - name: Check the binaries against their build record
+      shell: bash
+      env:
+        NEED: ${{ inputs.need }}
+      run: python3 -I tools/ci/toolchain.py verify "$NEED"
+
+    - name: Compare the cold build with the stored build
+      id: cold
+      if: inputs.cold == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        PLATFORM: ${{ inputs.platform }}
+      run: python3 -I tools/ci/toolchain.py cold-compare "$PLATFORM" "$RUNNER_TEMP/compiler.tar.gz"
+
+    - name: Upload the switch bundle
+      if: ${{ !cancelled() && steps.build-switch.outcome == 'success' && (inputs.cold != 'true' || steps.cold.outputs.store == 'true') }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.find.outputs.switch-artifact }}
+        path: ${{ runner.temp }}/switch.tar.zst
+        if-no-files-found: error
+        compression-level: 0
+        overwrite: true
+        retention-days: ${{ inputs.main == 'true' && 90 || 7 }}
+
+    - name: Upload the compiler bundle
+      if: ${{ !cancelled() && steps.build-compiler.outcome == 'success' && (inputs.cold != 'true' || steps.cold.outputs.store == 'true') }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.find.outputs.compiler-artifact }}
+        path: ${{ runner.temp }}/compiler.tar.gz
+        if-no-files-found: error
+        compression-level: 0
+        overwrite: true
+        retention-days: ${{ inputs.main == 'true' && 90 || 7 }}
+
+    - name: Where the bundles are now
+      id: where
+      shell: bash
+      env:
+        SWITCH_RUN: ${{ steps.build-switch.outcome == 'success' && github.run_id || steps.find.outputs.switch-run }}
+        COMPILER_RUN: ${{ steps.build-compiler.outcome == 'success' && github.run_id || steps.find.outputs.compiler-run }}
+      run: |
+        echo "switch-run=$SWITCH_RUN" >> "$GITHUB_OUTPUT"
+        echo "compiler-run=$COMPILER_RUN" >> "$GITHUB_OUTPUT"
+

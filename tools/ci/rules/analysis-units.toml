@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# tools/ci/rules/analysis-units.toml: the jasmin-ct and --sct records of make ct
+# (tools/ci/counts.py). A minimum is the count of the complete run on the
+# current vectors and settings; lowering one is a reviewed change.
+
+# One unit per parameter set and variant: twelve sets with a scalar unit,
+# and on x86-64 an accelerated unit as well (Makefile, UNITS). Stated here
+# apart from the Makefile, so that a unit dropped from the build fails
+# this check rather than leaving the analysis.
+[ct]
+[[ct.files]]
+what = "units analysed"
+glob = "{target}/ct/*.ok"
+exactly = { x86_64 = 24, aarch64 = 12 }
+
+[[ct.files]]
+what = "jasmin-ct records"
+glob = "{target}/ct/*.ct.log"
+exactly = { x86_64 = 24, aarch64 = 12 }
+
+[[ct.files]]
+what = "jasmin-ct --sct records"
+glob = "{target}/ct/*.sct.log"
+exactly = { x86_64 = 24, aarch64 = 12 }

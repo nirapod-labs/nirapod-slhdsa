@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# tools/ci/rules/test-acvp.toml: minimum count of the ACVP run
+# (tools/ci/counts.py). A minimum is the count of the complete run on the
+# current vectors and settings; lowering one is a reviewed change.
+
+[acvp]
+[[acvp.line]]
+what = "ACVP cases, all run and passed"
+pattern = '^acvp: impl=\S+ variant=\S+ control=none groups=\d+ cases=(\d+) pass=\d+ fail=0 notrun=0 filtered=0 verdict=PASS$'
+minimum = 1248

@@ -57,12 +57,14 @@ def render(status, name, key_text, env, host=(), build_key=None, counts=(), file
     if not NAME.fullmatch(name):
         raise RecordError(f"'{name}' is not a key")
     lines = [f"status {status}", f"key {name}"] + key_text.rstrip("\n").split("\n")
-    server = env.get("GITHUB_SERVER_URL", "local")
+    # Outside a workflow (a workstation run) the run is "local", run 0,
+    # event "local": never one a reuse accepts.
+    server = env.get("GITHUB_SERVER_URL") or "local"
     lines += [
-        f"run {server}/{env.get('GITHUB_REPOSITORY', '')}/actions/runs/{env.get('GITHUB_RUN_ID', '')}"
-        f" attempt {env.get('GITHUB_RUN_ATTEMPT', '')}",
-        f"commit {env.get('GITHUB_SHA', '')}",
-        f"event {env.get('GITHUB_EVENT_NAME', 'local')} {env.get('GITHUB_REF', '')}",
+        f"run {server}/{env.get('GITHUB_REPOSITORY') or 'local'}/actions/runs/"
+        f"{env.get('GITHUB_RUN_ID') or 0} attempt {env.get('GITHUB_RUN_ATTEMPT') or 0}",
+        f"commit {env.get('GITHUB_SHA') or 'local'}",
+        f"event {env.get('GITHUB_EVENT_NAME') or 'local'} {env.get('GITHUB_REF') or 'local'}",
         "recorded " + datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         f"image {env.get('ImageOS', '-')} {env.get('ImageVersion', '-')}",
     ]

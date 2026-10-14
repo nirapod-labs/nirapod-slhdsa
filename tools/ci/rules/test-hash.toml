@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# tools/ci/rules/test-hash.toml: minimum case counts of tests/hash `check negative-control fill-check`, per kernel set
+# (tools/ci/counts.py). A minimum is the count of the complete run on the
+# current vectors and settings; lowering one is a reviewed change.
+
+[hash]
+[[hash.line]]
+what = "CAVP and known-answer checks passed with no failure"
+pattern = '^cavp: (\d+) checks passed, 0 failed$'
+minimum = 7130
+
+[[hash.line]]
+what = "differential checks passed with no failure (DIFF_ITERS=2000, normal and 0xa5-filled builds)"
+pattern = '^diff: (\d+) checks passed, 0 failed$'
+minimum = 96000
+
+[[hash.line]]
+what = "squeeze sweep checks passed with no failure (every length, rate and start position)"
+pattern = '^squeeze: (\d+) checks passed, 0 failed$'
+minimum = 45288
+
+[[hash.line]]
+what = "fill check: buffer sites filled with 0xa5, every test passed"
+pattern = '^fill_check: PASS, every test passes with 0xa5-filled buffers \((\d+) sites filled\)$'
+minimum = 4
+
+[[hash.line]]
+what = "negative control: failing checks with every family detected"
+pattern = '^negative_control: PASS, every family detected \((\d+) failing checks\)$'
+minimum = 1
+
+[[hash.line]]
+what = "negative control: failing squeeze checks with every dropped store detected"
+pattern = '^negative_control: PASS, every dropped squeeze store detected \((\d+) failing checks\)$'
+minimum = 1

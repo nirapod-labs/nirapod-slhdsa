@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# tools/ci/rules/test-core.toml: coverage minimum of the core transcript
+# (tools/ci/counts.py). A minimum is the count of the complete run on the
+# current vectors and settings; lowering one is a reviewed change.
+
+# Seven lines for each of the 12 parameter sets. A minimum only: whether
+# the lines are right is checked by agree, byte for byte across the
+# platforms, and by the tests that wrote them.
+[transcript]
+[[transcript.nonblank]]
+what = "core transcript"
+minimum = 84

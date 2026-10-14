@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# .github/actions/fetch-toolchain/action.yml
+# ==========================================
+#
+# The toolchain a toolchain job of this run resolved
+# (.github/actions/toolchain), downloaded from the run its outputs name,
+# unpacked into toolchain/work, its binaries checked against their build
+# record, and toolchain/work/bin put on the PATH.
+
+name: fetch-toolchain
+description: Download the toolchain a toolchain job of this run resolved
+inputs:
+  need:
+    description: "compiler or switch"
+    required: true
+  switch-run:
+    description: "Run holding the switch bundle"
+    required: false
+    default: ""
+  switch-artifact:
+    description: "Name of the switch bundle"
+    required: false
+    default: ""
+  compiler-run:
+    description: "Run holding the compiler bundle"
+    required: true
+  compiler-artifact:
+    description: "Name of the compiler bundle"
+    required: true
+  token:
+    description: "A token that can read this repository's Actions artifacts"
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Download the switch bundle
+      if: inputs.need == 'switch'
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: ${{ inputs.switch-artifact }}
+        run-id: ${{ inputs.switch-run }}
+        github-token: ${{ inputs.token }}
+        path: ${{ runner.temp }}/tc-switch
+
+    - name: Unpack the switch
+      if: inputs.need == 'switch'
+      shell: bash
+      run: tools/ci/toolchain.sh unpack "$RUNNER_TEMP/tc-switch/switch.tar.zst"
+
+    - name: Download the compiler bundle
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: ${{ inputs.compiler-artifact }}
+        run-id: ${{ inputs.compiler-run }}
+        github-token: ${{ inputs.token }}
+        path: ${{ runner.temp }}/tc-compiler
+
+    - name: Unpack the compiler and check it
+      shell: bash
+      env:
+        NEED: ${{ inputs.need }}
+      run: |
+        tools/ci/toolchain.sh unpack "$RUNNER_TEMP/tc-compiler/compiler.tar.gz"
+        python3 -I tools/ci/toolchain.py verify "$NEED"
+        tools/ci/toolchain.sh bin-path

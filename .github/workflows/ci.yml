@@ -13,52 +13,44 @@
 #                                      for it)
 #   macos-aarch64   macos-26           AArch64, macOS, Mach-O
 #
-# Order, cheapest first: the lint of the automation, the REUSE check and
-# the source checks need no compiler and fail within minutes; the vectors
-# are fetched once. Only when all of these have passed
-# does each platform build or restore the pinned toolchain and run its
-# tests, analyses and checks (platform.yml), so that a change that fails a
-# quick check does not hold runners for hours. Then the EasyCrypt proofs
-# run with the linux-x86_64 switch, and the platforms are compared with
-# each other. Every job calls one make target or one script; the workflows
-# themselves only order jobs and move files between them.
+# What runs where is in one registry, tools/ci/checks.toml, and each check
+# is one recipe, tools/ci/checks/<recipe>.mk, which runs on a workstation
+# with the same command (tools/ci/README.md).
 #
-# Each check applies to one component of the repository (the hash layer,
-# the core, ACVP, the differential test, safety and emitted-code analyses,
-# proofs, the shipped assembly). It reports NOT APPLICABLE while its
-# component is not in the tree, and is mandatory as soon as it is
-# (tools/ci/Makefile). So this workflow protects every change from the
-# toolchain onwards, before the other components have been merged.
+# Order, cheapest first. lint, reuse and source need no toolchain and
+# finish within a minute. Then `plan` (tools/ci/plan.py) computes the key
+# of every check on every platform: the SHA-256 of what the check reads,
+# the toolchain's source files and the runner label (tools/ci/key.py). On
+# a pull request it looks up, through the API, the records of runs of this
+# workflow on main; a check is reported with the pass the newest run on
+# main that ran it under the same key recorded, instead of running again,
+# and only the checks without one start a job: a change to the
+# documentation starts no platform job at all. A check whose component is not in the tree is NOT
+# APPLICABLE, and the safety check NOT RUN while the tree has Jasmin code
+# but no safety component; the plan decides both from the tree on every
+# run. Pushes to main, the schedule and manual runs reuse no check: they
+# run every one, and record each pass for pull requests to reuse.
 #
-# The changelog check of a pull request is a workflow of its own
-# (changelog.yml), so that a label event does not start this one.
+# Then, as the plan says: the linux-x86_64 toolchain, taken from a run on
+# main or built (.github/actions/toolchain); one job per platform with that
+# platform's checks (native.yml); the EasyCrypt proofs as parallel shards
+# (proofs/Makefile, check-shard) behind the gate `proofs`; agree, which
+# compares the platforms with each other. Each job that runs a check
+# computes its key again and fails if it differs from the plan's.
 #
-# The job `all-checks` succeeds only when every other job of this file
-# succeeded, and it checks that it depends on every other job of this file
-# (tools/ci/require-success.py). It is the status check that branch
-# protection requires: a job skipped because a job before it failed would
-# otherwise count as passing.
-#
-# On a pull request, an expensive check (tests, analyses, the differential
-# test, safety, regeneration, proofs) whose inputs are identical to those of
-# a passing run on main reports that run in its job summary instead of
-# running again; its inputs are every file except a reviewed list of paths
-# it does not read (tools/ci/Makefile, Verdicts). Pushes to main, the
-# schedule and manual runs never reuse a verdict: they run every check, and
-# runs on main record the passes that pull requests then reuse. A pull
-# request records nothing, and reuses only what a run on main recorded
-# (tools/ci/verdict.sh). A platform whose checks all reuse their verdicts
-# does not restore its toolchain either, so a change that touches none of
-# their inputs finishes in minutes. There are no path filters: every job
-# runs on every event, so all-checks sees each of them.
+# The job `all-checks` is the status check branch protection requires
+# (with `changelog`, a workflow of its own). It succeeds only when every
+# job the plan gave work succeeded, every other job was skipped, the plan
+# agrees with the tree, and every check has a PASS record from this run or
+# a valid reused record (tools/ci/gate.py).
 #
 # Weekly, the same workflow runs in cold mode: each platform builds its
-# toolchain from scratch, ignoring the caches, and compares the result with
-# the cached build of the same inputs (platform.yml).
+# toolchain from scratch, ignoring the stored builds, and compares the
+# result with the stored build (tools/ci/toolchain.py cold-compare).
 #
-# No secrets are used. The token is read-only, and checkouts do not keep
-# it. The jobs that look up recorded verdicts also read the repository's
-# Actions runs and artifacts (actions: read).
+# No secrets are used and no job writes outside its own run: the token can
+# read the repository and its Actions runs and artifacts, and checkouts do
+# not keep it. Nothing is taken from the Actions cache.
 
 name: CI
 
@@ -72,12 +64,11 @@ on:
   workflow_dispatch:
     inputs:
       cold:
-        description: "Build the toolchain from scratch and compare it with the cached build"
+        description: "Build the toolchain from scratch and compare it with the stored build"
         type: boolean
         default: false
 
-permissions:
-  contents: read
+permissions: {}
 
 # A new push to a pull request cancels the run on its previous head. Every
 # other run (main, the schedule, manual runs) has a group of its own: a
@@ -92,15 +83,16 @@ defaults:
     shell: bash
 
 env:
-  # The number of platform jobs below; the cross-platform checks require
-  # exactly this many records.
-  CI_PLATFORMS: 3
+  COLD: ${{ github.event_name == 'schedule' || inputs.cold == true }}
+  MAIN: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
 
 jobs:
   lint:
     name: lint
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -123,6 +115,8 @@ jobs:
     name: reuse
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -138,241 +132,375 @@ jobs:
   source:
     name: source
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Component map, kernel sets, constant tables, generated sources, proof holes
-        run: make -f tools/ci/Makefile ci-source
+      - name: Python
+        uses: ./.github/actions/python
 
-  vectors:
-    name: vectors
+      - name: Components, recipes, proof shards, constant tables, generated sources, proof holes
+        run: python3 -I tools/ci/source.py
+
+  plan:
+    name: plan
+    needs: [lint, reuse, source]
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # The ACVP files are re-checked against their pins whenever they are
-      # used, so a cached copy saves a download and nothing else. The key
-      # is empty when the tree has no ACVP component.
-      - name: Compute the ACVP cache key
-        id: key
-        run: make -s -f tools/ci/Makefile ci-vectors-key
-
-      - name: Restore the ACVP vectors
-        id: acvp
-        if: steps.key.outputs.acvp-key != ''
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/vectors/acvp
-          key: ${{ steps.key.outputs.acvp-key }}
-
-      - name: Fetch and verify the vectors
-        run: make -f tools/ci/Makefile ci-vectors
-
-      - name: Save the ACVP vectors
-        if: steps.key.outputs.acvp-key != '' && steps.acvp.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/vectors/acvp
-          key: ${{ steps.key.outputs.acvp-key }}
-
-      - name: Upload the vectors
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: vectors
-          path: |
-            build/ci/vectors.txt
-            build/hash/vectors
-            build/vectors/acvp
-          if-no-files-found: error
-          retention-days: 7
-
-  linux-x86_64:
-    name: linux-x86_64
-    needs: [lint, reuse, source, vectors]
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read
-    uses: ./.github/workflows/platform.yml
+    outputs:
+      native-linux-x86_64: ${{ steps.plan.outputs.native-linux-x86_64 }}
+      native-linux-aarch64: ${{ steps.plan.outputs.native-linux-aarch64 }}
+      native-macos-aarch64: ${{ steps.plan.outputs.native-macos-aarch64 }}
+      need-linux-x86_64: ${{ steps.plan.outputs.need-linux-x86_64 }}
+      need-linux-aarch64: ${{ steps.plan.outputs.need-linux-aarch64 }}
+      need-macos-aarch64: ${{ steps.plan.outputs.need-macos-aarch64 }}
+      toolchain-x86: ${{ steps.plan.outputs.toolchain-x86 }}
+      need-x86: ${{ steps.plan.outputs.need-x86 }}
+      shards: ${{ steps.plan.outputs.shards }}
+      agree: ${{ steps.plan.outputs.agree }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Keys of every check, records on main, the checks to run
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I tools/ci/plan.py build/plan
+
+      # Kept as long as the records on main: a later pull request reads it
+      # to tell which checks a run on main ran (tools/ci/store.py).
+      - name: Upload the plan and the reused records
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: plan
+          path: build/plan
+          if-no-files-found: error
+          retention-days: ${{ env.MAIN == 'true' && 90 || 7 }}
+          overwrite: true
+
+  # The linux-x86_64 toolchain, for the linux-x86_64 checks and the proof
+  # shards, which take it from this job's outputs.
+  toolchain-x86:
+    name: toolchain linux-x86_64
+    needs: plan
+    if: needs.plan.outputs.toolchain-x86 == 'true'
+    runs-on: ubuntu-24.04
+    # A build from scratch (opam switch, Rocq proofs, extraction, compiler,
+    # tests) is bounded by the hosted-runner maximum of six hours.
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      switch-run: ${{ steps.toolchain.outputs.switch-run }}
+      compiler-run: ${{ steps.toolchain.outputs.compiler-run }}
+      switch-artifact: ${{ steps.toolchain.outputs.switch-artifact }}
+      compiler-artifact: ${{ steps.toolchain.outputs.compiler-artifact }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Resolve or build the toolchain
+        id: toolchain
+        uses: ./.github/actions/toolchain
+        with:
+          platform: linux-x86_64
+          jobs: 4
+          need: ${{ needs.plan.outputs.need-x86 }}
+          cold: ${{ env.COLD }}
+          main: ${{ env.MAIN }}
+          token: ${{ github.token }}
+
+  # Runs after the toolchain job, or without it when the planned checks
+  # need no toolchain.
+  native-linux-x86_64:
+    name: linux-x86_64
+    needs: [plan, toolchain-x86]
+    if: >-
+      always() && needs.plan.result == 'success' && needs.plan.outputs.native-linux-x86_64 == 'true'
+      && (needs.toolchain-x86.result == 'success'
+          || (needs.toolchain-x86.result == 'skipped' && needs.plan.outputs.need-linux-x86_64 == 'none'))
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/native.yml
     with:
       platform: linux-x86_64
       runner: ubuntu-24.04
       jobs: 4
-      proofs: true
-      cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
-      reuse-verdicts: ${{ github.event_name == 'pull_request' }}
-      record-verdicts: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      need: ${{ needs.plan.outputs.need-linux-x86_64 }}
+      resolve: false
+      toolchain-run: ${{ needs.toolchain-x86.outputs.compiler-run }}
+      compiler-artifact: ${{ needs.toolchain-x86.outputs.compiler-artifact }}
+      switch-run: ${{ needs.toolchain-x86.outputs.switch-run }}
+      switch-artifact: ${{ needs.toolchain-x86.outputs.switch-artifact }}
+      main: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      agree: ${{ needs.plan.outputs.agree == 'true' }}
 
-  linux-aarch64:
+  native-linux-aarch64:
     name: linux-aarch64
-    needs: [lint, reuse, source, vectors]
+    needs: plan
+    if: needs.plan.outputs.native-linux-aarch64 == 'true'
     permissions:
       contents: read
       actions: read
-    uses: ./.github/workflows/platform.yml
+    uses: ./.github/workflows/native.yml
     with:
       platform: linux-aarch64
       runner: ubuntu-24.04-arm
       jobs: 4
-      toolchain-options: --no-easycrypt
+      need: ${{ needs.plan.outputs.need-linux-aarch64 }}
       cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
-      reuse-verdicts: ${{ github.event_name == 'pull_request' }}
-      record-verdicts: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      main: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      agree: ${{ needs.plan.outputs.agree == 'true' }}
 
-  macos-aarch64:
+  native-macos-aarch64:
     name: macos-aarch64
-    needs: [lint, reuse, source, vectors]
+    needs: plan
+    if: needs.plan.outputs.native-macos-aarch64 == 'true'
     permissions:
       contents: read
       actions: read
-    uses: ./.github/workflows/platform.yml
+    uses: ./.github/workflows/native.yml
     with:
       platform: macos-aarch64
       runner: macos-26
-      # Three cores and 7 GB of memory. Two parallel jobs leave a margin for
-      # memory; the build has not been measured on this runner.
+      # Three cores and 7 GB of memory: two parallel jobs leave a margin.
       jobs: 2
+      need: ${{ needs.plan.outputs.need-macos-aarch64 }}
       cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
-      reuse-verdicts: ${{ github.event_name == 'pull_request' }}
-      record-verdicts: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      main: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      agree: ${{ needs.plan.outputs.agree == 'true' }}
 
-  # The EasyCrypt development, with the switch and Jasmin EasyCrypt library
-  # of the linux-x86_64 toolchain build.
-  proofs:
-    name: proofs
-    needs: linux-x86_64
+  # The EasyCrypt development in shards, each a job with the linux-x86_64
+  # switch (the pinned provers), its files checked in parallel.
+  proof-shards:
+    name: proofs ${{ matrix.leg.shard }}
+    needs: [plan, toolchain-x86]
+    if: needs.plan.outputs.shards != '[]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 120
     permissions:
       contents: read
       actions: read
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        leg: ${{ fromJSON(needs.plan.outputs.shards) }}
     env:
-      PLATFORM: linux-x86_64
+      CI_RUNNER: ubuntu-24.04
+      SHARD: ${{ matrix.leg.shard }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # A pull request reports a pass of the same inputs recorded on main
-      # instead of checking the proofs again (platform.yml, recorded
-      # verdicts).
-      - name: Compute the verdict key
-        id: verdict
-        env:
-          CI_TOOL_KEY: ${{ needs.linux-x86_64.outputs.compiler-key }}
-        run: make -s -f tools/ci/Makefile ci-verdict-key CHECK=proofs
+      - name: Python
+        uses: ./.github/actions/python
 
-      - name: Reuse a pass recorded on main
-        id: reuse
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          KEY: ${{ steps.verdict.outputs.key }}
-          VERDICTS: ${{ needs.linux-x86_64.outputs.verdicts }}
-        run: tools/ci/verdict.sh reuse proofs "$KEY" "$VERDICTS"
-
-      # The same packages as the toolchain job, so that the restored switch
-      # finds the libraries it was built against.
+      # The libraries the switch links against.
       - name: Install build dependencies
-        if: steps.reuse.outputs.reused != 'true'
         run: tools/ci/toolchain.sh deps build
 
-      - name: Name the cache paths
-        id: paths
-        if: steps.reuse.outputs.reused != 'true'
-        run: tools/ci/toolchain.sh cache-paths
-
-      - name: Restore the opam switch
-        if: steps.reuse.outputs.reused != 'true'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Fetch the toolchain of this run
+        uses: ./.github/actions/fetch-toolchain
         with:
-          path: ${{ steps.paths.outputs.switch }}
-          key: ${{ needs.linux-x86_64.outputs.switch-key }}
-          fail-on-cache-miss: true
+          need: ${{ matrix.leg.need }}
+          compiler-run: ${{ needs.toolchain-x86.outputs.compiler-run }}
+          compiler-artifact: ${{ needs.toolchain-x86.outputs.compiler-artifact }}
+          switch-run: ${{ needs.toolchain-x86.outputs.switch-run }}
+          switch-artifact: ${{ needs.toolchain-x86.outputs.switch-artifact }}
+          token: ${{ github.token }}
 
-      - name: Restore the compiler and the Jasmin EasyCrypt library
-        if: steps.reuse.outputs.reused != 'true'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Download the plan
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          path: ${{ steps.paths.outputs.compiler }}
-          key: ${{ needs.linux-x86_64.outputs.compiler-key }}
-          fail-on-cache-miss: true
+          name: plan
+          path: build/plan
 
-      - name: Put the cached tools on the PATH
-        if: steps.reuse.outputs.reused != 'true'
-        run: tools/ci/toolchain.sh bin-path
-
-      - name: Check the proofs
-        if: steps.reuse.outputs.reused != 'true'
-        run: tools/ci/verdict.sh run proofs tools/ci/toolchain.sh exec make -f tools/ci/Makefile ci-proofs
-
-      - name: Record the verdict
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      - name: Check the shard
         env:
-          KEY: ${{ steps.verdict.outputs.key }}
-        run: tools/ci/verdict.sh record proofs "$KEY"
+          CI_BUILD_KEY: ${{ needs.toolchain-x86.outputs.compiler-artifact }}
+        run: python3 -I tools/ci/check.py run-planned build/plan/plan.json linux-x86_64 "$SHARD"
 
-      - name: Upload the verdict
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      - name: Upload the result for this run
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ${{ steps.verdict.outputs.key }}
-          path: build/verdict/proofs
-          if-no-files-found: error
+          name: results-proofs-${{ matrix.leg.shard }}
+          path: build/records
+          if-no-files-found: ignore
+          retention-days: 7
+          overwrite: true
+
+      - name: Upload the record for pull requests
+        if: always() && env.MAIN == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: records-proofs-${{ matrix.leg.shard }}
+          path: build/records
+          if-no-files-found: ignore
+          overwrite: true
           retention-days: 90
+
+  # Every shard passed, here or in a reused record, and the shards are
+  # those of proofs/Makefile. It runs when no shard ran, too.
+  proofs:
+    name: proofs
+    needs: [plan, proof-shards]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Download the plan
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: plan
+          path: build/plan
+
+      # Nothing to download when every shard was reused; a missing result
+      # of a shard that ran fails the gate below.
+      - name: Download the shard results
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: results-proofs-*
+          merge-multiple: true
+          path: build/results
+
+      - name: Every shard passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 -I tools/ci/gate.py proofs "$NEEDS" build/plan build/results
 
   agree:
     name: agree
-    needs: [linux-x86_64, linux-aarch64, macos-aarch64]
+    needs: [plan, native-linux-x86_64, native-linux-aarch64, native-macos-aarch64]
+    if: needs.plan.outputs.agree == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Download the compilers
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Download the plan
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: toolchain-*
-          merge-multiple: true
-          path: ${{ runner.temp }}/toolchains
+          name: plan
+          path: build/plan
 
-      - name: Same extracted compiler and assumptions on every platform
-        run: tools/ci/toolchain.sh agree "$RUNNER_TEMP"/toolchains/toolchain-*.tar.gz
-
-      - name: Download the core transcripts
+      - name: Download the platform results
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: transcript-*
+          pattern: results-native-*
           merge-multiple: true
-          path: build/ci/transcripts
+          path: build/results
 
-      - name: Same deterministic outputs on every platform
-        run: make -f tools/ci/Makefile ci-agree
+      - name: Download the toolchains' build records
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: buildrecord-*
+          path: build/builds
+
+      - name: Same extracted compiler, assumptions and core transcripts on every platform
+        run: python3 -I tools/ci/check.py agree build/plan/plan.json build/results build/builds
+
+      - name: Upload the result for this run
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-agree
+          path: build/records
+          if-no-files-found: ignore
+          retention-days: 7
+          overwrite: true
+
+      - name: Upload the record for pull requests
+        if: env.MAIN == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: records-agree
+          path: build/records
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 90
 
   all-checks:
     name: all-checks
     if: always()
-    needs: [lint, reuse, source, vectors, linux-x86_64, linux-aarch64, macos-aarch64, proofs, agree]
+    needs: [lint, reuse, source, plan, toolchain-x86, native-linux-x86_64, native-linux-aarch64,
+            native-macos-aarch64, proof-shards, proofs, agree]
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Require every job to have succeeded
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Download the plan
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: plan
+          path: build/plan
+
+      # Nothing to download when every check was reused; a missing result
+      # of a check that ran fails the gate below.
+      - name: Download the results of this run
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: results-*
+          merge-multiple: true
+          path: build/results
+
+      - name: Every job the plan gave work succeeded, and every check passed or was reused
         env:
           NEEDS: ${{ toJSON(needs) }}
-        run: python3 -I tools/ci/require-success.py .github/workflows/ci.yml all-checks "$NEEDS"
+        run: python3 -I tools/ci/gate.py all-checks .github/workflows/ci.yml "$NEEDS" build/plan build/results

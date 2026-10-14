@@ -134,14 +134,13 @@ def upstream_url(component, root=ROOT):
     raise Failure(f"component must be jasmin or easycrypt, not '{component}'")
 
 
-# The platforms the Jasmin lane can build on: runner label, options of
-# toolchain/build.sh, parallel jobs.
-PLATFORMS = {
-    "linux-x86_64": {"platform": "linux-x86_64", "runner": "ubuntu-24.04", "options": "", "jobs": 4},
-    "linux-aarch64": {"platform": "linux-aarch64", "runner": "ubuntu-24.04-arm",
-                      "options": "--no-easycrypt", "jobs": 4},
-    "macos-aarch64": {"platform": "macos-aarch64", "runner": "macos-26", "options": "", "jobs": 2},
-}
+def platforms():
+    """The platforms the Jasmin lane can build on, from the registry."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import registry
+    reg = registry.load()
+    return {name: {"platform": name, "runner": p["runner"], "options": p["toolchain-options"],
+                   "jobs": p["jobs"]} for name, p in reg["platforms"].items()}
 
 
 def cmd_setup(env):
@@ -153,21 +152,22 @@ def cmd_setup(env):
                 raise Failure(f"a manual drift run is for maintainers ({', '.join(maintainers)}), "
                               f"not '{who}'")
         component = env.get("COMPONENT", "")
-        platforms = env.get("PLATFORMS", "")
+        platforms_wanted = env.get("PLATFORMS", "")
         refs = (env.get("JASMIN_REF", ""), env.get("EASYCRYPT_REF", ""))
         drop = env.get("JASMIN_DROP", "")
     elif event == "schedule":
-        component, platforms, refs, drop = "both", "linux-x86_64", ("main", "main"), ""
+        component, platforms_wanted, refs, drop = "both", "linux-x86_64", ("main", "main"), ""
     else:
         raise Failure(f"drift runs on a schedule or by hand, not on '{event}'")
     if component not in ("jasmin", "easycrypt", "both"):
         raise Failure(f"component must be jasmin, easycrypt or both, not '{component}'")
-    if platforms == "all":
-        chosen = list(PLATFORMS.values())
-    elif platforms in PLATFORMS:
-        chosen = [PLATFORMS[platforms]]
+    known = platforms()
+    if platforms_wanted == "all":
+        chosen = list(known.values())
+    elif platforms_wanted in known:
+        chosen = [known[platforms_wanted]]
     else:
-        raise Failure(f"platforms must be one platform or all, not '{platforms}'")
+        raise Failure(f"platforms must be one platform or all, not '{platforms_wanted}'")
     jasmin, easycrypt = component in ("jasmin", "both"), component in ("easycrypt", "both")
     for name, ref, used in (("jasmin_ref", refs[0], jasmin), ("easycrypt_ref", refs[1], easycrypt)):
         if used and ref_kind(ref) is None:

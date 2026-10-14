@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# tools/ci/rules/differential.toml: minimum counts of the differential test and its control
+# (tools/ci/counts.py). A minimum is the count of the complete run on the
+# current vectors and settings; lowering one is a reviewed change.
+
+[diff]
+[[diff.line]]
+what = "agreeing differential cases (12 sets times 28 interface combinations)"
+pattern = '^difftest: control=none seed=\d+ agree=(\d+) verify_only=0 mismatch=0 notrun=0 verdict=PASS$'
+minimum = 336
+
+[diff-control]
+[[diff-control.line]]
+what = "mismatches detected by the negative control"
+pattern = '^difftest: control=corrupt-b seed=\d+ agree=\d+ verify_only=\d+ mismatch=(\d+) notrun=\d+ verdict=FAIL$'
+minimum = 1
+
+[[diff-control.line]]
+what = "exit status of the negative control (1: mismatches found)"
+pattern = '^difftest-control-exit: (\d+)$'
+exactly = 1

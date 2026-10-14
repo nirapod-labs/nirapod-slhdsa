@@ -89,7 +89,8 @@ bench = ["bench"]
 # ---------------------------------------------------------------------------
 # Inputs. skip-all: what no check reads. Documentation, change entries,
 # licensing and repository metadata, the workflows and scripts that run no
-# check of ci.yml (changelog, retry, drift, lint) and the tests of the CI
+# check of ci.yml (changelog, retry, drift, lint, the source checks, the
+# gates, which judge results but produce none) and the tests of the CI
 # scripts. Files are named one by one, never by extension: Jasmin
 # `require`, C `#include` and make `include` read a file of any name.
 
@@ -105,7 +106,8 @@ skip-all = [
   ".github/workflows/drift.yml",
   "tools/changes.sh",
   "tools/ci/README.md", "tools/ci/changelog.py", "tools/ci/drift.py", "tools/ci/lint.py",
-  "tools/ci/retry.py", "tools/ci/tests",
+  "tools/ci/policy.py", "tools/ci/retry.py", "tools/ci/source.py", "tools/ci/gate.py",
+  "tools/ci/tests",
 ]
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,8 @@
 # pull request of either project (tools/ci/drift.py):
 #
 #   jasmin      the patch series tried on the Jasmin ref, patch by patch
-#               (applies, already upstream, conflicts), then the toolchain
+#               (applies, already upstream, conflicts; a maintainer can leave
+#               patches out by name), then the toolchain
 #               built from a scratch copy of toolchain/ with that pin and
 #               the patches that still apply: the Rocq proofs, extraction,
 #               the assumption and admit lists, the compiler's tests; on
@@ -153,13 +154,13 @@ jobs:
         if: matrix.platform.platform == 'linux-x86_64'
         run: tools/ci/toolchain.sh bin-path
 
-      - name: Tests and analyses with the drift compiler
+      - name: Tests, analyses and the extraction check with the drift compiler
         if: matrix.platform.platform == 'linux-x86_64'
-        run: make -f tools/ci/Makefile ci-vectors ci-test ci-analysis
-
-      - name: Extraction check with the drift compiler
-        if: matrix.platform.platform == 'linux-x86_64'
-        run: make -C proofs check-extraction
+        env:
+          CI_RUNNER: ubuntu-24.04
+        run: >-
+          python3 -I tools/ci/check.py try linux-x86_64
+          test-hash test-core analysis-hash analysis-units asm-policy proofs-extraction
 
       - name: Upload the report and the build record
         if: always()
@@ -217,7 +218,12 @@ jobs:
         run: tools/ci/toolchain.sh bin-path
 
       - name: Check the proofs with that EasyCrypt
-        run: tools/ci/toolchain.sh exec make -f tools/ci/Makefile ci-proofs
+        env:
+          CI_RUNNER: ubuntu-24.04
+        run: >-
+          python3 -I tools/ci/check.py try linux-x86_64
+          proofs-sphincs proofs-crypto-specs proofs-spec proofs-x86_64 proofs-aarch64
+          proofs-extraction
 
       - name: Upload the report and the build record
         if: always()

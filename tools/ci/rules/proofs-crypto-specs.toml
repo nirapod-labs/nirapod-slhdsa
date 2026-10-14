@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# tools/ci/rules/proofs-crypto-specs.toml: files the proof shard crypto-specs checks
+# (tools/ci/counts.py). A minimum is the count of the complete run on the
+# current tree; lowering one is a reviewed change.
+
+[crypto-specs]
+[[crypto-specs.line]]
+what = "the imported crypto-specs theories, every file checked"
+pattern = '^shard crypto-specs: PASS (\d+) files$'
+minimum = 13

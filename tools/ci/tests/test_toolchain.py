@@ -9,7 +9,6 @@
 # records, the agreement of the platforms, and the weekly cold comparison
 # against a stored bundle, with a stand-in API.
 
-import hashlib
 import io
 import os
 import shutil
