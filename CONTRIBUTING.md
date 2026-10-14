@@ -22,6 +22,11 @@ welcome.
 - Regenerate checked-in generated files with the documented command rather
   than editing them by hand.
 - New files start with the SPDX header used throughout the repository.
+- In the CI tooling, shell is glue only: it installs packages, sets up the
+  environment and runs steps in order. Anything that parses, computes keys
+  or digests, generates files or decides whether a check passed is Python,
+  standard library only, with tests under `tools/ci/tests`. See
+  `tools/ci/README.md`.
 
 ## Sign-off
 
