@@ -9,4 +9,4 @@
 [[extraction.line]]
 what = "pairs whose committed model equals a fresh extraction"
 pattern = '^check-extraction: PASS \((\d+) pairs\)$'
-minimum = 2
+minimum = 3

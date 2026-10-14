@@ -18,7 +18,7 @@ pinned toolchain.
 | `record.py`, `store.py` | records of passed checks, and the one place results of other runs are taken from |
 | `plan.py`, `check.py`, `gate.py` | the plan of a run, running and recording checks, the gates |
 | `toolchain.py`, `toolchain.sh` | build keys and bundles of the pinned toolchain; packages, packing, its environment |
-| `source.py`, `components.py` | the checks that need no toolchain |
+| `source.py`, `components.py`, `kernel_roots.py` | the checks that need no toolchain; `kernel_roots.py` ties the proof models to the kernels the library builds |
 | `lint.py`, `policy.py` | linters of the workflows and scripts, and the rules for the workflows |
 | `changelog.py`, `retry.py`, `drift.py` | the side workflows: changelog entry, one re-run after a lost runner, upstream drift |
 | `tests/` | tests of all of the above |

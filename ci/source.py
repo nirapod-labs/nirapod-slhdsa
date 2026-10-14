@@ -25,6 +25,8 @@
 #                the generated test sources current
 #   proofs       the proof-hole scan, the FIPS 180-4 constants, the
 #                inventory files against the extracted pairs
+#   kernels      the kernel roots of the proof models against those the
+#                library builds (ci/kernel_roots.py)
 #
 # Every check runs; the script fails at the end if any failed.
 
@@ -90,13 +92,15 @@ def shard_errors(reg, files):
     pair_shards = [s for s in shards if s in archs]
     proof_files = [f for f in files if f.endswith((".ec", ".eca"))
                    and f.startswith(("proofs/", "third_party/"))]
+    # A pair shard checks a file once for each of its pairs that loads it;
+    # what matters here is which shards check it.
     for f in sorted(proof_files):
-        got = sorted(where.get(f, []))
+        got = sorted(set(where.get(f, [])))
         shared = f.startswith("proofs/correctness/") and not set(f.split("/")) & set(archs)
         want = sorted(pair_shards) if shared else None
         if shared and got != want:
             errors.append(f"{f}: a shared correctness proof, checked by {got or 'no shard'}, "
-                          f"expected once by each of {want}")
+                          f"expected by each of {want}")
         elif not shared and len(got) != 1:
             errors.append(f"{f}: checked by {got or 'no shard'}, expected exactly one")
     errors += [f"shard-files lists {p}, which is not a tracked proof file"
@@ -139,6 +143,7 @@ def main(argv):
     if found["proofs"]:
         steps.append(("proofs", ["make", "-C", "proofs", "scan-admits", "check-constants",
                                  "check-inventory-files"]))
+        steps.append(("kernels", [sys.executable, "-I", "ci/kernel_roots.py"]))
     for name, cmd in steps:
         ok = run(cmd)
         print(f"source {name}: {'PASS' if ok else 'FAIL'}")

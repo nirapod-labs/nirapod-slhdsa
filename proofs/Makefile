@@ -98,7 +98,8 @@ SPEC_FILES     := $(filter spec/%,$(OWN_FILES))
 #   extracted/<arch>/<variant>/       the models: HashExtracted, AddressExtracted (+ arrays)
 #   correctness/<area>/...            shared proofs, any directory whose
 #                                     path has no architecture component;
-#                                     checked against every pair
+#                                     checked against every pair, except
+#                                     a proof of one kernel (KERNEL_PROOFS)
 #   correctness/<area>/<arch>/        facts about one architecture's
 #                                     instructions (theory ArchWord), for
 #                                     every variant of that architecture
@@ -119,9 +120,30 @@ SHARED_PROOFS     = $(shell for d in $(SHARED_PROOF_DIRS); do \
                       find $$d -maxdepth 1 \( -name '*.ec' -o -name '*.eca' \); done | LC_ALL=C sort)
 pair_arch    = $(firstword $(subst /, ,$(1)))
 pair_dirs    = $(foreach d,$(SHARED_PROOF_DIRS),$(wildcard $(d)/$(call pair_arch,$(1)) $(d)/$(1)))
+# A shared proof of a kernel holds only for the pairs that build that
+# kernel. KERNEL_PROOFS lists each such proof with the kernel root it
+# requires, as <file>:<role>=<root> with the role and root of EXTRACTIONS;
+# a pair checks the proof when its root for that role is the one listed.
+# Every other shared proof is checked against every pair.
+KERNEL_PROOFS := \
+  correctness/hash/Keccakf1600_Portable.ec:KeccakKernel=keccak \
+  correctness/hash/SHA256_Compress.ec:Sha2Kernel=sha2 \
+  correctness/hash/SHA512_Compress.ec:Sha2Kernel=sha2
+role_field_KeccakKernel  := 3
+role_field_KeccakKernelX := 4
+role_field_Sha2Kernel    := 5
+role_field_Sha2KernelX   := 6
+pair_entry   = $(subst :, ,$(filter $(1):%,$(EXTRACTIONS)))
+kp_file      = $(firstword $(subst :, ,$(1)))
+kp_role      = $(firstword $(subst =, ,$(lastword $(subst :, ,$(1)))))
+kp_root      = $(lastword $(subst =, ,$(1)))
+kp_holds     = $(filter $(call kp_root,$(2)),$(word $(role_field_$(call kp_role,$(2))),$(call pair_entry,$(1))))
+pair_kernel_proofs = $(foreach k,$(KERNEL_PROOFS),$(if $(call kp_holds,$(1),$(k)),$(call kp_file,$(k))))
+pair_shared  = $(filter-out $(foreach k,$(KERNEL_PROOFS),$(call kp_file,$(k))),$(SHARED_PROOFS)) \
+               $(call pair_kernel_proofs,$(1))
 pair_files   = $(sort $(wildcard extracted/$(1)/*.ec) \
                  $(foreach d,$(call pair_dirs,$(1)),$(wildcard $(d)/*.ec $(d)/*.eca)) \
-                 $(SHARED_PROOFS))
+                 $(call pair_shared,$(1)))
 pair_flags   = -no-eco $(EC_PATH) -I extracted/$(1) \
                $(foreach d,$(SHARED_PROOF_DIRS) $(call pair_dirs,$(1)),-I $(d)) \
                $(EC_PROVERS) -timeout $(EC_TIMEOUT)
@@ -186,7 +208,8 @@ THEOREMS := \
   SHA512_Compress.sha512_rounds_correct SHA512_Compress.sha512_compress_correct \
   SHA512_Compress.sha512_compress_total
 
-# Keccak-f[1600] of the shared scalar kernel.
+# Keccak-f[1600] of the shared scalar kernel; the AArch64 kernel that keeps
+# the state in registers has its own (KERNEL_THEOREMS_aarch64_a64scalar).
 THEOREMS += Keccakf1600_Portable.keccak_round_correct Keccakf1600_Portable.keccakf1600_correct \
             Keccakf1600_Portable.keccakf1600_total
 
@@ -207,6 +230,16 @@ SLHDSA_SETS := SHA2_128S SHAKE_128S SHA2_128F SHAKE_128F SHA2_192S SHAKE_192S \
 SLHDSA_THEOREMS := slhdsa_euf_cma_spec slhdsa_euf_cma_hedged_spec \
                    slhdsa_euf_cma slhdsa_euf_cma_hedged spec_det_eq spec_hedged_eq
 THEOREMS += $(foreach s,$(SLHDSA_SETS),$(foreach t,$(SLHDSA_THEOREMS),SPHINCS_Sets.SLH_DSA_$(s).$(t)))
+
+# The theorems of one pair: those of the theories it checks (a KernelSpec
+# is named by pair, KERNEL_THEOREMS_<arch>_<variant>).
+KERNEL_THEOREMS_aarch64_a64scalar := KernelSpec.keccak_round_regs_correct \
+  KernelSpec.keccakf1600_correct KernelSpec.keccakf1600_total
+thm_theory   = $(firstword $(subst ., ,$(1)))
+pair_loaded  = $(basename $(notdir $(OWN_FILES) $(IMPORTED_FILES) $(FORMOSA_FILES) \
+                 $(call pair_shared,$(1))))
+pair_theorems = $(foreach t,$(THEOREMS),$(if $(filter $(call thm_theory,$(t)),$(call pair_loaded,$(1))),$(t))) \
+                $(KERNEL_THEOREMS_$(subst /,_,$(1)))
 
 inventory_file = inventory/$(subst /,-,$(1)).txt
 
@@ -236,7 +269,7 @@ inventory-pair:
 	@test -n "$(PAIR)" || { echo "inventory-pair: PAIR not set"; exit 1; }
 	@$(PYTHON) -I tools/inventory.py --pair $(PAIR) --easycrypt "$(EASYCRYPT)" \
 	  --flags "$(call pair_flags,$(PAIR))" --namespace JazzEC=$(CRYPTO_SPECS)/arrays \
-	  --generated extracted --theorems "$(THEOREMS)" --$(MODE) $(call inventory_file,$(PAIR)) \
+	  --generated extracted --theorems "$(call pair_theorems,$(PAIR))" --$(MODE) $(call inventory_file,$(PAIR)) \
 	  $(OWN_FILES) $(IMPORTED_FILES) $(FORMOSA_FILES) $(call pair_files,$(PAIR))
 
 # ------------------------------------------------------------------
@@ -254,9 +287,31 @@ HASH_SRC   := $(JASMIN_SRC)/hash
 SLHDSA_SRC := $(JASMIN_SRC)/slhdsa
 
 # <arch>/<variant>:<jasmin arch>:<KeccakKernel>:<KeccakKernelX>:<Sha2Kernel>:<Sha2KernelX>
+#
+# portable: every kernel root at its portable default. aarch64/a64scalar:
+# the single-way Keccak kernel of the AArch64 scalar variant (top-level
+# Makefile, SCALAR_K1), which keeps the state in registers; its other
+# roots are those that variant builds (LIBRARY_PAIRS below).
 EXTRACTIONS := \
   x86_64/portable:x86-64:keccak:keccak:sha2:sha2 \
-  aarch64/portable:armv8a:keccak:keccak:sha2:sha2
+  aarch64/portable:armv8a:keccak:keccak:sha2:sha2 \
+  aarch64/a64scalar:armv8a:keccak/aarch64/scalar:keccak:sha2:sha2
+
+# The library variant each pair models: <arch>/<variant of the top-level
+# Makefile>=<pair>. ci/kernel_roots.py fails unless every variant the
+# library builds is bound here or listed in LIBRARY_UNMODELLED, and every
+# bound pair's EXTRACTIONS roots are the roots the library compiles that
+# variant with; so a change to the library's kernel selection that the
+# models do not follow fails CI. The portable pairs model no library
+# variant on AArch64; they check the shared kernels on both architectures.
+LIBRARY_PAIRS      := x86_64/scalar=x86_64/portable aarch64/scalar=aarch64/a64scalar
+LIBRARY_UNMODELLED := x86_64/avx2 x86_64/shani aarch64/sha2 aarch64/sha3
+
+.PHONY: print-library-pairs
+print-library-pairs:
+	@echo "extractions $(EXTRACTIONS)"
+	@echo "pairs $(LIBRARY_PAIRS)"
+	@echo "unmodelled $(LIBRARY_UNMODELLED)"
 
 .PHONY: extract check-extraction
 extract:

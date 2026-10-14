@@ -16,8 +16,8 @@ theorems of the specification for all twelve parameter sets are written and
 check. The implementation theorems so far cover the one-block entry points
 `_sha256_compress` and `_sha512_compress` of the portable SHA-256 and
 SHA-512 kernels, their round functions, the Keccak-f[1600] permutation of
-the shared scalar Keccak kernel, and the hash address (ADRS) setters of
-the SLH-DSA core (below). The kernels' other
+the single-way Keccak kernels of the scalar variants, and the hash address
+(ADRS) setters of the SLH-DSA core (below). The kernels' other
 entry points, `_sha256_compress_blocks` and `_sha512_compress_blocks`, which
 the streaming hash uses for every whole block of input in memory, and
 `_sha256_compress_one` and `_sha512_compress_one`, have no proof yet.
@@ -195,13 +195,15 @@ Correctness proofs follow one layout:
 
 | Path | Contents | Checked against |
 |---|---|---|
-| `correctness/<area>/` | proofs written once for all targets | every pair |
+| `correctness/<area>/` | proofs written once for all targets | every pair; a proof of one kernel, only the pairs that build it (`KERNEL_PROOFS`) |
 | `correctness/<area>/<arch>/` | facts about one architecture's instructions (theory `ArchWord`) | every pair of that architecture |
 | `correctness/<area>/<arch>/<variant>/` | proofs of the kernels a variant replaces (theory `KernelSpec`) | that pair |
 
 `make check-correctness` compiles, for each pair, its model, its
-architecture and variant theories and every shared proof, with that pair's
-directories on the load path. A shared proof that requires
+architecture and variant theories and the shared proofs that apply to it
+(all of them, except that a proof of one kernel is checked only on the
+pairs that build that kernel; below), with that pair's directories on the
+load path. A shared proof that requires
 `HashExtracted` or `ArchWord` is therefore checked against each pair's
 model in turn: the shared Jasmin source is proven once and the proof is
 replayed on every architecture. The x86-64 and AArch64 models of the
@@ -209,8 +211,26 @@ portable code differ only in the instructions behind `__bswap32` and
 `__bswap64` (BSWAP against REV), and `ArchWord` proves both to be byte
 reversal.
 
-Theorems so far, each checked on `x86_64/portable` and
-`aarch64/portable`, the models of the portable kernels:
+The pairs are `x86_64/portable` and `aarch64/portable`, the models of the
+portable kernels, and `aarch64/a64scalar`, the model with the kernels the
+AArch64 scalar variant builds in their place: the Keccak-f[1600] kernel that
+keeps the state in registers (`src/hash/keccak/aarch64/scalar/`), with the
+portable SHA-2 kernels. A shared proof of one kernel holds only for the
+pairs that build it, so the Makefile lists each such proof with the kernel
+root it needs (`KERNEL_PROOFS`), and a pair checks it only when its
+extraction uses that root.
+
+Which library variant each pair models is declared in the Makefile
+(`LIBRARY_PAIRS`: `x86_64/portable` for the x86-64 scalar variant,
+`aarch64/a64scalar` for the AArch64 one; `LIBRARY_UNMODELLED`: the x86-64
+`avx2` and `shani` and the AArch64 `sha2` and `sha3` variants, which have
+no model yet). `ci/kernel_roots.py`
+compares these with the include roots the top-level Makefile compiles
+each unit under (`make kernel-roots`), and fails if a variant is in
+neither list or if a pair's kernel roots are not the library's, so the
+models cannot drift from the kernels the library builds.
+
+Theorems so far, each checked on every pair unless it says otherwise:
 
 - `sha256_rounds_correct` (`correctness/hash/SHA256_Compress.ec`):
   `__sha256_rounds` turns the chaining value `h` and the 16 message words
@@ -224,17 +244,21 @@ Theorems so far, each checked on `x86_64/portable` and
   three statements for the SHA-512 kernel, section 6.4.2, on its 128-byte
   block;
 - `keccak_round_correct`, `keccakf1600_correct`, `keccakf1600_total`
-  (`correctness/hash/Keccakf1600_Portable.ec`): one round of the shared scalar
-  kernel `src/hash/keccak/keccakf1600.jinc` computes `keccak_pround_op`
-  (θ, ρ, π and χ), and `_keccakf1600` computes `keccak_f1600_op`, the
-  Keccak-f[1600] of the imported FIPS 202 theories, on the 25 64-bit lanes
-  of its state, then the same with termination. crypto-specs proves
-  `keccak_f1600_op` equal to its procedure for FIPS 202 sections 3.3 and
-  3.4 (`keccak_f1600_ph`), which `make check-imported` re-checks here. The
-  x86-64 library builds this kernel; the AArch64 library builds another
-  one, which keeps the state in registers and has no proof yet. The state
-  facts the proof uses (the lane view, the ρ offsets against FIPS 202
-  Algorithm 2, the round constants) are in `correctness/hash/KeccakState.ec`;
+  (`correctness/hash/Keccakf1600_Portable.ec`, on the two portable
+  pairs): one round of the shared scalar kernel `src/hash/keccak/keccakf1600.jinc`
+  computes `keccak_pround_op` (θ, ρ, π and χ), and `_keccakf1600` computes
+  `keccak_f1600_op`, the Keccak-f[1600] of the imported FIPS 202
+  theories, on the 25 64-bit lanes of its state, then the same with
+  termination. crypto-specs proves `keccak_f1600_op` equal to its
+  procedure for FIPS 202 sections 3.3 and 3.4 (`keccak_f1600_ph`), which
+  `make check-imported` re-checks here. The x86-64 library builds this
+  kernel; the AArch64 library does not;
+- `keccak_round_regs_correct`, `keccakf1600_correct`, `keccakf1600_total`
+  (`correctness/hash/aarch64/a64scalar/KernelSpec.ec`, on
+  `aarch64/a64scalar`): the same for the AArch64 kernel, whose round
+  includes ι. The state facts both Keccak proofs use (the lane view, the
+  ρ offsets against FIPS 202 Algorithm 2, the round constants) are in
+  `correctness/hash/KeccakState.ec`;
 - the eleven `adrs_*_correct` theorems (`correctness/slhdsa/ADRS.ec`):
   every procedure of `src/slhdsa/address.jinc` (zeroing, the setters of
   FIPS 205 Table 1, the key pair copy and the address copy) returns the
@@ -249,7 +273,7 @@ Theorems so far, each checked on `x86_64/portable` and
 The SHA-2 and Keccak `_correct` theorems are partial-correctness (Hoare)
 statements about the extracted model: when the procedure returns, its
 result is the specified value. Every loop of the kernels runs over a
-constant range, so `_sha256_compress`, `_sha512_compress` and
+constant range, so `_sha256_compress`, `_sha512_compress` and both
 `_keccakf1600` terminate from every initial state (`sha256_compress_ll`,
 `sha512_compress_ll`, `keccakf1600_ll`), and the `_total` theorems combine
 the two: the procedure returns, with the specified result, with
@@ -314,16 +338,17 @@ check. Each shard loads only the theories under its own load path, so CI
 can tell from a change which shards it affects; `make shard-files` lists
 every file of every shard, and CI checks that each file belongs to exactly
 one, except the shared correctness proofs, which each architecture's shard
-checks against its own model.
+checks against its own models.
 
 `check-inventory` requires, for each pair, every theory that pair is
 checked with, has EasyCrypt print every axiom then in scope, the statement
-of each theorem in `THEOREMS` (Makefile) and every definition (type,
-operator, predicate, abbreviation, module) of the theories in this
-directory and in `../third_party`, and fails unless the result equals
-`inventory/<arch>-<variant>.txt`. An axiom can enter by an `axiom`
-declaration, by an `axiomatized by` definition, or as an axiom a `clone`
-leaves unrealized; all three are in EasyCrypt's list. A statement means
+of each theorem of that pair (those of `THEOREMS` in the Makefile whose
+theory the pair loads, plus `KERNEL_THEOREMS_<arch>_<variant>`) and every
+definition (type, operator, predicate, abbreviation, module) of the
+theories in this directory and in `../third_party`, and fails unless the
+result equals `inventory/<arch>-<variant>.txt`. An axiom can enter by an
+`axiom` declaration, by an `axiomatized by` definition, or as an axiom a
+`clone` leaves unrealized; all three are in EasyCrypt's list. A statement means
 what the definitions it names mean, so the definitions are pinned too: no
 axiom can be added, and no theorem dropped or weakened, either in its text
 or by changing a definition it relies on, without a reviewed change to the

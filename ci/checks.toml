@@ -106,7 +106,7 @@ skip-all = [
   ".github/workflows/drift.yml",
   "ci/changes.sh",
   "ci/README.md", "ci/changelog.py", "ci/drift.py", "ci/lint.py",
-  "ci/policy.py", "ci/retry.py", "ci/source.py", "ci/gate.py",
+  "ci/policy.py", "ci/retry.py", "ci/source.py", "ci/kernel_roots.py", "ci/gate.py",
   "ci/tests",
 ]
 

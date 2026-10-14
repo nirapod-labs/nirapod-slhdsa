@@ -55,7 +55,8 @@ BUILD       ?= build
 HOST_MACHINE := $(shell uname -m)
 HOST_SYSTEM  := $(shell uname -s)
 
-# GEN_ARCH and GEN_SYSTEM replace the host's values only inside `make gen`.
+# GEN_ARCH and GEN_SYSTEM replace the host's values only inside `make gen`
+# and `make kernel-roots`.
 MACHINE := $(if $(GEN_ARCH),$(GEN_ARCH),$(HOST_MACHINE))
 SYSTEM  := $(if $(GEN_SYSTEM),$(GEN_SYSTEM),$(HOST_SYSTEM))
 
@@ -532,6 +533,16 @@ endef
 
 gen:
 	$(call gen_into,$(GEN_DIR))
+
+# The include roots each unit of the target is compiled with, one line per
+# unit: <arch> <unit> -I <root>=<dir> ... (JASMIN_INCLUDES). Needs no
+# toolchain. ci/kernel_roots.py runs it for each target and checks that
+# the proof models are extracted under the kernels the library builds.
+.PHONY: kernel-roots
+kernel-roots: $(addprefix kernel-roots/,$(UNITS))
+
+kernel-roots/%:
+	@echo "$(ARCH) $* $(JASMIN_INCLUDES)"
 
 # The jasminc-binary line names the binary of the host that generated, which
 # differs between hosts (and operating systems) for the same compiler
