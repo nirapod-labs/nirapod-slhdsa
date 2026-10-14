@@ -37,5 +37,5 @@ cpu = []
 # 0b0010), so `sha512` stands for both.
 [sets.aarch64-crypto]
 arch = ["aarch64"]
-vars = ["KECCAKX_VARIANT=aarch64/sha3", "SHA2_VARIANT=aarch64/sha2"]
+vars = ["KECCAK_VARIANT=aarch64/sha3", "KECCAKX_VARIANT=aarch64/sha3", "SHA2_VARIANT=aarch64/sha2"]
 cpu = ["sha512", "sha3"]

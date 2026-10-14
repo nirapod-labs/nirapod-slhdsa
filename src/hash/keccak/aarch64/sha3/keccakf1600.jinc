@@ -1,0 +1,65 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * keccakf1600.jinc (AArch64, SHA-3 instructions)
+ * ==============================================
+ *
+ * Keccak-f[1600] (FIPS 202 sections 3.3 and 3.4) on the A64 SHA-3
+ * instructions (FEAT_SHA3). Entry point and contract are those of the
+ * shared scalar kernel (keccak/keccakf1600.jinc):
+ *
+ *     _keccakf1600(st, ms)
+ *
+ * Each lane is broadcast to both halves of an Advanced SIMD register and
+ * the 2-way round of keccak_round_x2.jinc runs on them; both halves then
+ * hold the same state, and lane 0 is stored back. The round is the one of
+ * the 4-way kernel in this directory.
+ *
+ * It is an alternative to the register-resident scalar kernel
+ * (keccak/aarch64/scalar) for cores with FEAT_SHA3; the build selects
+ * either.
+ *
+ * Required CPU feature: FEAT_SHA3 (and Advanced SIMD). The caller's
+ * dispatch must establish it; this file does not check.
+ *
+ * Security: all lanes may be secret. The round loop's branch is the public
+ * round counter; every address is fixed at compile time or is an index
+ * into the public round constant table. Residue: nothing secret is stored
+ * to the stack; the vector and general-purpose registers are not cleared.
+ */
+
+from Hash require "keccak/keccak_constants.jinc"
+from Hash require "keccak/aarch64/sha3/keccak_round_x2.jinc"
+
+#[sct = "{ ptr: public, val: secret } × msf → { ptr: public, val: secret } × msf"]
+fn _keccakf1600(reg mut ptr u64[25] st, reg u64 ms) -> reg ptr u64[25], reg u64
+{
+  reg u128[25] a;
+  reg ptr u64[24] rc;
+  reg u64 i t;
+  reg bool more;
+  inline int j;
+
+  for j = 0 to 25 {
+    t = st[j];
+    a[j] = #VDUP_2u64(t);
+  }
+
+  rc = KECCAK_RC;
+  i = 0;
+  while { more = i < KECCAK_ROUNDS; } (more) {
+    ms = #update_msf(more, ms);
+    t = rc[i];
+    a = __keccak_round_x2(a, t);
+    i += 1;
+  }
+  ms = #update_msf(!more, ms);
+
+  for j = 0 to 25 {
+    t = #VUMOV_2u64(a[j], 0);
+    st[j] = t;
+  }
+
+  return st, ms;
+}
