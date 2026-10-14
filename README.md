@@ -129,6 +129,10 @@ src/hash/         SHA-2, SHA-3, SHAKE, HMAC and MGF1 in Jasmin
 capi/             the C wrapper: argument checks, variant dispatch, entropy, DIT,
                   clearing; testing/ holds the FIPS 205 internal functions for tests
 tests/core/       functional tests and ACVP known answers of the library
+tests/acvp/       the full NIST ACVP vectors, run through tests/diff/adapters
+tests/vectors/    the pin of the ACVP vector files and their fetch
+tests/diff/       differential tests against independent implementations, and the
+                  adapters that reach each one
 tests/negative/   malformed input, overlapping buffers, injected faults, a failing
                   random source
 tests/abi/        exported symbols, and the stack and registers a call leaves behind
@@ -136,6 +140,8 @@ tests/hash/       CAVP, differential and negative tests of the hash layer
 analysis/         constant-time analysis and emitted-code policies of the units
 proofs/           EasyCrypt specifications and proofs
 third_party/      imported EasyCrypt theories, with their provenance
+bench/            pins of the implementations the tests compare against, and their
+                  fetch and build
 toolchain/        pinned Jasmin and EasyCrypt, the patch series, build.sh
 ci/               CI checks and release tooling
 changes/          one entry per change, collected at release
