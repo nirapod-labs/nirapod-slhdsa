@@ -83,7 +83,7 @@ class RunOne(Base):
 
     def test_check_that_does_not_apply_never_runs(self):
         with self.fake_make(0), redirect_stdout(io.StringIO()):
-            for cid in ("differential", "safety"):
+            for cid in ("generated", "safety"):
                 with self.assertRaises(check.Failure):
                     check.run_one(self.reg, self.tree, cid, "linux-x86_64")
 

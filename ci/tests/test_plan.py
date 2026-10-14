@@ -88,7 +88,7 @@ class Plans(unittest.TestCase):
 
     def test_applicability_follows_the_tree(self):
         by = {(l["check"], l["platform"]): l["decision"] for l in self.legs}
-        self.assertEqual(by[("differential", "macos-aarch64")], "NOT APPLICABLE")
+        self.assertEqual(by[("differential", "macos-aarch64")], "RUN")
         self.assertEqual(by[("generated", "linux-x86_64")], "NOT APPLICABLE")
         self.assertEqual(by[("safety", "linux-x86_64")], "NOT RUN")
         self.assertEqual(by[("test-core", "macos-aarch64")], "RUN")

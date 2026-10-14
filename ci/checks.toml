@@ -70,7 +70,7 @@ jobs = 2
 # cannot pass as absent.
 
 [components]
-required = ["hash", "slhdsa", "asm", "proofs", "core"]
+required = ["hash", "slhdsa", "asm", "proofs", "core", "diff"]
 containers = ["src", "tests", "analysis", "third_party"]
 other-roots = [".git", ".github", "LICENSES", "changes", "ci", "docs", "toolchain", "build"]
 
@@ -136,7 +136,7 @@ platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
 # The hash tests build src/hash with tests/hash and read nothing else.
 skip = ["src/slhdsa", "capi", "include", "tests/core", "tests/negative", "tests/abi",
-        "analysis", "proofs", "third_party"]
+        "tests/acvp", "tests/diff", "tests/vectors", "bench", "analysis", "proofs", "third_party"]
 
 [checks.analysis-hash]
 recipe = "analysis-hash"
@@ -145,7 +145,7 @@ platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
 # jasmin-ct and --sct on the hash test exports: src/hash and tests/hash.
 skip = ["src/slhdsa", "capi", "include", "tests/core", "tests/negative", "tests/abi",
-        "analysis", "proofs", "third_party"]
+        "tests/acvp", "tests/diff", "tests/vectors", "bench", "analysis", "proofs", "third_party"]
 
 [checks.test-core]
 recipe = "test-core"
@@ -154,7 +154,8 @@ platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
 keep = ["build/ci/transcript-{target}.txt"]
 # make check: the library (src, capi, include) and tests/{core,negative,abi}.
-skip = ["tests/hash", "analysis", "proofs", "third_party", "ci/hash-sets.toml"]
+skip = ["tests/hash", "tests/acvp", "tests/diff", "tests/vectors", "bench", "analysis",
+        "proofs", "third_party", "ci/hash-sets.toml"]
 
 [checks.test-acvp]
 recipe = "test-acvp"
@@ -170,7 +171,7 @@ component = "slhdsa"
 platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
 # make ct: the Jasmin units of src with analysis/ct/ct.mk.
-skip = ["capi", "include", "tests", "analysis/asm", "proofs", "third_party",
+skip = ["capi", "include", "tests", "bench", "analysis/asm", "proofs", "third_party",
         "ci/hash-sets.toml"]
 
 [checks.asm-policy]
@@ -179,23 +180,26 @@ component = "asm"
 platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
 # make asm-policy: the assembly of the units of src, the rules of analysis/asm.
-skip = ["capi", "include", "tests", "analysis/ct", "proofs", "third_party",
+skip = ["capi", "include", "tests", "bench", "analysis/ct", "proofs", "third_party",
         "ci/hash-sets.toml"]
 
+# The driver, oracle and adapters (tests/diff), the baseline pins and their
+# fetch (bench/baselines.*) and the library.
 [checks.differential]
 recipe = "differential"
 component = "diff"
 needs = ["core"]
 platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
-skip = ["tests/hash", "analysis", "proofs", "third_party", "ci/hash-sets.toml"]
+skip = ["tests/hash", "tests/acvp", "tests/vectors", "analysis", "proofs", "third_party",
+        "ci/hash-sets.toml"]
 
 [checks.generated]
 recipe = "generated"
 component = "gen"
 platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
-skip = ["tests", "proofs", "third_party", "ci/hash-sets.toml"]
+skip = ["tests", "bench", "proofs", "third_party", "ci/hash-sets.toml"]
 
 # jasmin-checksafety. Until the safety component lands, the Jasmin code has
 # no safety verdict and the constant-time results are conditional on one:
@@ -207,8 +211,8 @@ absent = "NOT RUN"
 not-run-when = ["hash", "slhdsa"]
 platforms = ["linux-x86_64"]
 toolchain = "switch"
-skip = ["capi", "include", "tests/core", "tests/negative", "tests/abi", "proofs", "third_party",
-        "ci/hash-sets.toml"]
+skip = ["capi", "include", "tests/core", "tests/negative", "tests/abi", "tests/acvp", "tests/diff",
+        "tests/vectors", "bench", "proofs", "third_party", "ci/hash-sets.toml"]
 
 # Proof shards, all on linux-x86_64 (the pinned provers), each checking its
 # files in parallel (proofs/Makefile, check-shard). A shard can load only
@@ -223,7 +227,7 @@ platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["src", "capi", "include", "tests", "analysis", "third_party/crypto-specs",
+skip = ["src", "capi", "include", "tests", "bench", "analysis", "third_party/crypto-specs",
         "proofs/spec", "proofs/security", "proofs/correctness", "proofs/extracted",
         "proofs/inventory", "ci/hash-sets.toml"]
 
@@ -235,7 +239,7 @@ platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["src", "capi", "include", "tests", "analysis", "third_party/formosa-slhdsa",
+skip = ["src", "capi", "include", "tests", "bench", "analysis", "third_party/formosa-slhdsa",
         "proofs/spec", "proofs/security", "proofs/correctness", "proofs/extracted",
         "proofs/inventory", "ci/hash-sets.toml"]
 
@@ -247,7 +251,7 @@ platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["src", "capi", "include", "tests", "analysis", "proofs/correctness",
+skip = ["src", "capi", "include", "tests", "bench", "analysis", "proofs/correctness",
         "proofs/extracted", "proofs/inventory", "ci/hash-sets.toml"]
 
 # A pair shard checks the correctness proofs against one architecture's
@@ -260,7 +264,7 @@ platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["src", "capi", "include", "tests", "analysis", "ci/hash-sets.toml"]
+skip = ["src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml"]
 
 [checks.proofs-aarch64]
 recipe = "proofs"
@@ -270,7 +274,7 @@ platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["src", "capi", "include", "tests", "analysis", "ci/hash-sets.toml"]
+skip = ["src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml"]
 
 # The committed models against a fresh extraction of the Jasmin sources
 # proofs/tools/extract.sh reads: the hash layer and the SLH-DSA core
@@ -281,7 +285,7 @@ shard = "extraction"
 component = "proofs"
 platforms = ["linux-x86_64"]
 toolchain = "compiler"
-skip = ["capi", "include", "tests", "analysis", "third_party",
+skip = ["capi", "include", "tests", "bench", "analysis", "third_party",
         "proofs/spec", "proofs/security", "proofs/correctness", "proofs/inventory",
         "ci/hash-sets.toml"]
 
