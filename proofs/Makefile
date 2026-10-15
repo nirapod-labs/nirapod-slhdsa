@@ -252,6 +252,16 @@ THEOREMS += Sponge.keccak_absorb_mem_h Sponge.keccak_absorb_mem_ll \
             Sponge.keccak_absorb_mem_total Sponge.keccak_finalize_h \
             Sponge.keccak_finalize_ll Sponge.keccak_finalize_total
 
+# The sponge squeeze to memory and the one-shot SHA-3 and SHAKE functions;
+# pair-generic, with the pair's Keccak-f[1600] theorem as premise.
+THEOREMS += SpongeSqueeze.extract_mem_h SpongeSqueeze.extract_mem_ll \
+            SpongeSqueeze.keccak_squeeze_mem_h SpongeSqueeze.keccak_squeeze_mem_ll \
+            SpongeSqueeze.keccak_squeeze_mem_total
+THEOREMS += SHA3_SHAKE.sha3_absorb_all_total SHA3_SHAKE.sha3_224_mem_total \
+            SHA3_SHAKE.sha3_256_mem_total SHA3_SHAKE.sha3_384_mem_total \
+            SHA3_SHAKE.sha3_512_mem_total SHA3_SHAKE.shake_mem_total \
+            SHA3_SHAKE.shake128_mem_total SHA3_SHAKE.shake256_mem_total
+
 # The address setters of the SLH-DSA core against FIPS 205 Table 1.
 ADRS_THEOREMS := adrs_zero_correct adrs_set_layer_correct adrs_set_tree_correct \
                  adrs_set_type_and_clear_correct adrs_set_keypair_correct \

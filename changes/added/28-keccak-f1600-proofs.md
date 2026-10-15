@@ -5,5 +5,5 @@
   the code `jasmin2ec` extracts (`proofs/correctness/hash/`). The AArch64
   kernel is checked on a new model, `proofs/extracted/aarch64/a64scalar/`.
   `ci/kernel_roots.py` checks that the models' kernel roots are those the
-  library builds. The kernels on the A64 SHA-3 instructions, the portable
-  and AVX2 four-way kernels, the sponge, SHA-3 and SHAKE have no proof yet.
+  library builds. The kernels on the A64 SHA-3 instructions and the portable
+  and AVX2 four-way kernels have no proof yet.

@@ -22,7 +22,7 @@ SLH-DSA (FIPS 205) in [Jasmin](https://github.com/jasmin-lang/jasmin) for AArch6
 | [Constant time and speculative constant time](docs/SECURITY-MODEL.md) | **VERIFIED**<br>PASS | every Jasmin unit, both architectures; conditional on memory safety |
 | [Memory safety of the Jasmin code](docs/SECURITY-MODEL.md#memory-safety) | **UNKNOWN**<br>NOT RUN | the checker reaches no verdict on these exports yet |
 | [EUF-CMA security of the specification](docs/PROOFS.md#security-of-the-specification) | **PROVEN**<br>PASS | the EasyCrypt specification, 12 sets; not the Jasmin code |
-| [The code implements the specification](docs/PROOFS.md#the-code-against-the-specification) | **UNKNOWN** | open; proven: SHA-2 kernels and hashes, HMAC steps, MGF1, scalar Keccak-f[1600], Keccak sponge absorb and finalize, address setters |
+| [The code implements the specification](docs/PROOFS.md#the-code-against-the-specification) | **UNKNOWN** | open; proven: portable SHA-2 kernels and hashes, HMAC steps and MGF1 over them, scalar Keccak-f[1600], single-way Keccak sponge absorb, finalize and squeeze, one-shot SHA-3 and SHAKE, address setters |
 | [The compiler preserves program semantics](docs/TOOLCHAIN.md#assurance-boundary-of-the-toolchain) | **PROVEN**<br>PASS | source to assembly syntax, in Rocq; printer, assembler, linker trusted |
 
 Results of CI run [38680243373](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38680243373) at `de27e6a`, 2026-10-15. Row *The compiler preserves program semantics*: run [38554446843](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38554446843) at `8646299`. Every set, interface and platform: [`docs/STATUS.md`](docs/STATUS.md).

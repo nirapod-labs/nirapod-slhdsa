@@ -16,8 +16,10 @@ theorems of the specification for all twelve parameter sets are written and
 check. The implementation theorems so far cover the entry points of the
 portable SHA-256 and SHA-512 kernels (one block from an array, one block
 and n blocks from memory) and their round functions, the streaming and
-one-shot SHA-2 hashes built on them, the steps of HMAC over them, the Keccak-f[1600]
-permutation of the single-way Keccak kernels of the scalar variants, and
+one-shot SHA-2 hashes built on them, the steps of HMAC and the MGF1
+instances over them, the Keccak-f[1600] permutation of the single-way
+Keccak kernels of the scalar variants, the single-way sponge (absorb,
+finalize, squeeze) and the one-shot SHA-3 and SHAKE functions over it, and
 the hash address (ADRS) setters of the SLH-DSA core (below).
 Nothing in this directory supports a claim that the SLH-DSA implementation
 is verified.
@@ -258,23 +260,28 @@ Theorems so far, each checked on every pair unless it says otherwise:
   `m` from a chaining value `h0` is `stream256 h0 m h buf total`: `total`
   is `|m|`, `h` is `compress` folded from `h0` over the whole blocks of
   `m`, and `buf` begins with the bytes after them. `_sha256_absorb_mem`
-  extends `m` by the `l` bytes at `p` (`p + l < 2^64`);
-  `_sha256_finalize` pads as section 5.1.1 says and returns the hash of
-  `m` from `h0` (`|m| < 2^61`); `_sha256_mem` and `_sha224_mem` are the
+  extends `m` by the `l` bytes at `p` (`p + l < 2^64` and
+  `|m| + l < 2^64`); `_sha256_finalize` pads as section 5.1.1 says and
+  returns the hash of `m` from `h0` (`|m| < 2^61`, so that the bit length
+  fits the 64-bit length field); `_sha256_mem` and `_sha224_mem` are the
   one-shot SHA-256 and SHA-224 (its first 28 bytes) of the `l` bytes at
-  `p`;
+  `p` (`p + l < 2^64`, `l < 2^61`);
 - `sha512_absorb_mem_total`, `sha512_finalize_total`, `sha512_mem_total`,
   `sha384_mem_total`, `sha512_224_mem_total`, `sha512_256_mem_total`
   (`correctness/hash/SHA512_Stream.ec`): the same for SHA-512 (section
   5.1.2, 128-byte blocks) and its truncations SHA-384, SHA-512/224 and
   SHA-512/256 (the first 48, 28 and 32 bytes, from their own initial
-  values);
+  values), with the same preconditions. For SHA-512 the bound `|m| < 2^61`
+  is narrower than the code: it keeps the upper word of the 128-bit length
+  field zero, while `_sha512_finalize` also writes that word, so messages
+  of 2^61 bytes or more are outside the theorems;
 - `hmac_sha256_blocks`, `hmac_sha256_init_total`,
   `hmac_sha256_finalize_total` (`correctness/hash/HMAC_SHA256.ec`): the
   HMAC-SHA-256 steps of `src/hash/sha2/hmac.jinc`. `__hmac_sha256_init`
   turns a 64-byte key block `K` into the chaining values after the blocks
   `K xor ipad` and `K xor opad`; `__hmac_sha256_finalize`, given the inner
-  stream over `ipad block ++ text` and that outer chaining value, returns
+  stream over `ipad block ++ text` (of fewer than 2^61 bytes) and that
+  outer chaining value, returns
   `sha256 (opad block ++ sha256 (ipad block ++ text))`; and
   `hmac_sha256_blocks` says that this value is HMAC-SHA-256 of FIPS 198-1
   for a key of at most 64 bytes padded with zeros. The procedure that
@@ -315,9 +322,32 @@ Theorems so far, each checked on every pair unless it says otherwise:
   `keccak_finalize_h`, `keccak_finalize_ll`, `keccak_finalize_total`
   (`correctness/hash/Sponge.ec`, on every pair): absorb from memory and
   finalize (pad, permute) of `src/hash/keccak/sponge.jinc` against FIPS 202
-  (`ABSORB1600` of `Keccak1600_Spec`), total correctness, with the pair's
-  Keccak-f[1600] theorem as premise. `correctness/hash/ShakeSponge.ec`
-  gives the byte view of the absorbing state that these statements use;
+  (`ABSORB1600` of `Keccak1600_Spec`), total correctness, for a rate of
+  `r8` bytes with `0 < r8 < 200` (absorb) or `0 < r8 <= 200` (finalize),
+  and with the correctness and termination of `_keccakf1600` as premises.
+  `correctness/hash/ShakeSponge.ec` gives the byte view of the absorbing
+  state that these statements use;
+- `extract_mem_h`, `extract_mem_ll`, `keccak_squeeze_mem_h`,
+  `keccak_squeeze_mem_ll`, `keccak_squeeze_mem_total`
+  (`correctness/hash/SpongeSqueeze.ec`, on every pair): squeeze to memory
+  (`_keccak_squeeze_mem`, `__keccak_extract_mem`) of
+  `src/hash/keccak/sponge.jinc` against FIPS 202 (`SQUEEZE1600` of
+  `Keccak1600_Spec`), total correctness, from any start offset in the
+  output stream, for `0 < r8 <= 200`, with the same premises
+  (`extract_mem_h` and `extract_mem_ll` have none; the bytes copied end
+  within the state and below 2^64 in memory);
+- `sha3_absorb_all_total`, `sha3_224_mem_total`, `sha3_256_mem_total`,
+  `sha3_384_mem_total`, `sha3_512_mem_total`, `shake_mem_total`,
+  `shake128_mem_total`, `shake256_mem_total`
+  (`correctness/hash/SHA3_SHAKE.ec`, on every pair): the one-shot
+  SHA3-224, SHA3-256, SHA3-384, SHA3-512, SHAKE128 and SHAKE256 functions
+  of `src/hash/keccak/fips202.jinc`, message read from memory, against
+  FIPS 202 (`SHA3_224` to `SHA3_512`, `SHAKE128` and `SHAKE256` of
+  `Keccak1600_Spec`), total correctness, with the same premises
+  (`sha3_absorb_all_total` and `shake_mem_total` take the rate, with
+  `0 < r8 < 200`). The SHAKE functions read the whole message before
+  they write output, so the statements need no disjointness of the two
+  regions;
 - the eleven `adrs_*_correct` theorems (`correctness/slhdsa/ADRS.ec`):
   every procedure of `src/slhdsa/address.jinc` (zeroing, the setters of
   FIPS 205 Table 1, the key pair copy and the address copy) returns the
@@ -342,17 +372,19 @@ The address theorems are about the address procedures themselves. That
 the rest of the core passes them the values FIPS 205 prescribes is part of
 the proofs of the algorithms that call them, which do not exist yet.
 
-Not proven yet: the multi-way functions, the HMAC key block from memory, the Keccak sponge squeeze, SHA-3 and SHAKE;
-the four-way Keccak-f[1600] kernels (portable, AVX2 and A64 SHA-3) the
-multi-way code uses; the four-way SHA2 tweakable hashes on the multi-way
-SHA-2 kernels (`src/slhdsa/thash_sha2_x4/multi/`) and the AVX2 8-way SHA-256
-and 4-way SHA-512 kernels under them, in the x86-64 `avx2` variant of the
-SHA2 sets; and the kernels that replace the portable ones: SHA-NI
-for SHA-256 in the x86-64 `shani` variant, the SHA-2 instruction kernels
-for SHA-256 and SHA-512 and the single-way Keccak-f[1600] kernel on the
-SHA-3 instructions in the AArch64 `sha2` and `sha3` variants, and the A64
-base-ISA SHA-2 kernels, which only the hash tests select. The scalar
-variant of every unit runs the portable SHA-2 kernels.
+Not proven yet: the multi-way functions, the four-way Keccak sponge among
+them; the HMAC key block from memory; the sponge forms over fixed-length
+arrays (`src/hash/keccak/sponge_array.jinc`); the four-way Keccak-f[1600]
+kernels (portable, AVX2 and A64 SHA-3) the multi-way code uses; the
+four-way SHA2 tweakable hashes on the multi-way SHA-2 kernels
+(`src/slhdsa/thash_sha2_x4/multi/`) and the AVX2 8-way SHA-256 and 4-way
+SHA-512 kernels under them, in the x86-64 `avx2` variant of the SHA2 sets;
+and the kernels that replace the portable ones: SHA-NI for SHA-256 in the
+x86-64 `shani` variant, the SHA-2 instruction kernels for SHA-256 and
+SHA-512 and the single-way Keccak-f[1600] kernel on the SHA-3 instructions
+in the AArch64 `sha2` and `sha3` variants, and the A64 base-ISA SHA-2
+kernels, which only the hash tests select. The scalar variant of every unit
+runs the portable SHA-2 kernels.
 
 `spec/hash/FIPS180_SHA2_Blocks.ec` states, at the level of the
 specification, how a hash splits into a first block compressed once and a

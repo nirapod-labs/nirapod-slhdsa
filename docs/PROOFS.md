@@ -61,9 +61,11 @@ Proven, on the x86-64 and AArch64 models, total correctness:
   (128-byte seed, 47 or 49 bytes).
 - **Keccak.** The Keccak-f[1600] permutation of the single-way kernels the scalar
   variants build (the portable kernel on x86-64, the kernel that keeps the state in
-  registers on AArch64), against FIPS 202; and the Keccak sponge's absorb from
-  memory and finalize (padding and the permutation) against FIPS 202, given that
-  permutation.
+  registers on AArch64), against FIPS 202; the Keccak sponge's absorb from
+  memory, finalize (padding and the permutation) and squeeze to memory against
+  FIPS 202, given that permutation; and, given it too, the one-shot SHA3-224,
+  SHA3-256, SHA3-384, SHA3-512, SHAKE128 and SHAKE256 of a message in memory
+  against FIPS 202.
 
 Not proven:
 
@@ -76,7 +78,13 @@ Not proven:
   SHA-512 kernels under them;
 - the single-way and four-way kernels on the A64 SHA-3 instructions (AArch64 `sha3`
   variant), and the portable and AVX2 four-way kernels;
-- the sponge's squeeze, SHA-3 and SHAKE, and every FIPS 205 algorithm; the rest is open.
+- the sponge forms over fixed-length arrays and the four-way sponge;
+- every FIPS 205 algorithm; the rest is open.
+
+`capi/dispatch.c` selects a set's `shani`, `avx2`, `sha2` or `sha3` variant
+wherever the CPU has the extensions it needs, so on such CPUs the library runs
+kernels these proofs do not cover. The proven kernels are those of the scalar
+variant, which every set has.
 
 The details are in
 [`proofs/README.md`](../proofs/README.md#extracted-models-and-correctness-proofs).
