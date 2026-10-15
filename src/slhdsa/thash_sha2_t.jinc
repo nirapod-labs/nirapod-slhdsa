@@ -69,15 +69,21 @@ inline fn __t_layout(
     buf[10 + i] = (8u) t;
   }
 
-  /* M at byte 22; a run-time offset keeps every address base + register. */
+  /*
+   * M at byte 22; a run-time offset keeps every address base + register.
+   * The offset is derived from k at each step, 22 + 8 k, rather than
+   * advanced beside it, so that the safety checker bounds it by the loop
+   * test.
+   */
 
-  o = SHA2_ADRSC_BYTES;
   k = 0;
   while { more = k < T_INPUT_BYTES / 8; } (more) {
     ms = #update_msf(more, ms);
     t = in[:u64 k];
+    o = k;
+    o <<= 3;
+    o += SHA2_ADRSC_BYTES;
     buf.[:u64 o] = t;
-    o += 8;
     k += 1;
   }
   ms = #update_msf(!more, ms);

@@ -609,7 +609,7 @@ fn _thash_t_len_x4(
 {
   stack u64[100] st_s;
   reg ptr u64[100] st;
-  reg u64 pos i t v lane o;
+  reg u64 pos i t v lane o cap;
   reg bool more full;
   inline int k;
 
@@ -625,6 +625,12 @@ fn _thash_t_len_x4(
   while { more = i < SLH_LEN * SLH_NW; } (more) {
     ms = #update_msf(more, ms);
 
+    /*
+     * Safety-checker workaround, as in _thash_t (thash_shake_t.jinc): pos <
+     * SLH_SHAKE_RATE_LANES holds here, and the clamp never changes it.
+     */
+    cap = SLH_SHAKE_RATE_LANES - 1;
+    pos = pos >= SLH_SHAKE_RATE_LANES ? cap : pos;
     lane = pos;
     lane <<= 2;
     o = i;
