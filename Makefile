@@ -155,6 +155,13 @@ UNIT_VARIANT = $(lastword $(subst -, ,$*))
 VARIANT_K1 = $(or $(K1_$(UNIT_VARIANT)),$(SCALAR_K1))
 VARIANT_KX = $(or $(KX_$(UNIT_VARIANT)),$(HASH_SRC)/keccak)
 VARIANT_S1 = $(or $(S1_$(UNIT_VARIANT)),$(HASH_SRC)/sha2)
+VARIANT_SX = $(or $(SX_$(UNIT_VARIANT)),$(HASH_SRC)/sha2)
+
+# The four-way SHA2 tweakable hashes (src/slhdsa/thash_sha2.jinc,
+# "Four-way forms"): four calls of the one-way functions unless the
+# variant names another version as TX_<variant>.
+SINGLE_TX  = $(JASMIN_SRC)/slhdsa/thash_sha2_x4/single
+VARIANT_TX = $(or $(TX_$(UNIT_VARIANT)),$(SINGLE_TX))
 
 # Fault hooks (src/slhdsa/hook/hook.jinc): the identity for every
 # library unit; only the fault test units below use another version.
@@ -169,7 +176,8 @@ JASMIN_INCLUDES = -I Slhdsa=$(JASMIN_SRC)/slhdsa \
                   -I KeccakKernel=$(VARIANT_K1) \
                   -I KeccakKernelX=$(VARIANT_KX) \
                   -I Sha2Kernel=$(VARIANT_S1) \
-                  -I Sha2KernelX=$(HASH_SRC)/sha2 \
+                  -I Sha2KernelX=$(VARIANT_SX) \
+                  -I Sha2ThashX=$(VARIANT_TX) \
                   -I SlhdsaHook=$(VARIANT_HOOK)
 
 # -stack-zero: each export clears the stack it used before returning

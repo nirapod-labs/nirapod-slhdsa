@@ -1,0 +1,168 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * thash_sha2_x4.jinc (single)
+ * ===========================
+ *
+ * The four-way forms of the SHA2 tweakable hashes as four calls of the
+ * one-way functions of thash_sha2.jinc, so the variant computes them with
+ * its single-stream kernels:
+ *
+ *     _thash_prf_x4    _thash_prf on instances 0 .. 3
+ *     _thash_f_x4      _thash_f on instances 0 .. 3
+ *     _thash_t_len_x4  TLen::_thash_t on instances 0 .. 3
+ *
+ * Layouts and contracts are those of thash_sha2.jinc, "Four-way forms".
+ * Every variant builds this version (Makefile, TX_<variant>). Each
+ * instance goes through a local buffer, so no view of the caller's arrays
+ * is held across a call.
+ */
+
+/* out[k] <- PRF(PK.seed, SK.seed, adrs[k]), k = 0 .. 3 */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_prf_x4(
+  reg mut ptr u8[4 * SLH_N] out,
+  reg const ptr u8[SLH_N] sk_seed,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[16] adrs,
+  reg u64 ms
+) -> reg ptr u8[4 * SLH_N], reg u64
+{
+  stack u8[4 * SLH_N] res;
+  stack u8[SLH_N] one;
+  stack u64[4] a;
+  reg u64 t;
+  inline int i k;
+
+  #spill(out, sk_seed, ctx, adrs);
+
+  for k = 0 to 4 {
+    #unspill(sk_seed, ctx, adrs);
+    sk_seed = #protect_ptr(sk_seed, ms);
+    ctx = #protect_ptr(ctx, ms);
+    adrs = #protect_ptr(adrs, ms);
+    #spill(sk_seed, ctx, adrs);
+    for i = 0 to 4 {
+      t = adrs[4 * k + i];
+      a[i] = t;
+    }
+    one, ms = _thash_prf(one, sk_seed, ctx, a, ms);
+    for i = 0 to SLH_N / 8 {
+      t = one[:u64 i];
+      res[:u64 SLH_N / 8 * k + i] = t;
+    }
+  }
+
+  #unspill(out);
+  out = #protect_ptr(out, ms);
+  for i = 0 to SLH_N / 2 {
+    t = res[:u64 i];
+    out[:u64 i] = t;
+  }
+
+  return out, ms;
+}
+
+/* x[k] <- F(PK.seed, adrs[k], x[k]), k = 0 .. 3, in place */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_f_x4(
+  reg mut ptr u8[4 * SLH_N] x,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[16] adrs,
+  reg u64 ms
+) -> reg ptr u8[4 * SLH_N], reg u64
+{
+  stack u8[4 * SLH_N] res;
+  stack u8[SLH_N] one;
+  stack u64[4] a;
+  reg u64 t;
+  inline int i k;
+
+  for i = 0 to SLH_N / 2 {
+    t = x[:u64 i];
+    res[:u64 i] = t;
+  }
+
+  #spill(x, ctx, adrs);
+
+  for k = 0 to 4 {
+    #unspill(ctx, adrs);
+    ctx = #protect_ptr(ctx, ms);
+    adrs = #protect_ptr(adrs, ms);
+    #spill(ctx, adrs);
+    for i = 0 to 4 {
+      t = adrs[4 * k + i];
+      a[i] = t;
+    }
+    for i = 0 to SLH_N / 8 {
+      t = res[:u64 SLH_N / 8 * k + i];
+      one[:u64 i] = t;
+    }
+    one, ms = _thash_f(one, ctx, a, ms);
+    for i = 0 to SLH_N / 8 {
+      t = one[:u64 i];
+      res[:u64 SLH_N / 8 * k + i] = t;
+    }
+  }
+
+  #unspill(x);
+  x = #protect_ptr(x, ms);
+  for i = 0 to SLH_N / 2 {
+    t = res[:u64 i];
+    x[:u64 i] = t;
+  }
+
+  return x, ms;
+}
+
+/* out[k] <- T_len(PK.seed, adrs[k], in[k]), k = 0 .. 3 */
+#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
+         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
+         { ptr: public, val: secret } × msf"]
+fn _thash_t_len_x4(
+  reg mut ptr u8[4 * SLH_N] out,
+  reg const ptr u8[4 * SLH_LEN * SLH_N] in,
+  reg const ptr u64[THASH_CTX_WORDS] ctx,
+  reg const ptr u64[16] adrs,
+  reg u64 ms
+) -> reg ptr u8[4 * SLH_N], reg u64
+{
+  stack u8[4 * SLH_N] res;
+  stack u8[SLH_N] one;
+  stack u64[4] a;
+  reg u64 t;
+  inline int i k;
+
+  #spill(out, in, ctx, adrs);
+
+  for k = 0 to 4 {
+    #unspill(in, ctx, adrs);
+    in = #protect_ptr(in, ms);
+    ctx = #protect_ptr(ctx, ms);
+    adrs = #protect_ptr(adrs, ms);
+    #spill(in, ctx, adrs);
+    for i = 0 to 4 {
+      t = adrs[4 * k + i];
+      a[i] = t;
+    }
+    one, ms = TLen::_thash_t(one, in[SLH_LEN * SLH_N * k : SLH_LEN * SLH_N], ctx, a, ms);
+    for i = 0 to SLH_N / 8 {
+      t = one[:u64 i];
+      res[:u64 SLH_N / 8 * k + i] = t;
+    }
+  }
+
+  #unspill(out);
+  out = #protect_ptr(out, ms);
+  for i = 0 to SLH_N / 2 {
+    t = res[:u64 i];
+    out[:u64 i] = t;
+  }
+
+  return out, ms;
+}

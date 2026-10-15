@@ -787,160 +787,18 @@ fn _h_msg(
  * --------------
  *
  * The tree code computes key pairs and FORS leaves four at a time through
- * _thash_prf_x4, _thash_f_x4 and _thash_t_len_x4 (layouts as in
- * thash_shake.jinc). Here each is four calls of the one-way function, so
- * every SHA2 variant computes them with its single-stream kernels; the
- * multi-way SHA-2 kernels of the hash layer are not used by this family
- * yet. Each instance goes through a local buffer, so no view of the
- * caller's arrays is held across a call.
+ * _thash_prf_x4, _thash_f_x4 and _thash_t_len_x4, for four independent
+ * instances k = 0 .. 3, each exactly as the one-way function would:
+ *
+ *     adrs  u64[16]          ADRS of instance k at words 4k .. 4k + 3
+ *     x     u8[4n]           instance k at bytes kn .. kn + n - 1 (out too)
+ *     in    u8[4 len n]      instance k at bytes k len n .. (k + 1) len n - 1
+ *
+ * They come from the include root Sha2ThashX, so that a variant can
+ * replace them (Makefile, TX_<variant>). Every variant builds
+ * thash_sha2_x4/single/, four calls of the one-way functions above.
  */
 
 param int THASH_WAYS = 4;
 
-/* out[k] <- PRF(PK.seed, SK.seed, adrs[k]), k = 0 .. 3 */
-#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
-         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
-         { ptr: public, val: secret } × msf"]
-fn _thash_prf_x4(
-  reg mut ptr u8[4 * SLH_N] out,
-  reg const ptr u8[SLH_N] sk_seed,
-  reg const ptr u64[THASH_CTX_WORDS] ctx,
-  reg const ptr u64[16] adrs,
-  reg u64 ms
-) -> reg ptr u8[4 * SLH_N], reg u64
-{
-  stack u8[4 * SLH_N] res;
-  stack u8[SLH_N] one;
-  stack u64[4] a;
-  reg u64 t;
-  inline int i k;
-
-  #spill(out, sk_seed, ctx, adrs);
-
-  for k = 0 to 4 {
-    #unspill(sk_seed, ctx, adrs);
-    sk_seed = #protect_ptr(sk_seed, ms);
-    ctx = #protect_ptr(ctx, ms);
-    adrs = #protect_ptr(adrs, ms);
-    #spill(sk_seed, ctx, adrs);
-    for i = 0 to 4 {
-      t = adrs[4 * k + i];
-      a[i] = t;
-    }
-    one, ms = _thash_prf(one, sk_seed, ctx, a, ms);
-    for i = 0 to SLH_N / 8 {
-      t = one[:u64 i];
-      res[:u64 SLH_N / 8 * k + i] = t;
-    }
-  }
-
-  #unspill(out);
-  out = #protect_ptr(out, ms);
-  for i = 0 to SLH_N / 2 {
-    t = res[:u64 i];
-    out[:u64 i] = t;
-  }
-
-  return out, ms;
-}
-
-/* x[k] <- F(PK.seed, adrs[k], x[k]), k = 0 .. 3, in place */
-#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
-         { ptr: public, val: secret } × msf →
-         { ptr: public, val: secret } × msf"]
-fn _thash_f_x4(
-  reg mut ptr u8[4 * SLH_N] x,
-  reg const ptr u64[THASH_CTX_WORDS] ctx,
-  reg const ptr u64[16] adrs,
-  reg u64 ms
-) -> reg ptr u8[4 * SLH_N], reg u64
-{
-  stack u8[4 * SLH_N] res;
-  stack u8[SLH_N] one;
-  stack u64[4] a;
-  reg u64 t;
-  inline int i k;
-
-  for i = 0 to SLH_N / 2 {
-    t = x[:u64 i];
-    res[:u64 i] = t;
-  }
-
-  #spill(x, ctx, adrs);
-
-  for k = 0 to 4 {
-    #unspill(ctx, adrs);
-    ctx = #protect_ptr(ctx, ms);
-    adrs = #protect_ptr(adrs, ms);
-    #spill(ctx, adrs);
-    for i = 0 to 4 {
-      t = adrs[4 * k + i];
-      a[i] = t;
-    }
-    for i = 0 to SLH_N / 8 {
-      t = res[:u64 SLH_N / 8 * k + i];
-      one[:u64 i] = t;
-    }
-    one, ms = _thash_f(one, ctx, a, ms);
-    for i = 0 to SLH_N / 8 {
-      t = one[:u64 i];
-      res[:u64 SLH_N / 8 * k + i] = t;
-    }
-  }
-
-  #unspill(x);
-  x = #protect_ptr(x, ms);
-  for i = 0 to SLH_N / 2 {
-    t = res[:u64 i];
-    x[:u64 i] = t;
-  }
-
-  return x, ms;
-}
-
-/* out[k] <- T_len(PK.seed, adrs[k], in[k]), k = 0 .. 3 */
-#[sct = "{ ptr: public, val: secret } × { ptr: public, val: secret } ×
-         { ptr: public, val: secret } × { ptr: public, val: secret } × msf →
-         { ptr: public, val: secret } × msf"]
-fn _thash_t_len_x4(
-  reg mut ptr u8[4 * SLH_N] out,
-  reg const ptr u8[4 * SLH_LEN * SLH_N] in,
-  reg const ptr u64[THASH_CTX_WORDS] ctx,
-  reg const ptr u64[16] adrs,
-  reg u64 ms
-) -> reg ptr u8[4 * SLH_N], reg u64
-{
-  stack u8[4 * SLH_N] res;
-  stack u8[SLH_N] one;
-  stack u64[4] a;
-  reg u64 t;
-  inline int i k;
-
-  #spill(out, in, ctx, adrs);
-
-  for k = 0 to 4 {
-    #unspill(in, ctx, adrs);
-    in = #protect_ptr(in, ms);
-    ctx = #protect_ptr(ctx, ms);
-    adrs = #protect_ptr(adrs, ms);
-    #spill(in, ctx, adrs);
-    for i = 0 to 4 {
-      t = adrs[4 * k + i];
-      a[i] = t;
-    }
-    one, ms = TLen::_thash_t(one, in[SLH_LEN * SLH_N * k : SLH_LEN * SLH_N], ctx, a, ms);
-    for i = 0 to SLH_N / 8 {
-      t = one[:u64 i];
-      res[:u64 SLH_N / 8 * k + i] = t;
-    }
-  }
-
-  #unspill(out);
-  out = #protect_ptr(out, ms);
-  for i = 0 to SLH_N / 2 {
-    t = res[:u64 i];
-    out[:u64 i] = t;
-  }
-
-  return out, ms;
-}
+from Sha2ThashX require "thash_sha2_x4.jinc"
