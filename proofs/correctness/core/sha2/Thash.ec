@@ -19,8 +19,16 @@
  * For F, PRF and the narrow H the rest of the input fits the last block,
  * so the hash is two compressions (FIPS180_SHA2_Blocks): the seed block,
  * whose result is ctx, and the tail block ADRS^c || M || padding that
- * the procedure builds. ctx_ok states the ctx layout; the theorems take
- * it as a precondition and thash_ctx_init_correct establishes it.
+ * the procedure builds. The wide H of the sets with n = 24 and 32 is the
+ * same construction over SHA-512 with the chaining value in ctx bytes
+ * 32 .. 95. ctx_ok states the ctx layout; the theorems take it as a
+ * precondition.
+ *
+ * In each set's extracted code the branch condition of _thash_h is a
+ * literal, so only one branch is reachable. The two branch lemmas carry
+ * their condition on n in the precondition; on the other sets they hold
+ * because the condition contradicts n_val, and the step that evaluates it
+ * heads a single tactic so the proof has the same shape on every set.
  *
  * The compression functions enter as section premises (sha256_compress_h,
  * sha512_compress_h), with the statements of the hash kernel proofs on
@@ -540,6 +548,134 @@ wp; call compress256_ll.
 wp; while true (4 - i); first by auto => /#.
 wp; while true (inc - i); first by auto => /#.
 by wp; call seeded_block_ll; auto => /#.
+qed.
+
+(* H(PK.seed, ADRS, M2) for n = 16: F with the 2n-byte payload M2. *)
+lemma thash_h_narrow (pk : bytes) (c0 : BArray96.t) (a0 : BArray32.t) (x0 : Node2.t) :
+  phoare [M._thash_h :
+    P.`n = 16 /\ in_0 = x0 /\ ctx = c0 /\ adrs = a0 /\ size pk = P.`n /\ ctx_ok pk c0 ==>
+    Node.to_list res.`1 = H P pk (BArray32.to_list a0) (Node2.to_list x0)] = 1%r.
+proof.
+proc.
+rcondt 5; first by auto; smt(n_val).
+ecall (trunc256_p h).
+wp; ecall (sha256_compress_h (hw256 h) block).
+while (0 <= i <= 4 /\ ctx = c0 /\ forall j, 0 <= j < 8 * i => h.[j] = c0.[j]) (4 - i).
++ move=> z; wp; skip => &m [#] g0 g1 gc hj hlt hz; split; last by smt().
+  do !(split; first smt()); move=> j hj'.
+  rewrite BArray32.get8_set64dE; case: (8 * i{m} <= j < 8 * i{m} + 8) => h /=.
+  + by rewrite ifT 1:/# gc BArray96.get64d_byte /#.
+  by rewrite hj 1:/#.
+wp.
+while (0 <= i <= inc /\ inc = 2 * P.`n %/ 8 /\ in_0 = x0 /\ ctx = c0 /\
+       forall j, 0 <= j < 64 => block.[j] =
+         if 22 <= j < 22 + 8 * i then Node2.get8 x0 (j - 22)
+         else seeded a0 (2 * P.`n) (8 * (64 + (22 + 2 * P.`n))) j) (inc - i).
++ move=> z; wp; skip => &m [#] g0 g1 gi gx gc hj hlt hz; split; last by smt().
+  do !(split; first smt()); move=> j hj'.
+  rewrite BArray64.get8_set64dE; case: (22 + 8 * i{m} <= j < 22 + 8 * i{m} + 8) => h /=.
+  + by rewrite ifT 1:/# ifT 1:/# gx Node2.get64d_byte 1:/#; congr; ring.
+  by rewrite hj //; smt().
+wp; ecall (seeded_block_p a0 (2 * P.`n) (8 * (64 + (22 + 2 * P.`n)))).
+wp; skip => &m [#] hn16 hx hc ha hpk hok /=.
+move: (hn16); rewrite {1}n_val /= //; (have hn := n_val; split; [smt() | move=> _ blk hblk; split; [
+  (do !(split; first smt())); move=> j hj; rewrite hblk // ifF 1:/# // |
+  move=> blk1 i1; split; [smt() | move=> hi1 [#] g0 g1 g2 g3 g4 hb1; split; [
+  split; [smt() | move=> j /#] |
+  move=> h1 i2; split; [smt() | move=> hi2 [#] f0 f1 f2 hh r0 hr0 r1 hr1;
+  rewrite hr1 hr0 /H family_sha2 /= ifT 1:/#;
+  (have hsx : size (Node2.to_list x0) = 2 * P.`n; first (rewrite Node2.size_to_list; smt()));
+  (have hbl : BArray64.to_list blk1 =
+             tail_block256 64 (compress (BArray32.to_list a0) ++ Node2.to_list x0); first
+    (apply tail_bytes; [smt() | move=> j hj; rewrite hb1 // hsx Node2.get_to_list;
+                                rewrite (_ : 8 * i1 = 2 * P.`n) 1:/#; smt()]));
+  apply (two_blocks256 pk (Node2.to_list x0) c0 h1 blk1 a0 hpk _ hok _ hbl);
+  [smt() | apply hw256_bytes => j hj; rewrite hh 1:/# //]]]]]]).
++ wp; while true (4 - i); first by auto => /#.
+  wp; while true (inc - i); first by auto => /#.
+  by wp; call seeded_block_ll; auto => /#.
+wp; call compress256_ll.
+wp; while true (4 - i); first by auto => /#.
+wp; while true (inc - i); first by auto => /#.
+by wp; call seeded_block_ll; auto => /#.
+qed.
+
+(* H(PK.seed, ADRS, M2) for n = 24 and 32: one SHA-512 compression of
+   ADRS^c || M2 || padding from the chaining value in ctx bytes 32 .. 95. *)
+lemma thash_h_wide (pk : bytes) (c0 : BArray96.t) (a0 : BArray32.t) (x0 : Node2.t) :
+  phoare [M._thash_h :
+    P.`n <> 16 /\ in_0 = x0 /\ ctx = c0 /\ adrs = a0 /\ size pk = P.`n /\ ctx_ok pk c0 ==>
+    Node.to_list res.`1 = H P pk (BArray32.to_list a0) (Node2.to_list x0)] = 1%r.
+proof.
+proc.
+rcondf 5; first by auto; smt(n_val).
+ecall (trunc512_p h512).
+wp; ecall (sha512_compress_h (hw512 h512) wide).
+while (BArray128.to_list wide = tail_block512 128 (compress (BArray32.to_list a0) ++ Node2.to_list x0) /\
+       0 <= i <= 8 /\ ctx = c0 /\ forall j, 0 <= j < 8 * i => h512.[j] = c0.[32 + j]) (8 - i).
++ move=> z; wp; skip => &m [#] gT g0 g1 gc hj hlt hz; split; last by smt().
+  do !(split; first smt()); move=> j hj'.
+  rewrite BArray64.get8_set64dE; case: (8 * i{m} <= j < 8 * i{m} + 8) => h /=.
+  + by rewrite ifT 1:/# gc BArray96.get64d_byte /#.
+  by rewrite hj 1:/#.
+wp.
+while (0 <= i <= inc /\ inc = 2 * P.`n %/ 8 /\ in_0 = x0 /\ ctx = c0 /\
+       forall j, 0 <= j < 128 => wide.[j] =
+         if j < 22 then nth W8.zero (compress (BArray32.to_list a0)) j
+         else if j < 22 + 8 * i then Node2.get8 x0 (j - 22) else W8.zero) (inc - i).
++ move=> z; wp; skip => &m [#] g0 g1 gi gx gc hj hlt hz; split; last by smt().
+  do !(split; first smt()); move=> j hj'.
+  rewrite BArray128.get8_set64dE; case: (22 + 8 * i{m} <= j < 22 + 8 * i{m} + 8) => h /=.
+  + by rewrite ifT 1:/# ifF 1:/# ifT 1:/# gx Node2.get64d_byte 1:/#; congr; ring.
+  by rewrite hj //; smt().
+wp; ecall (adrs_compress_into128_correct wide a0).
+while (0 <= i <= 16 /\ z = W64.zero /\ in_0 = x0 /\ ctx = c0 /\ adrs = a0 /\
+       forall j, 0 <= j < 8 * i => wide.[j] = W8.zero) (16 - i).
++ move=> zz; wp; skip => &m [#] g0 g1 gz gx gc ga hj hlt hzz; split; last by smt().
+  do !(split; first smt()); move=> j hj'.
+  rewrite BArray128.get8_set64dE; case: (8 * i{m} <= j < 8 * i{m} + 8) => h /=.
+  + by rewrite ifT 1:/# gz W8u8.get_zero.
+  by rewrite hj 1:/#.
+wp; skip => &m [#] hn16 hx hc ha hpk hok /=.
+move: (hn16); rewrite {1}n_val /= //; (have hn := n_val;
+(have hsx : size (Node2.to_list x0) = 2 * P.`n; first (rewrite Node2.size_to_list; smt()));
+split; [smt() | move=> i0 w0; split; [smt() | move=> hi0 hinv;
+  (have hz : forall j, 0 <= j < 128 => w0.[j] = W8.zero; first smt());
+  split; [smt() | move=> _ w1 [ht hd]; split; [
+  (do !(split; first smt())); move=> j hj; rewrite (into128_bytes a0 w0 w1 j ht hd hj); smt() |
+  move=> i2 w2; split; [smt() | move=> hi2 [#] p0 p1 p2 px pc hw2; split; [
+  (split; last smt());
+  apply (wide_tail a0 (Node2.to_list x0) w2);
+  [smt() | smt() | smt() | rewrite ?len_hi // /truncateu8 W64.of_uintK // |
+   move=> j hj; rewrite hw2 // hsx Node2.get_to_list; smt()] |
+  move=> h1 i3; split; [smt() | move=> hi3 [#] hT q0 q1 qc hh; rewrite hT /=;
+  move=> r0 hr0 r1 hr1; rewrite hr1 hr0 /H family_sha2 /= ifF 1:/#;
+  apply (two_blocks512 pk (Node2.to_list x0) c0 h1 a0 hpk _ hn16 hok);
+  [smt() | apply hw512_bytes => j hj; rewrite hh 1:/# //]]]]]]]]).
++ wp; while true (16 - i); first by auto => /#.
+  by auto => /#.
++ wp; while true (8 - i); first by auto => /#.
+  wp; while true (inc - i); first by auto => /#.
+  wp; call adrs_compress_into128_ll.
+  wp; while true (16 - i); first by auto => /#.
+  by auto => /#.
+wp; call compress512_ll.
+wp; while true (8 - i); first by auto => /#.
+wp; while true (inc - i); first by auto => /#.
+wp; call adrs_compress_into128_ll.
+wp; while true (16 - i); first by auto => /#.
+by auto => /#.
+qed.
+
+(* H(PK.seed, ADRS, M2), both instantiations. *)
+lemma thash_h_correct (pk : bytes) (c0 : BArray96.t) (a0 : BArray32.t) (x0 : Node2.t) :
+  phoare [M._thash_h :
+    in_0 = x0 /\ ctx = c0 /\ adrs = a0 /\ size pk = P.`n /\ ctx_ok pk c0 ==>
+    Node.to_list res.`1 = H P pk (BArray32.to_list a0) (Node2.to_list x0)] = 1%r.
+proof.
+case: (P.`n = 16) => h16.
++ by conseq (thash_h_narrow pk c0 a0 x0); smt().
+by conseq (thash_h_wide pk c0 a0 x0); smt().
 qed.
 
 end section Thash.
