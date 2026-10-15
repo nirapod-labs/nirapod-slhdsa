@@ -5,7 +5,7 @@
  * tests/core/checker/workarounds.jazz
  * ===================================
  *
- * Reproducers of the three code shapes in src/slhdsa that exist only for
+ * Reproducers of code shapes in src/slhdsa that exist only for
  * jasmin-checksafety, each as a pair of exports: the shape the algorithm
  * would use, which the pinned checker reports, and the shape the source
  * uses, which it accepts. check.py runs both and fails if either verdict
@@ -16,7 +16,9 @@
  *                               read whole: is_init, unless the buffer is
  *                               first written at constant indices
  *                               (_wots_leaf_x4 pk, _wots_pk_from_sig tmp,
- *                               _xmss_treehash nodes, _fors_pk_from_sig roots)
+ *                               _xmss_treehash nodes, _fors_tree nodes,
+ *                               auth and selected, _fors_sign and
+ *                               _fors_pk_from_sig roots)
  *   slot_plain  / slot_clamp    a slot offset from a counter of trailing one
  *                               bits: in_bound, unless the counter is clamped
  *                               to the last slot (treehash.jinc __fold_slot)

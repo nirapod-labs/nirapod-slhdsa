@@ -23,16 +23,17 @@
 #       code that reads a byte the algorithm has not written, and depends on
 #       its value, sees 0xa5 instead of 0 and changes a key or signature.
 #   controls SRC WORK TARGET SUBSET
-#       for each site, prepare a copy with one more change that makes the
-#       code depend on the fill value at that site and on nothing else
-#       (CONTROLS): a store that XORs into the buffer instead of writing
-#       it, or a read of a slot the algorithm never writes. With zero fills
-#       such a copy computes the same keys and signatures; with 0xa5 fills
-#       it must not. Each copy is built with make (BUILD=WORK/<site>/build,
-#       JASMIN_SRC=WORK/<site>/src) and its known-answer test, the build's
-#       TARGET/tests/test_acvp on SUBSET, must fail. A control that builds
-#       but passes, or does not build, fails the script. FILL_JOBS in the
-#       environment sets the parallel jobs of each build (default 1).
+#       for each filled buffer, prepare a copy with one more change that
+#       makes the code depend on the fill value in that buffer and on
+#       nothing else (CONTROLS): a store that XORs into the buffer instead
+#       of writing it, or a read of a slot the algorithm never writes. With
+#       zero fills such a copy computes the same keys and signatures; with
+#       0xa5 fills it must not. Each copy is built with make
+#       (BUILD=WORK/<control>/build, JASMIN_SRC=WORK/<control>/src) and its
+#       known-answer test, the build's TARGET/tests/test_acvp on SUBSET,
+#       must fail. A control that builds but passes, or does not build,
+#       fails the script. FILL_JOBS in the environment sets the parallel
+#       jobs of each build (default 1).
 #
 # SITES lists every file of the core (src/slhdsa) with a fill and how many
 # it holds. A file whose count differs, a constant-index zero store in a
@@ -45,7 +46,7 @@
 # Usage: python3 -I tests/core/fill-check.py prepare <jasmin src> <copy dir>
 #        python3 -I tests/core/fill-check.py controls <jasmin src> <work dir> <target> <subset>
 # prepare prints "fill-check: sites=N" (ci/rules/test-core.toml holds it to a
-# count); controls prints one DETECTED or MISSED line per site, then
+# count); controls prints one DETECTED or MISSED line per control, then
 # "fill-check controls: detected=N of M".
 
 import os
@@ -60,7 +61,8 @@ FILL = "fill = 0xa5a5a5a5a5a5a5a5;"
 SITES = {
     "slhdsa/wots.jinc": 2,      # pk in _wots_leaf_x4, tmp in _wots_pk_from_sig
     "slhdsa/xmss.jinc": 1,      # nodes in _xmss_treehash
-    "slhdsa/fors.jinc": 1,      # roots in _fors_pk_from_sig
+    "slhdsa/fors.jinc": 3,      # nodes, auth and selected in _fors_tree,
+                                # roots in _fors_sign and _fors_pk_from_sig
 }
 
 # A constant-index zero store written without the `fill` register.
@@ -84,7 +86,8 @@ inline fn __node_xor(reg mut ptr u8[SLH_N] dst, reg const ptr u8[SLH_N] src) -> 
 }
 """
 
-# site: [(file, text, replacement)]; each text must occur exactly once.
+# control, one per filled buffer: [(file, text, replacement)]; each text
+# must occur exactly once.
 CONTROLS = {
     "pk": [("slhdsa/wots.jinc",
             "        t = cur[:u64 SLH_N / 8 * k + w];\n        dst.[:u64 off] = t;\n",
@@ -101,6 +104,25 @@ CONTROLS = {
                "  root = __node_copy(root, nodes[SLH_HP * SLH_N : SLH_N]);\n",
                "  root = __node_copy(root, nodes[SLH_HP * SLH_N : SLH_N]);\n"
                "  root = __node_xor(root, nodes[(SLH_HP + 1) * SLH_N : SLH_N]);\n")],
+    # The root parks in slot a only after the last leaf, so slot a still
+    # holds the fill when the target's group is found.
+    "fors_nodes": [("slhdsa/fors.jinc",
+                    "      leaves = lp;\n    } else {\n",
+                    "      leaves = lp;\n"
+                    "      selected = __node_xor(selected, nodes[SLH_A * SLH_N : SLH_N]);\n"
+                    "    } else {\n")],
+    # Slot a exists only for the root's test and is never recorded.
+    "fors_auth": [("slhdsa/fors.jinc",
+                   "    sig[:u64 SLH_N / 8 + k] = t;\n  }\n",
+                   "    sig[:u64 SLH_N / 8 + k] = t;\n  }\n"
+                   "  sig[0 : SLH_N] = __node_xor(sig[0 : SLH_N], auth[SLH_A * SLH_N : SLH_N]);\n")],
+    "fors_selected": [("slhdsa/fors.jinc",
+                       "        t = lp.[:u64 src];\n        selected[:u64 w] = t;\n",
+                       "        t = lp.[:u64 src];\n        fill = selected[:u64 w];\n"
+                       "        t ^= fill;\n        selected[:u64 w] = t;\n")],
+    "sign_roots": [("slhdsa/fors.jinc",
+                    "    dst[root_off : SLH_N] = __node_copy(dst[root_off : SLH_N], root);\n",
+                    "    dst[root_off : SLH_N] = __node_xor(dst[root_off : SLH_N], root);\n")],
 }
 
 

@@ -19,8 +19,8 @@
 #                     zeros, and run the ACVP known answers and the core
 #                     tests on it (tests/core/fill-check.py)
 #     make fill-check-controls
-#                     one build per fill site, made to depend on the fill
-#                     value there; each must fail the known answers
+#                     one build per filled buffer, made to depend on the
+#                     fill value in it; each must fail the known answers
 #     make checker-repro
 #                     run JASMIN_CHECKSAFETY, which must be the checker of
 #                     the pinned toolchain, on the reproducers of the
@@ -522,7 +522,7 @@ checker-repro:
 # The fill check (tests/core/fill-check.py): the same library from a copy
 # of the Jasmin sources whose fills hold 0xa5 bytes, in its own build
 # directory, with the known answers and the core tests run on it; and its
-# controls, one build per fill site.
+# controls, one build per filled buffer.
 
 FILL_DIR := $(BUILD)/fill-check
 FILL_JOBS ?= 1

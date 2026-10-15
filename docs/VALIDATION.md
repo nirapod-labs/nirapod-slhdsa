@@ -117,8 +117,8 @@ of the SHAKE squeeze, with negative controls that must be detected.
 The core writes zeros into some buffers before use so that the safety checker
 can follow them. `make fill-check` rebuilds the library with those fills writing
 0xa5 bytes and runs the known answers and core tests on it, which shows that no
-result depends on the fill value. On Linux AArch64, CI also builds one control per
-fill site, made to depend on the fill, and each must fail.
+tested result depends on the fill value. On Linux AArch64, CI also builds one
+control per filled buffer, made to depend on the fill, and each must fail.
 
 ## Running them
 

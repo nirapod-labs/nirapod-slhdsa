@@ -58,7 +58,7 @@ fn _fors_tree(
   stack u64[4] node_adrs;
   reg ptr u8[4 * SLH_N] lp;
   reg u32 base i g gk z li gi tg d;
-  reg u64 t src;
+  reg u64 t src fill;
   reg bool more found;
   inline int k w;
 
@@ -75,6 +75,26 @@ fn _fors_tree(
     leaf_adrs[4 * k : 4] = __adrs_copy(leaf_adrs[4 * k : 4], adrs);
   }
   node_adrs = __adrs_copy(node_adrs, adrs);
+
+  /*
+   * Safety-checker workaround, as for pk in _wots_leaf_x4 (wots.jinc):
+   * the fold writes nodes and auth at run-time slots, and selected is
+   * written only in the branch that finds the target, so the checker
+   * reports is_init where the root, the target's secret and the
+   * authentication path are copied out. Each of those reads is of bytes
+   * the loop has written: the fold invariant (treehash.jinc) gives
+   * nodes[a] and auth[0 .. a - 1], and the target, below 2^a, falls in
+   * exactly one group of four. The fill check covers this site too.
+   */
+
+  fill = 0;
+  for k = 0 to SLH_FOLD_SLOTS * SLH_N / 8 {
+    nodes[:u64 k] = fill;
+    auth[:u64 k] = fill;
+  }
+  for k = 0 to SLH_N / 8 {
+    selected[:u64 k] = fill;
+  }
 
   base = tree;
   base <<= SLH_A;
@@ -223,10 +243,23 @@ fn _fors_sign(
   reg ptr u8[SLH_K * SLH_N] dst;
   reg ptr u8[(SLH_A + 1) * SLH_N] src;
   reg u32 t target tree;
-  reg u64 off k w root_off ti;
+  reg u64 off k w root_off ti fill;
   reg bool more copy;
+  inline int j;
 
   #spill(sig, pk_fors, indices, sk_seed, ctx, adrs);
+
+  /*
+   * Safety-checker workaround, as for roots in _fors_pk_from_sig: root t
+   * is stored at the run-time offset t n, and _thash_t_k reads all k
+   * roots after the loop has stored every one of them. The fill check
+   * covers this site too.
+   */
+
+  fill = 0;
+  for j = 0 to SLH_K * SLH_N / 8 {
+    roots[:u64 j] = fill;
+  }
 
   /*
    * Tree t is signed into the stack buffer tree_sig and copied into
