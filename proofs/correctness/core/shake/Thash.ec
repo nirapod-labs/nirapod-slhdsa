@@ -37,6 +37,10 @@
  * ShakeSponge.ec: if st holds abs_state 136 m and pos = |m| mod 136, the
  * result holds the state and the position for m || prefix[0 : len]. The
  * message hashes PRF_msg and H_msg absorb their framing prefix this way.
+ * _keccak_finalize, called by them with rate 136 and the SHAKE domain
+ * byte, adds the padding at pos and byte 135 and permutes: from the state
+ * of m it gives the permuted ABSORB1600 state of m, the state from which
+ * SHAKE256(m) is squeezed (abs_final).
  *
  * Model. The procedures depend on n, so this file is checked against the
  * model of each SHAKE set (correctness/core/shake/). Arrays are viewed as
@@ -59,7 +63,9 @@
  *     thash_t_k_correct   T_k(PK.seed, ADRS, M), M of k n bytes;
  *     shake_absorb_prefix_correct
  *                         the prefix absorption, len <= SLH_PREFIX_MAX
- *                         (2 + 255 + 11 + 64 = 332 bytes).
+ *                         (2 + 255 + 11 + 64 = 332 bytes);
+ *     keccak_finalize_correct
+ *                         the SHAKE256 padding and the last permutation.
  *)
 
 require import AllCore List IntDiv.
@@ -328,6 +334,15 @@ proof.
 move=> hp; apply WArray200.tP => j hj.
 rewrite stbytes_lanes // xorb_atE // stbytes_lanes // BArray200.get_setE //=.
 by case: (j = p) => h; [rewrite h ifT 1:/# /= | smt()].
+qed.
+
+(* The same with a byte constant c, as the padding XORs write it. *)
+lemma trunc_xor8c (a : W8.t) (c : int) : 0 <= c < 256 =>
+  truncateu8 (zeroextu64 a `^` W64.of_int c) = a `^` W8.of_int c.
+proof.
+move=> hc; have -> : W64.of_int c = zeroextu64 (W8.of_int c).
++ by rewrite /zeroextu64 W8.of_uintK modz_small; smt().
+exact trunc_xor8.
 qed.
 
 (* One prefix byte at sponge position p: the byte form of absorb_lane_lt
@@ -881,5 +896,30 @@ lemma shake_absorb_prefix_correct (s0 : BArray200.t) (p0 l0 : W64.t) (x0 : BArra
     to_uint res.`2 = size (m ++ take (to_uint l0) (BArray332.to_list x0)) %% 136 /\
     lanes res.`1 = abs_state 136 (m ++ take (to_uint l0) (BArray332.to_list x0))] = 1%r.
 proof. by conseq shake_absorb_prefix_ll (shake_absorb_prefix_h s0 p0 l0 x0 m). qed.
+
+local lemma keccak_finalize_h (s0 : BArray200.t) (p0 : W64.t) (m : W8.t list) :
+  hoare [M._keccak_finalize :
+    st = s0 /\ pos = p0 /\ rate = W64.of_int 136 /\ ds = W64.of_int 31 /\
+    to_uint p0 = size m %% 136 /\ lanes s0 = abs_state 136 m ==>
+    lanes res.`1 = keccak_f1600_op (ABSORB1600 SHAKE_DS_BYTE 136 m)].
+proof.
+proc; ecall (keccakf1600_hoare st); wp; skip => &m [#] -> -> -> -> hp hst /=.
+move=> [s2 ms2] /= ->; congr.
+rewrite trunc_xor8c // trunc_xor8c //.
+rewrite -(abs_final 136 m SHAKE_DS_BYTE) // -hp /SHAKE_DS_BYTE /=.
+apply stbytes_inj; rewrite stwordsK.
+rewrite byte_xor_at //= byte_xor_at; first smt(W64.to_uint_cmp).
+by rewrite hst.
+qed.
+
+local lemma keccak_finalize_ll : islossless M._keccak_finalize.
+proof. by proc; call keccakf1600_ll; auto. qed.
+
+lemma keccak_finalize_correct (s0 : BArray200.t) (p0 : W64.t) (m : W8.t list) :
+  phoare [M._keccak_finalize :
+    st = s0 /\ pos = p0 /\ rate = W64.of_int 136 /\ ds = W64.of_int 31 /\
+    to_uint p0 = size m %% 136 /\ lanes s0 = abs_state 136 m ==>
+    lanes res.`1 = keccak_f1600_op (ABSORB1600 SHAKE_DS_BYTE 136 m)] = 1%r.
+proof. by conseq keccak_finalize_ll (keccak_finalize_h s0 p0 m). qed.
 
 end section.
