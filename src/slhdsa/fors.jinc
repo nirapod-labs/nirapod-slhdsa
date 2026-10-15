@@ -297,7 +297,9 @@ fn _fors_sign(
      * off fixed for the tree: each store address is the tree's base plus
      * the loop counter, which the loop test bounds. An offset advanced
      * beside k is bounded only through its relation to k, which the
-     * safety checker's non-relational analysis does not keep.
+     * safety checker's non-relational analysis does not keep. copy_beside
+     * and copy_fixed in tests/core/checker/workarounds.jazz reproduce both
+     * verdicts (`make checker-repro`).
      */
     off = __offset(t, (SLH_A + 1) * SLH_N);
     off += SLH_SIG_FORS_OFFSET;

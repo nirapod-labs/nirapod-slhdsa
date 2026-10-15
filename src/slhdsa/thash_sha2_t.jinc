@@ -73,7 +73,8 @@ inline fn __t_layout(
    * M at byte 22; a run-time offset keeps every address base + register.
    * The offset is derived from k at each step, 22 + 8 k, rather than
    * advanced beside it, so that the safety checker bounds it by the loop
-   * test.
+   * test; copy_beside and copy_fixed in tests/core/checker/workarounds.jazz
+   * reproduce both verdicts (`make checker-repro`).
    */
 
   k = 0;

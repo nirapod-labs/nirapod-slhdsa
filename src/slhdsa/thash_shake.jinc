@@ -626,8 +626,10 @@ fn _thash_t_len_x4(
     ms = #update_msf(more, ms);
 
     /*
-     * Safety-checker workaround, as in _thash_t (thash_shake_t.jinc): pos <
-     * SLH_SHAKE_RATE_LANES holds here, and the clamp never changes it.
+     * Safety-checker workaround, as in _thash_t (thash_shake_t.jinc;
+     * reset_eq and reset_clamp in tests/core/checker/workarounds.jazz):
+     * pos < SLH_SHAKE_RATE_LANES holds here, and the clamp never changes
+     * it.
      */
     cap = SLH_SHAKE_RATE_LANES - 1;
     pos = pos >= SLH_SHAKE_RATE_LANES ? cap : pos;

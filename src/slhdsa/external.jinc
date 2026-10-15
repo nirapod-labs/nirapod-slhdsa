@@ -420,7 +420,9 @@ fn _slh_frame(
       /*
        * PH(M) goes to prefix[pos + i] for i < len, with pos fixed: each
        * store address is the base plus the loop counter, which the loop
-       * test bounds (pos <= 2 + 255 + 11 and len <= 64).
+       * test bounds (pos <= 2 + 255 + 11 and len <= 64). It is the copy
+       * shape of _fors_sign (fors.jinc): copy_beside and copy_fixed in
+       * tests/core/checker/workarounds.jazz reproduce both verdicts.
        */
 
       php = ph;

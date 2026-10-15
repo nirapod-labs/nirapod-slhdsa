@@ -25,6 +25,20 @@
  *   msg_array   / msg_scalar    a message pointer kept in a stack array cell:
  *                               is_valid on every read through it, unless it
  *                               stays in a variable (M' in internal.jinc)
+ *   copy_beside / copy_fixed    stores at an offset advanced beside the loop
+ *                               counter: in_bound, unless the offset is the
+ *                               fixed base plus the counter (_fors_sign
+ *                               signature copy, _slh_frame pre-hash copy,
+ *                               the SHA-2 T_l / T_k message layout)
+ *   reset_eq    / reset_clamp   a position reset when it equals the rate:
+ *                               in_bound, unless it is clamped below the
+ *                               rate before use (the SHAKE T_l, T_k and
+ *                               T_l x4 absorb loops)
+ *
+ * The clamp of prefix_len in _slh_frame (external.jinc) has no pair, so
+ * make checker-repro does not re-check it. It restates, where the callers
+ * that read prefix[0 : prefix_len] can see it, a bound that holds by
+ * construction in the framing arithmetic.
  *
  * The constants are those of SLH-DSA-SHA2-128f (n = 16, a = 6, len = 35);
  * the shapes do not depend on them.
@@ -167,4 +181,103 @@ export fn msg_scalar(reg u64 msg msg_len) -> reg u64
 
   s = __read(msg, msg_len);
   return s;
+}
+
+/*
+ * Eight words stored at a base below 64 plus 8 j, j < 8: with an offset
+ * advanced beside the counter, or derived from the counter at each store.
+ */
+export fn copy_beside(reg u64 base) -> reg u64
+{
+  stack u8[16 * 8] b;
+  reg u64 o k r;
+  reg bool more;
+  inline int i;
+
+  for i = 0 to 16 { b[:u64 i] = 0; }
+  base &= 7;
+  base <<= 3;
+  o = base;
+  k = 0;
+  while { more = k < 64; } (more) {
+    b.[:u64 o] = k;
+    o += 8;
+    k += 8;
+  }
+  r = b[:u64 0];
+  return r;
+}
+
+export fn copy_fixed(reg u64 base) -> reg u64
+{
+  stack u8[16 * 8] b;
+  reg u64 o k r;
+  reg bool more;
+  inline int i;
+
+  for i = 0 to 16 { b[:u64 i] = 0; }
+  base &= 7;
+  base <<= 3;
+  k = 0;
+  while { more = k < 64; } (more) {
+    o = base;
+    o += k;
+    b.[:u64 o] = k;
+    k += 8;
+  }
+  r = b[:u64 0];
+  return r;
+}
+
+/*
+ * A sponge position over n lanes, reset when it reaches the rate, used as
+ * it is or clamped below the rate first, as in the tweakable hashes T_l
+ * and T_k.
+ */
+export fn reset_eq(reg u64 n) -> reg u64
+{
+  stack u64[25] st;
+  reg u64 pos i t;
+  reg bool more full;
+  inline int k;
+
+  for k = 0 to 25 { st[k] = 0; }
+  pos = 3;
+  i = 0;
+  while { more = i < n; } (more) {
+    t = st[pos];
+    t ^= i;
+    st[pos] = t;
+    pos += 1;
+    full = pos == 17;
+    if (full) { pos = 0; }
+    i += 1;
+  }
+  t = st[pos];
+  return t;
+}
+
+export fn reset_clamp(reg u64 n) -> reg u64
+{
+  stack u64[25] st;
+  reg u64 pos i t cap;
+  reg bool more full;
+  inline int k;
+
+  for k = 0 to 25 { st[k] = 0; }
+  pos = 3;
+  i = 0;
+  while { more = i < n; } (more) {
+    cap = 16;
+    pos = pos >= 17 ? cap : pos;
+    t = st[pos];
+    t ^= i;
+    st[pos] = t;
+    pos += 1;
+    full = pos == 17;
+    if (full) { pos = 0; }
+    i += 1;
+  }
+  t = st[pos];
+  return t;
 }

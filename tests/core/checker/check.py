@@ -42,6 +42,10 @@ EXPECT = {
     "slot_clamp": ("", None),
     "msg_array": ("msg;", "is_valid"),
     "msg_scalar": ("msg;", None),
+    "copy_beside": ("", "in_bound"),
+    "copy_fixed": ("", None),
+    "reset_eq": ("", "in_bound"),
+    "reset_clamp": ("", None),
 }
 
 
