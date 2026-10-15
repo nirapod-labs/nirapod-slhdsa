@@ -40,8 +40,11 @@ re-checks both.
 
 ## The code against the specification
 
-Open. One component of the SLH-DSA core and parts of the hash layer are proved in
-EasyCrypt on the code `jasmin2ec` extracts; no FIPS 205 algorithm is covered yet.
+Open. Parts of the SLH-DSA core and of the hash layer are proved in EasyCrypt on
+the code `jasmin2ec` extracts. Of the FIPS 205 algorithms, only the WOTS+ chain
+(Algorithm 5) and the WOTS+ public key from a signature (Algorithm 8) are covered,
+and only given the tweakable hashes they call; key generation, signing and
+verification are not.
 
 Proven, on the x86-64 and AArch64 models, total correctness:
 
@@ -66,11 +69,22 @@ Proven, on the x86-64 and AArch64 models, total correctness:
   permutation) and squeeze to memory, and the one-shot SHA3-224, SHA3-256,
   SHA3-384, SHA3-512, SHAKE128 and SHAKE256 of a message in memory, against
   FIPS 202.
-- **SHAKE tweakable hashes.** For the six SHAKE sets, `_thash_f`, `_thash_prf`
-  and `_thash_h` of `src/slhdsa/thash_shake.jinc` compute F, PRF and H of
-  section 11.1, on the condition that the Keccak-f[1600] procedure of the set's
-  model is correct. The Keccak proofs above are about the kernel's own model;
-  joining the two is open.
+- **SHAKE tweakable hashes.** For the six SHAKE sets, `_thash_f`, `_thash_prf`,
+  `_thash_h`, `_thash_t_len` and `_thash_t_k` of `src/slhdsa/thash_shake.jinc`
+  compute F, PRF, H, T_len and T_k of section 11.1, for every input. The premise is
+  that the Keccak-f[1600] procedure of the set's model is correct; the Keccak
+  proofs above are about the kernel's own model, and joining the two is open.
+- **SHA2 tweakable hashes.** For the six SHA2 sets, in `src/slhdsa/thash_sha2.jinc`:
+  - `_thash_ctx_init` compresses the PK.seed block once and stores the SHA-256
+    chaining value (and, for n = 24 and 32, the SHA-512 one) in the context;
+  - `_thash_f`, `_thash_prf` and `_thash_h` compute F, PRF and H of section 11.2
+    from a context in that layout, which `_thash_ctx_init` establishes.
+
+  The premise is that the SHA-256 and SHA-512 compression procedures of the set's
+  model meet the statements the kernel proofs above give for the kernel's own
+  model; joining the two is open. The SHA2 T_len and T_k are not proved; lemmas
+  on the SHA-2 specification for their multi-block inputs are
+  (`proofs/correctness/core/sha2/ThashBlocks.ec`).
 
 - **Core encodings.** For each of the 12 parameter sets, on the models of that
   set (the core's code depends on the set, so it is extracted once per set and
@@ -84,6 +98,17 @@ Proven, on the x86-64 and AArch64 models, total correctness:
     idx_leaf (Algorithm 19, lines 6 to 10) and the FORS indices (base_2b, Algorithm 4);
   - `__wots_digits` of `src/slhdsa/wots.jinc` returns the len digits of Algorithm 7,
     lines 1 to 7: the base-16 digits of the message, then those of its checksum.
+- **WOTS+.** For each of the 12 parameter sets, in `src/slhdsa/wots.jinc`:
+  - `_wots_chain` computes chain of Algorithm 5 when start + steps < 2^32, and
+    returns an address whose bytes 0 to 27 are those of its input;
+  - `_wots_pk_from_sig` computes wots_pkFromSig of Algorithm 8, for the address
+    the standard's caller passes (the caller's address with type WOTS_HASH and the
+    given key pair).
+
+  Both take as premises that `_thash_f` (and, for Algorithm 8, `_thash_t_len`)
+  compute F (T_len) for one fixed PK.seed and context: the form of the tweakable
+  hash theorems above, so for the SHAKE sets the two compose, and for the SHA2 sets
+  T_len is still open.
 
 Not proven:
 
@@ -97,8 +122,8 @@ Not proven:
 - the single-way and four-way kernels on the A64 SHA-3 instructions (AArch64 `sha3`
   variant), and the portable and AVX2 four-way kernels;
 - the sponge forms over fixed-length arrays and the four-way sponge;
-- the SHAKE T_l, PRF_msg and H_msg, and the SHA2 tweakable hashes;
-- every FIPS 205 algorithm; the rest is open.
+- the SHAKE PRF_msg and H_msg, and the SHA2 T_len, T_k, PRF_msg and H_msg;
+- every FIPS 205 algorithm other than Algorithms 5 and 8; the rest is open.
 
 `capi/dispatch.c` selects a set's `shani`, `avx2`, `sha2` or `sha3` variant
 wherever the CPU has the extensions it needs, so on such CPUs the library runs

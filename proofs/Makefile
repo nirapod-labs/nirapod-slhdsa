@@ -370,10 +370,13 @@ set_inventory_file = inventory/sets/$(subst /,-,$(1))-$(2).txt
 # per-set proofs (the spec's are pinned by the pair inventories).
 SET_THEOREMS := Encoding.node_copy_correct Encoding.node_concat_correct \
                 DigestIndices.digest_tree_leaf_correct DigestIndices.fors_indices_correct \
-                Wots.wots_digits_correct \
+                Wots.wots_digits_correct WotsChain.wots_chain_correct WotsPk.wots_pk_from_sig_correct \
                 ADRSc.adrs_compress_into64_correct ADRSc.adrs_compress_into128_correct \
                 Thash.thash_f_correct Thash.thash_prf_correct Thash.thash_h_correct
-set_theorems  = $(foreach t,$(SET_THEOREMS),$(if $(filter $(call thm_theory,$(t)),$(basename $(notdir $(call set_proofs,$(1))))),$(t)))
+# Theorems of one hash family's proofs only (correctness/core/<family>/).
+SET_THEOREMS_sha2 := Thash.thash_ctx_init_correct
+SET_THEOREMS_shake := Thash.thash_t_len_correct Thash.thash_t_k_correct
+set_theorems  = $(foreach t,$(SET_THEOREMS) $(SET_THEOREMS_$(call set_family,$(1))),$(if $(filter $(call thm_theory,$(t)),$(basename $(notdir $(call set_proofs,$(1))))),$(t)))
 set_inventories = $(foreach p,$(CORE_PAIRS),$(foreach s,$(CORE_SETS),$(call set_inventory_file,$(p),$(s))))
 
 .PHONY: inventory check-inventory inventory-pair

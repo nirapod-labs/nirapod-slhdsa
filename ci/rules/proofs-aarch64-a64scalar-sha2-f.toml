@@ -10,32 +10,32 @@
 [[aarch64-a64scalar-sha2-f.line]]
 what = "files of sha2_128f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set aarch64/a64scalar/sha2_128f: PASS (\d+) files$'
-minimum = 38
+minimum = 42
 
 [[aarch64-a64scalar-sha2-f.line]]
-what = "theorems in the unchanged inventory of aarch64/a64scalar/sha2_128f (Encoding 2, DigestIndices 2, Wots 1, ADRSc 2)"
+what = "theorems in the unchanged inventory of aarch64/a64scalar/sha2_128f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, ADRSc 2, Thash 4)"
 pattern = '^inventory aarch64/a64scalar/sha2_128f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 7
+minimum = 13
 
 [[aarch64-a64scalar-sha2-f.line]]
 what = "files of sha2_192f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set aarch64/a64scalar/sha2_192f: PASS (\d+) files$'
-minimum = 45
+minimum = 49
 
 [[aarch64-a64scalar-sha2-f.line]]
-what = "theorems in the unchanged inventory of aarch64/a64scalar/sha2_192f (Encoding 2, DigestIndices 2, Wots 1, ADRSc 2)"
+what = "theorems in the unchanged inventory of aarch64/a64scalar/sha2_192f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, ADRSc 2, Thash 4)"
 pattern = '^inventory aarch64/a64scalar/sha2_192f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 7
+minimum = 13
 
 [[aarch64-a64scalar-sha2-f.line]]
 what = "files of sha2_256f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set aarch64/a64scalar/sha2_256f: PASS (\d+) files$'
-minimum = 39
+minimum = 43
 
 [[aarch64-a64scalar-sha2-f.line]]
-what = "theorems in the unchanged inventory of aarch64/a64scalar/sha2_256f (Encoding 2, DigestIndices 2, Wots 1, ADRSc 2)"
+what = "theorems in the unchanged inventory of aarch64/a64scalar/sha2_256f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, ADRSc 2, Thash 4)"
 pattern = '^inventory aarch64/a64scalar/sha2_256f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 7
+minimum = 13
 
 [[aarch64-a64scalar-sha2-f.line]]
 what = "sets of the sha2-f group checked against the aarch64/a64scalar models"

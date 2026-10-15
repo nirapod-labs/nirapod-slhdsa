@@ -1123,8 +1123,7 @@ lemma node_concat_correct:
     phoare[ CoreExtracted.M.__node_concat :
              a = a0 /\ b = b0 ==>
              BArray64.to_list res =
-             List.(++) (BArray32.to_list a0) (BArray32.to_list b0)] = (
-    Real.(%r) 1).
+             List.(++) (ADRS.bytes_of a0) (ADRS.bytes_of b0)] = (Real.(%r) 1).
 
 (* DigestIndices.digest_tree_leaf_correct *)
 lemma digest_tree_leaf_correct:
@@ -1158,8 +1157,60 @@ lemma wots_digits_correct:
     phoare[ CoreExtracted.M.__wots_digits :
              msg = m0 ==>
              List.map JWord.W8.to_uint (BArray67.to_list res) =
-             FIPS205_WOTS.wots_digits SetModel.P (BArray32.to_list m0)] = (
+             FIPS205_WOTS.wots_digits SetModel.P (ADRS.bytes_of m0)] = (
     Real.(%r) 1).
+
+(* WotsChain.wots_chain_correct *)
+lemma wots_chain_correct:
+  forall (pk : Bytes.bytes) (c0 : BArray96.t),
+    (forall (x0 a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_f :
+                x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                ADRS.bytes_of res.`1 =
+                FIPS205_Hash.F SetModel.P pk (ADRS.bytes_of a0)
+                  (ADRS.bytes_of x0)] = (Real.(%r) 1)) =>
+    forall (x0 : BArray32.t) (i0 s0 : JWord.W32.t) (a0 : BArray32.t),
+      phoare[ CoreExtracted.M._wots_chain :
+               x = x0 /\
+               start = i0 /\
+               steps = s0 /\
+               ctx = c0 /\
+               adrs = a0 /\
+               Int.(<)
+                 (Int.(+) (JWord.W32.to_uint i0) (JWord.W32.to_uint s0))
+                 JWord.W32.modulus ==>
+               ADRS.bytes_of res.`1 =
+               FIPS205_WOTS.chain SetModel.P (ADRS.bytes_of x0)
+                 (JWord.W32.to_uint i0) (JWord.W32.to_uint s0) pk
+                 (ADRS.bytes_of a0) /\
+               List.take 28 (ADRS.bytes_of res.`2) =
+               List.take 28 (ADRS.bytes_of a0)] = (Real.(%r) 1).
+
+(* WotsPk.wots_pk_from_sig_correct *)
+lemma wots_pk_from_sig_correct:
+  forall (pk_seed : Bytes.bytes) (c0 : BArray96.t),
+    (forall (x0 a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_f :
+                x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                ADRS.bytes_of res.`1 =
+                FIPS205_Hash.F SetModel.P pk_seed (ADRS.bytes_of a0)
+                  (ADRS.bytes_of x0)] = (Real.(%r) 1)) =>
+    (forall (m0 : BArray2144.t) (a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_t_len :
+                in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
+                ADRS.bytes_of res.`1 =
+                FIPS205_Hash.T_l SetModel.P pk_seed (ADRS.bytes_of a0)
+                  (BArray2144.to_list m0)] = (Real.(%r) 1)) =>
+    forall (s0 : BArray2144.t) (m0 a0 : BArray32.t) (kp0 : JWord.W32.t),
+      phoare[ CoreExtracted.M._wots_pk_from_sig :
+               sig = s0 /\ msg = m0 /\ ctx = c0 /\ adrs = a0 /\ keypair = kp0 ==>
+               ADRS.bytes_of res.`1 =
+               FIPS205_WOTS.wots_pkFromSig SetModel.P (BArray2144.to_list s0)
+                 (ADRS.bytes_of m0) pk_seed
+                 (FIPS205_Address.setKeyPairAddress
+                    (FIPS205_Address.setTypeAndClear (ADRS.bytes_of a0)
+                       FIPS205_Address.WOTS_HASH) (JWord.W32.to_uint kp0))] = (
+      Real.(%r) 1).
 
 (* ADRSc.adrs_compress_into64_correct *)
 lemma adrs_compress_into64_correct:
@@ -1167,7 +1218,7 @@ lemma adrs_compress_into64_correct:
     phoare[ CoreExtracted.M.__adrs_compress_into64 :
              dst = d0 /\ adrs = a0 ==>
              List.take 22 (BArray64.to_list res) =
-             FIPS205_Address.compress (BArray32.to_list a0) /\
+             FIPS205_Address.compress (ADRS.bytes_of a0) /\
              List.drop 22 (BArray64.to_list res) =
              List.drop 22 (BArray64.to_list d0)] = (Real.(%r) 1).
 
@@ -1177,13 +1228,134 @@ lemma adrs_compress_into128_correct:
     phoare[ CoreExtracted.M.__adrs_compress_into128 :
              dst = d0 /\ adrs = a0 ==>
              List.take 22 (BArray128.to_list res) =
-             FIPS205_Address.compress (BArray32.to_list a0) /\
+             FIPS205_Address.compress (ADRS.bytes_of a0) /\
              List.drop 22 (BArray128.to_list res) =
              List.drop 22 (BArray128.to_list d0)] = (Real.(%r) 1).
 
-definitions 4
+(* Thash.thash_f_correct *)
+lemma thash_f_correct:
+  (forall (h0 : JWord.W32.t List.list) (blk : BArray64.t),
+     phoare[ CoreExtracted.M._sha256_compress :
+              Thash.hw256 h = h0 /\ block = blk ==>
+              Thash.hw256 res.`1 =
+              FIPS180_SHA2.SHA256.compress h0
+                (List.map FIPS180_SHA2.be32
+                   (BitEncoding.BitChunking.chunk 4 (BArray64.to_list blk)))] = (
+     Real.(%r) 1)) =>
+  (forall (h0 : JWord.W64.t List.list) (blk : BArray128.t),
+     phoare[ CoreExtracted.M._sha512_compress :
+              Thash.hw512 h = h0 /\ block = blk ==>
+              Thash.hw512 res.`1 =
+              FIPS180_SHA2.SHA512.compress h0
+                (List.map FIPS180_SHA2.be64
+                   (BitEncoding.BitChunking.chunk 8 (BArray128.to_list blk)))] = (
+     Real.(%r) 1)) =>
+  forall (pk : Bytes.bytes) (c0 : BArray96.t) (a0 x0 : BArray32.t),
+    phoare[ CoreExtracted.M._thash_f :
+             x = x0 /\
+             ctx = c0 /\
+             adrs = a0 /\
+             List.size pk = FIPS205_Params.n SetModel.P /\ Thash.ctx_ok pk c0 ==>
+             ADRS.bytes_of res.`1 =
+             FIPS205_Hash.F SetModel.P pk (ADRS.bytes_of a0)
+               (ADRS.bytes_of x0)] = (Real.(%r) 1).
+
+(* Thash.thash_prf_correct *)
+lemma thash_prf_correct:
+  (forall (h0 : JWord.W32.t List.list) (blk : BArray64.t),
+     phoare[ CoreExtracted.M._sha256_compress :
+              Thash.hw256 h = h0 /\ block = blk ==>
+              Thash.hw256 res.`1 =
+              FIPS180_SHA2.SHA256.compress h0
+                (List.map FIPS180_SHA2.be32
+                   (BitEncoding.BitChunking.chunk 4 (BArray64.to_list blk)))] = (
+     Real.(%r) 1)) =>
+  (forall (h0 : JWord.W64.t List.list) (blk : BArray128.t),
+     phoare[ CoreExtracted.M._sha512_compress :
+              Thash.hw512 h = h0 /\ block = blk ==>
+              Thash.hw512 res.`1 =
+              FIPS180_SHA2.SHA512.compress h0
+                (List.map FIPS180_SHA2.be64
+                   (BitEncoding.BitChunking.chunk 8 (BArray128.to_list blk)))] = (
+     Real.(%r) 1)) =>
+  forall (pk : Bytes.bytes) (c0 : BArray96.t) (a0 x0 : BArray32.t),
+    phoare[ CoreExtracted.M._thash_prf :
+             sk_seed = x0 /\
+             ctx = c0 /\
+             adrs = a0 /\
+             List.size pk = FIPS205_Params.n SetModel.P /\ Thash.ctx_ok pk c0 ==>
+             ADRS.bytes_of res.`1 =
+             FIPS205_Hash.PRF SetModel.P pk (ADRS.bytes_of x0)
+               (ADRS.bytes_of a0)] = (Real.(%r) 1).
+
+(* Thash.thash_h_correct *)
+lemma thash_h_correct:
+  (forall (h0 : JWord.W32.t List.list) (blk : BArray64.t),
+     phoare[ CoreExtracted.M._sha256_compress :
+              Thash.hw256 h = h0 /\ block = blk ==>
+              Thash.hw256 res.`1 =
+              FIPS180_SHA2.SHA256.compress h0
+                (List.map FIPS180_SHA2.be32
+                   (BitEncoding.BitChunking.chunk 4 (BArray64.to_list blk)))] = (
+     Real.(%r) 1)) =>
+  (forall (h0 : JWord.W64.t List.list) (blk : BArray128.t),
+     phoare[ CoreExtracted.M._sha512_compress :
+              Thash.hw512 h = h0 /\ block = blk ==>
+              Thash.hw512 res.`1 =
+              FIPS180_SHA2.SHA512.compress h0
+                (List.map FIPS180_SHA2.be64
+                   (BitEncoding.BitChunking.chunk 8 (BArray128.to_list blk)))] = (
+     Real.(%r) 1)) =>
+  forall (pk : Bytes.bytes) (c0 : BArray96.t) (a0 : BArray32.t)
+    (x0 : BArray64.t),
+    phoare[ CoreExtracted.M._thash_h :
+             in_0 = x0 /\
+             ctx = c0 /\
+             adrs = a0 /\
+             List.size pk = FIPS205_Params.n SetModel.P /\ Thash.ctx_ok pk c0 ==>
+             ADRS.bytes_of res.`1 =
+             FIPS205_Hash.H SetModel.P pk (ADRS.bytes_of a0)
+               (BArray64.to_list x0)] = (Real.(%r) 1).
+
+(* Thash.thash_ctx_init_correct *)
+lemma thash_ctx_init_correct:
+  (forall (h0 : JWord.W32.t List.list) (blk : BArray64.t),
+     phoare[ CoreExtracted.M._sha256_compress :
+              Thash.hw256 h = h0 /\ block = blk ==>
+              Thash.hw256 res.`1 =
+              FIPS180_SHA2.SHA256.compress h0
+                (List.map FIPS180_SHA2.be32
+                   (BitEncoding.BitChunking.chunk 4 (BArray64.to_list blk)))] = (
+     Real.(%r) 1)) =>
+  (forall (h0 : JWord.W64.t List.list) (blk : BArray128.t),
+     phoare[ CoreExtracted.M._sha512_compress :
+              Thash.hw512 h = h0 /\ block = blk ==>
+              Thash.hw512 res.`1 =
+              FIPS180_SHA2.SHA512.compress h0
+                (List.map FIPS180_SHA2.be64
+                   (BitEncoding.BitChunking.chunk 8 (BArray128.to_list blk)))] = (
+     Real.(%r) 1)) =>
+  forall (s0 : BArray32.t),
+    phoare[ CoreExtracted.M._thash_ctx_init :
+             pk_seed = s0 ==> Thash.ctx_ok (ADRS.bytes_of s0) res.`1] = (
+    Real.(%r) 1).
+
+definitions 17
 
 ADRSc.adrsc_src op 0d45f59ab1064ee6
-ADRSc.written128 op f79cb4b5cc962152
+ADRSc.written128 op 99d4d0189d3a6a21
 ADRSc.written64 op 2481340f5d24b122
+Thash.ctx_ok op 7f2e9ba38e14505a
+Thash.cv256 op 6ef23c962b59b3db
+Thash.cv512 op 00eb0988916ca863
+Thash.cvs256 op 49dbdfd3ddf11379
+Thash.cvs512 op 6d7aef432cd73efe
+Thash.hw256 op c6eee5fd019b2c0f
+Thash.hw512 op af7ff6e0accd19a8
+Thash.init_block op abe263a9dadf8ffe
+Thash.seed_block op df40bb4b48e0f2fd
+Thash.seeded op 6cd62657069a822c
+ThashBlocks.pad_tail256 op f7c3b72402b36d4c
+ThashBlocks.pad_tail512 op dbf0fcf6825e9fd5
 Wots.csum op fcda3065d6f37011
+WotsChain.chain_step op 5409b1d855869353

@@ -10,32 +10,32 @@
 [[x86_64-portable-shake-f.line]]
 what = "files of shake_128f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set x86_64/portable/shake_128f: PASS (\d+) files$'
-minimum = 34
+minimum = 36
 
 [[x86_64-portable-shake-f.line]]
-what = "theorems in the unchanged inventory of x86_64/portable/shake_128f (Encoding 2, DigestIndices 2, Wots 1, Thash 3)"
+what = "theorems in the unchanged inventory of x86_64/portable/shake_128f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, Thash 5)"
 pattern = '^inventory x86_64/portable/shake_128f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 8
+minimum = 12
 
 [[x86_64-portable-shake-f.line]]
 what = "files of shake_192f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set x86_64/portable/shake_192f: PASS (\d+) files$'
-minimum = 38
+minimum = 40
 
 [[x86_64-portable-shake-f.line]]
-what = "theorems in the unchanged inventory of x86_64/portable/shake_192f (Encoding 2, DigestIndices 2, Wots 1, Thash 3)"
+what = "theorems in the unchanged inventory of x86_64/portable/shake_192f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, Thash 5)"
 pattern = '^inventory x86_64/portable/shake_192f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 8
+minimum = 12
 
 [[x86_64-portable-shake-f.line]]
 what = "files of shake_256f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set x86_64/portable/shake_256f: PASS (\d+) files$'
-minimum = 33
+minimum = 35
 
 [[x86_64-portable-shake-f.line]]
-what = "theorems in the unchanged inventory of x86_64/portable/shake_256f (Encoding 2, DigestIndices 2, Wots 1, Thash 3)"
+what = "theorems in the unchanged inventory of x86_64/portable/shake_256f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, Thash 5)"
 pattern = '^inventory x86_64/portable/shake_256f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 8
+minimum = 12
 
 [[x86_64-portable-shake-f.line]]
 what = "sets of the shake-f group checked against the x86_64/portable models"
