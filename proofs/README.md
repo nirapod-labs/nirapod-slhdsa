@@ -403,6 +403,10 @@ Per-set theorems, each checked against the 24 per-set models:
   (`split_digest`);
 - `fors_indices_correct`: index j of `__fors_indices` is digit j of
   base_2b(md, a, k) (Algorithm 4), md the first field of the digest;
+- `wots_digits_correct` (`correctness/core/Wots.ec`): `__wots_digits` of
+  `src/slhdsa/wots.jinc` returns the len digits of Algorithm 7, lines 1
+  to 7 (`wots_digits`): the 2n base-16 digits of the message, then the
+  three digits of its checksum;
 - `adrs_compress_into64_correct` and `adrs_compress_into128_correct`
   (`correctness/core/sha2/ADRSc.ec`, on the 12 SHA2 models):
   `__adrs_compress_into64` and `__adrs_compress_into128` of
@@ -411,8 +415,7 @@ Per-set theorems, each checked against the 24 per-set models:
   block and leave its other bytes unchanged.
 
 The per-set theorems are total-correctness statements about one
-procedure each, for every input. That the WOTS+ digits and checksum
-(`__wots_digits`) are those of Algorithm 7 is not proven yet.
+procedure each, for every input.
 
 The SHA-2 and Keccak `_correct` theorems are partial-correctness (Hoare)
 statements about the extracted model: when the procedure returns, its

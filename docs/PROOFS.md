@@ -76,7 +76,9 @@ Proven, on the x86-64 and AArch64 models, total correctness:
     `src/slhdsa/thash_sha2.jinc` write ADRS^c, the 22-byte compressed address of
     section 11.2, into a hash block and leave its other bytes unchanged;
   - `__digest_tree_leaf` and `__fors_indices` split the message digest into idx_tree,
-    idx_leaf (Algorithm 19, lines 6 to 10) and the FORS indices (base_2b, Algorithm 4).
+    idx_leaf (Algorithm 19, lines 6 to 10) and the FORS indices (base_2b, Algorithm 4);
+  - `__wots_digits` of `src/slhdsa/wots.jinc` returns the len digits of Algorithm 7,
+    lines 1 to 7: the base-16 digits of the message, then those of its checksum.
 
 Not proven:
 

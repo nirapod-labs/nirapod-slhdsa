@@ -370,6 +370,7 @@ set_inventory_file = inventory/sets/$(subst /,-,$(1))-$(2).txt
 # per-set proofs (the spec's are pinned by the pair inventories).
 SET_THEOREMS := Encoding.node_copy_correct Encoding.node_concat_correct \
                 DigestIndices.digest_tree_leaf_correct DigestIndices.fors_indices_correct \
+                Wots.wots_digits_correct \
                 ADRSc.adrs_compress_into64_correct ADRSc.adrs_compress_into128_correct
 set_theorems  = $(foreach t,$(SET_THEOREMS),$(if $(filter $(call thm_theory,$(t)),$(basename $(notdir $(call set_proofs,$(1))))),$(t)))
 set_inventories = $(foreach p,$(CORE_PAIRS),$(foreach s,$(CORE_SETS),$(call set_inventory_file,$(p),$(s))))

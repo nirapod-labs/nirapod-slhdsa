@@ -1118,5 +1118,15 @@ lemma fors_indices_correct:
                     (FIPS205_Params.a SetModel.P)
                     (FIPS205_Params.k SetModel.P)) j] = (Real.(%r) 1).
 
-definitions 0
+(* Wots.wots_digits_correct *)
+lemma wots_digits_correct:
+  forall (m0 : BArray16.t),
+    phoare[ CoreExtracted.M.__wots_digits :
+             msg = m0 ==>
+             List.map JWord.W8.to_uint (BArray35.to_list res) =
+             FIPS205_WOTS.wots_digits SetModel.P (BArray16.to_list m0)] = (
+    Real.(%r) 1).
 
+definitions 1
+
+Wots.csum op fcda3065d6f37011

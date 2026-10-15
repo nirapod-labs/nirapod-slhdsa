@@ -1152,6 +1152,15 @@ lemma fors_indices_correct:
                     (FIPS205_Params.a SetModel.P)
                     (FIPS205_Params.k SetModel.P)) j] = (Real.(%r) 1).
 
+(* Wots.wots_digits_correct *)
+lemma wots_digits_correct:
+  forall (m0 : BArray16.t),
+    phoare[ CoreExtracted.M.__wots_digits :
+             msg = m0 ==>
+             List.map JWord.W8.to_uint (BArray35.to_list res) =
+             FIPS205_WOTS.wots_digits SetModel.P (BArray16.to_list m0)] = (
+    Real.(%r) 1).
+
 (* ADRSc.adrs_compress_into64_correct *)
 lemma adrs_compress_into64_correct:
   forall (d0 : BArray64.t) (a0 : BArray32.t),
@@ -1172,8 +1181,9 @@ lemma adrs_compress_into128_correct:
              List.drop 22 (BArray128.to_list res) =
              List.drop 22 (BArray128.to_list d0)] = (Real.(%r) 1).
 
-definitions 3
+definitions 4
 
 ADRSc.adrsc_src op 0d45f59ab1064ee6
 ADRSc.written128 op 7b314c658afd2480
 ADRSc.written64 op 41598842343aeed0
+Wots.csum op fcda3065d6f37011
