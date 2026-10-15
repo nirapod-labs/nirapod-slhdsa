@@ -132,6 +132,9 @@ jobs:
       - name: Run the tests of the CI scripts
         run: python3 -I -m unittest discover -s ci/tests
 
+      - name: Run the tests of the benchmark harness
+        run: python3 -I bench/test_bench.py
+
   reuse:
     name: reuse
     if: ${{ !(github.event.schedule == '43 4 * * *' || inputs.warm == true) }}
