@@ -9,9 +9,9 @@
  * the portable SHA-512 compression kernel (src/hash/sha2/sha512_compress.jinc)
  * against FIPS 180-4 section 6.4.2 as specified in
  * spec/hash/FIPS180_SHA2.ec. The kernel's entry points that read blocks
- * from memory, _sha512_compress_one and _sha512_compress_blocks, are not
- * covered. The proof is that of SHA256_Compress, transposed to 64-bit
- * words and 80 rounds; the kernels share their structure.
+ * from memory, _sha512_compress_one and _sha512_compress_blocks, are proven
+ * in SHA512_Blocks.ec. The proof is that of SHA256_Compress, transposed to
+ * 64-bit words and 80 rounds; the kernels share their structure.
  *
  * Model. HashExtracted is the jasmin2ec model of one (architecture,
  * variant) pair; this file is checked once against each pair whose

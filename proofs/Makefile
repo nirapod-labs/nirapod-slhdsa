@@ -128,7 +128,9 @@ pair_dirs    = $(foreach d,$(SHARED_PROOF_DIRS),$(wildcard $(d)/$(call pair_arch
 KERNEL_PROOFS := \
   correctness/hash/Keccakf1600_Portable.ec:KeccakKernel=keccak \
   correctness/hash/SHA256_Compress.ec:Sha2Kernel=sha2 \
-  correctness/hash/SHA512_Compress.ec:Sha2Kernel=sha2
+  correctness/hash/SHA256_Blocks.ec:Sha2Kernel=sha2 \
+  correctness/hash/SHA512_Compress.ec:Sha2Kernel=sha2 \
+  correctness/hash/SHA512_Blocks.ec:Sha2Kernel=sha2
 role_field_KeccakKernel  := 3
 role_field_KeccakKernelX := 4
 role_field_Sha2Kernel    := 5
@@ -207,6 +209,10 @@ THEOREMS := \
   SHA256_Compress.sha256_compress_total \
   SHA512_Compress.sha512_rounds_correct SHA512_Compress.sha512_compress_correct \
   SHA512_Compress.sha512_compress_total
+
+# The kernels' entry points that read whole blocks from memory.
+THEOREMS += SHA256_Blocks.sha256_compress_one_total SHA256_Blocks.sha256_compress_blocks_total \
+            SHA512_Blocks.sha512_compress_one_total SHA512_Blocks.sha512_compress_blocks_total
 
 # Keccak-f[1600] of the shared scalar kernel; the AArch64 kernel that keeps
 # the state in registers has its own (KERNEL_THEOREMS_aarch64_a64scalar).

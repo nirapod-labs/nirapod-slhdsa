@@ -9,8 +9,8 @@
  * the portable SHA-256 compression kernel (src/hash/sha2/sha256_compress.jinc)
  * against FIPS 180-4 section 6.2.2 as specified in
  * spec/hash/FIPS180_SHA2.ec. The kernel's entry points that read blocks
- * from memory, _sha256_compress_one and _sha256_compress_blocks, are not
- * covered.
+ * from memory, _sha256_compress_one and _sha256_compress_blocks, are proven
+ * in SHA256_Blocks.ec.
  *
  * Model. HashExtracted is the jasmin2ec model of one (architecture,
  * variant) pair; this file is checked once against each pair whose

@@ -48,16 +48,17 @@ Proven, on the x86-64 and AArch64 models, total correctness:
 - **Addresses.** The hash address procedures of `src/slhdsa/address.jinc` compute
   the address setters of FIPS 205 Table 1, for all 12 parameter sets (the code
   depends on none).
-- **SHA-2.** `_sha256_compress` and `_sha512_compress`, the one-block entry points
-  of the portable SHA-2 kernels, with their round functions, against FIPS 180-4.
+- **SHA-2.** The entry points of the portable SHA-2 kernels, with their round
+  functions, against FIPS 180-4: one block from an array (`_sha*_compress`), one
+  block from memory (`_sha*_compress_one`) and n consecutive blocks from memory
+  (`_sha*_compress_blocks`, used by the streaming hash).
 - **Keccak.** The Keccak-f[1600] permutation of the single-way kernels the scalar
   variants build (the portable kernel on x86-64, the kernel that keeps the state in
   registers on AArch64), against FIPS 202.
 
 Not proven:
 
-- the SHA-2 entry points that read blocks from memory (`_sha*_compress_blocks`,
-  used by the streaming hash);
+- padding, the streaming and one-shot SHA-2 hashes, HMAC and MGF1;
 - the kernels that replace the portable ones: SHA-NI in the x86-64 `shani` variant
   and the SHA-2 instruction kernels in the AArch64 `sha2` variant (the scalar
   variant runs the portable SHA-2 kernels on both architectures);
