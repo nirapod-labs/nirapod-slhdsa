@@ -1035,6 +1035,11 @@ SmtMap offunE 09646d1496ed7455
 
 theorems
 
+(* Encoding.node_copy_correct *)
+lemma node_copy_correct:
+  forall (s0 : BArray16.t),
+    phoare[ CoreExtracted.M.__node_copy : src = s0 ==> res = s0] = (Real.(%r)
+                                                                    1).
 
 definitions 0
 

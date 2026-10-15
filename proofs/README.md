@@ -391,6 +391,11 @@ Theorems so far, each checked on every pair unless it says otherwise:
   address code is the same for all twelve parameter sets, so they hold
   for each.
 
+Per-set theorems, each checked against the 24 per-set models:
+
+- `node_copy_correct` (`correctness/core/Encoding.ec`): `__node_copy`
+  of `src/slhdsa/encoding.jinc` returns its n-byte source.
+
 The SHA-2 and Keccak `_correct` theorems are partial-correctness (Hoare)
 statements about the extracted model: when the procedure returns, its
 result is the specified value. Every loop of the kernels runs over a

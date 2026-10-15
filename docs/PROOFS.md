@@ -67,6 +67,11 @@ Proven, on the x86-64 and AArch64 models, total correctness:
   SHA3-384, SHA3-512, SHAKE128 and SHAKE256 of a message in memory, against
   FIPS 202.
 
+- **Core encodings.** For each of the 12 parameter sets, on the models of that
+  set (the core's code depends on the set, so it is extracted once per set and
+  architecture):
+  - `__node_copy` of `src/slhdsa/encoding.jinc` returns its n-byte source.
+
 Not proven:
 
 - the HMAC step that forms the key block from memory;
