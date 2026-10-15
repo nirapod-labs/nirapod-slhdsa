@@ -13,7 +13,7 @@
 # Generator: proofs/tools/inventory.py
 # Regenerate: make -C proofs inventory   (check: make -C proofs check-inventory)
 
-axioms 1653
+axioms 1843
 
 AES AESDECE e3fc5387d7eed6ff
 AES AESDECLASTE 09f9ea888e9e081d
@@ -84,6 +84,25 @@ Array5.Array5 initE 3d0712347c71f51e
 Array5.Array5 map2E 74cae35f1fa8634a
 Array5.Array5 mapE 356f93f955f025dd
 Array5.Array5 setE 3d8a69e71b68d174
+BArray112 ext_eq 95c54b72b15dda55
+BArray112 fillE d05dde13ca0398c1
+BArray112 get128dE ef77bcda55667b84
+BArray112 get16dE 66f3cdb7b7936085
+BArray112 get256dE ad640000e7b8b40a
+BArray112 get32dE 306057a4c2c6ba52
+BArray112 get64dE 0a3e36287b12864e
+BArray112 get_out 246ee4ba673bf454
+BArray112 initE a74934c56351400d
+BArray112 map2E cb78c2b4e820bd7b
+BArray112 mapE 3dbf697d25899328
+BArray112 of_listE 8ad4a902543a34dd
+BArray112 set128dE aad04fc145b52320
+BArray112 set16dE 93acb400e3f9c3b2
+BArray112 set256dE ea8539b328f82673
+BArray112 set32dE 093dc773f8115473
+BArray112 set64dE 72a1328a91ce659e
+BArray112 setE 4e0a335b0af4daa4
+BArray112 to_listE 064455ad8264c07a
 BArray128 ext_eq 8da5701f83273c19
 BArray128 fillE d05dde13ca0398c1
 BArray128 get128dE ef77bcda55667b84
@@ -160,6 +179,44 @@ BArray256 set32dE 093dc773f8115473
 BArray256 set64dE 72a1328a91ce659e
 BArray256 setE 4e0a335b0af4daa4
 BArray256 to_listE 7170dd64afb01ac6
+BArray28 ext_eq 2441031b57bcd30a
+BArray28 fillE d05dde13ca0398c1
+BArray28 get128dE ef77bcda55667b84
+BArray28 get16dE 66f3cdb7b7936085
+BArray28 get256dE ad640000e7b8b40a
+BArray28 get32dE 306057a4c2c6ba52
+BArray28 get64dE 0a3e36287b12864e
+BArray28 get_out 52a52322c4e52f46
+BArray28 initE 7481bf8d15adcdf5
+BArray28 map2E cb78c2b4e820bd7b
+BArray28 mapE 3dbf697d25899328
+BArray28 of_listE 8ad4a902543a34dd
+BArray28 set128dE aad04fc145b52320
+BArray28 set16dE 93acb400e3f9c3b2
+BArray28 set256dE ea8539b328f82673
+BArray28 set32dE 093dc773f8115473
+BArray28 set64dE 72a1328a91ce659e
+BArray28 setE 4e0a335b0af4daa4
+BArray28 to_listE 7b8f77e44aca1257
+BArray30 ext_eq d2b9e14e6e3b9370
+BArray30 fillE d05dde13ca0398c1
+BArray30 get128dE ef77bcda55667b84
+BArray30 get16dE 66f3cdb7b7936085
+BArray30 get256dE ad640000e7b8b40a
+BArray30 get32dE 306057a4c2c6ba52
+BArray30 get64dE 0a3e36287b12864e
+BArray30 get_out 0372de12e5e20ada
+BArray30 initE e489572c9fa34ddf
+BArray30 map2E cb78c2b4e820bd7b
+BArray30 mapE 3dbf697d25899328
+BArray30 of_listE 8ad4a902543a34dd
+BArray30 set128dE aad04fc145b52320
+BArray30 set16dE 93acb400e3f9c3b2
+BArray30 set256dE ea8539b328f82673
+BArray30 set32dE 093dc773f8115473
+BArray30 set64dE 72a1328a91ce659e
+BArray30 setE 4e0a335b0af4daa4
+BArray30 to_listE 41f1b34334675430
 BArray32 ext_eq 53e52d9576b81330
 BArray32 fillE d05dde13ca0398c1
 BArray32 get128dE ef77bcda55667b84
@@ -179,6 +236,63 @@ BArray32 set32dE 093dc773f8115473
 BArray32 set64dE 72a1328a91ce659e
 BArray32 setE 4e0a335b0af4daa4
 BArray32 to_listE bc66cf26599b94d8
+BArray320 ext_eq 8a5723117e1f7aa5
+BArray320 fillE d05dde13ca0398c1
+BArray320 get128dE ef77bcda55667b84
+BArray320 get16dE 66f3cdb7b7936085
+BArray320 get256dE ad640000e7b8b40a
+BArray320 get32dE 306057a4c2c6ba52
+BArray320 get64dE 0a3e36287b12864e
+BArray320 get_out 617269002ab2e3bc
+BArray320 initE 6bc9c957d1032b62
+BArray320 map2E cb78c2b4e820bd7b
+BArray320 mapE 3dbf697d25899328
+BArray320 of_listE 8ad4a902543a34dd
+BArray320 set128dE aad04fc145b52320
+BArray320 set16dE 93acb400e3f9c3b2
+BArray320 set256dE ea8539b328f82673
+BArray320 set32dE 093dc773f8115473
+BArray320 set64dE 72a1328a91ce659e
+BArray320 setE 4e0a335b0af4daa4
+BArray320 to_listE 3401873646f87187
+BArray34 ext_eq b827b27dc12e52f6
+BArray34 fillE d05dde13ca0398c1
+BArray34 get128dE ef77bcda55667b84
+BArray34 get16dE 66f3cdb7b7936085
+BArray34 get256dE ad640000e7b8b40a
+BArray34 get32dE 306057a4c2c6ba52
+BArray34 get64dE 0a3e36287b12864e
+BArray34 get_out d6f78f23f42b1d8b
+BArray34 initE 9bfa64a9ce2d277f
+BArray34 map2E cb78c2b4e820bd7b
+BArray34 mapE 3dbf697d25899328
+BArray34 of_listE 8ad4a902543a34dd
+BArray34 set128dE aad04fc145b52320
+BArray34 set16dE 93acb400e3f9c3b2
+BArray34 set256dE ea8539b328f82673
+BArray34 set32dE 093dc773f8115473
+BArray34 set64dE 72a1328a91ce659e
+BArray34 setE 4e0a335b0af4daa4
+BArray34 to_listE 31f37854f8374556
+BArray39 ext_eq 577172edfe805ce4
+BArray39 fillE d05dde13ca0398c1
+BArray39 get128dE ef77bcda55667b84
+BArray39 get16dE 66f3cdb7b7936085
+BArray39 get256dE ad640000e7b8b40a
+BArray39 get32dE 306057a4c2c6ba52
+BArray39 get64dE 0a3e36287b12864e
+BArray39 get_out 51548f808b587b52
+BArray39 initE 8a53795cd7b1f2b9
+BArray39 map2E cb78c2b4e820bd7b
+BArray39 mapE 3dbf697d25899328
+BArray39 of_listE 8ad4a902543a34dd
+BArray39 set128dE aad04fc145b52320
+BArray39 set16dE 93acb400e3f9c3b2
+BArray39 set256dE ea8539b328f82673
+BArray39 set32dE 093dc773f8115473
+BArray39 set64dE 72a1328a91ce659e
+BArray39 setE 4e0a335b0af4daa4
+BArray39 to_listE 2a460f941b8dcbd9
 BArray40 ext_eq 927ce004a1d18728
 BArray40 fillE d05dde13ca0398c1
 BArray40 get128dE ef77bcda55667b84
@@ -198,6 +312,82 @@ BArray40 set32dE 093dc773f8115473
 BArray40 set64dE 72a1328a91ce659e
 BArray40 setE 4e0a335b0af4daa4
 BArray40 to_listE 5205bc3bb6c685a2
+BArray42 ext_eq ac57b82ebe7ccbe1
+BArray42 fillE d05dde13ca0398c1
+BArray42 get128dE ef77bcda55667b84
+BArray42 get16dE 66f3cdb7b7936085
+BArray42 get256dE ad640000e7b8b40a
+BArray42 get32dE 306057a4c2c6ba52
+BArray42 get64dE 0a3e36287b12864e
+BArray42 get_out b26acfe8f543487e
+BArray42 initE 1002ac262d2869a1
+BArray42 map2E cb78c2b4e820bd7b
+BArray42 mapE 3dbf697d25899328
+BArray42 of_listE 8ad4a902543a34dd
+BArray42 set128dE aad04fc145b52320
+BArray42 set16dE 93acb400e3f9c3b2
+BArray42 set256dE ea8539b328f82673
+BArray42 set32dE 093dc773f8115473
+BArray42 set64dE 72a1328a91ce659e
+BArray42 setE 4e0a335b0af4daa4
+BArray42 to_listE 0aab4c2d5c61663b
+BArray47 ext_eq 7b5613393fb9511d
+BArray47 fillE d05dde13ca0398c1
+BArray47 get128dE ef77bcda55667b84
+BArray47 get16dE 66f3cdb7b7936085
+BArray47 get256dE ad640000e7b8b40a
+BArray47 get32dE 306057a4c2c6ba52
+BArray47 get64dE 0a3e36287b12864e
+BArray47 get_out 1b8860f03a501fd9
+BArray47 initE 4a7941a78cbe61b5
+BArray47 map2E cb78c2b4e820bd7b
+BArray47 mapE 3dbf697d25899328
+BArray47 of_listE 8ad4a902543a34dd
+BArray47 set128dE aad04fc145b52320
+BArray47 set16dE 93acb400e3f9c3b2
+BArray47 set256dE ea8539b328f82673
+BArray47 set32dE 093dc773f8115473
+BArray47 set64dE 72a1328a91ce659e
+BArray47 setE 4e0a335b0af4daa4
+BArray47 to_listE e96eed3a3a122a8f
+BArray48 ext_eq 71b01a0604f5e745
+BArray48 fillE d05dde13ca0398c1
+BArray48 get128dE ef77bcda55667b84
+BArray48 get16dE 66f3cdb7b7936085
+BArray48 get256dE ad640000e7b8b40a
+BArray48 get32dE 306057a4c2c6ba52
+BArray48 get64dE 0a3e36287b12864e
+BArray48 get_out 6e952b2762a1f780
+BArray48 initE 6e14c96b572c9969
+BArray48 map2E cb78c2b4e820bd7b
+BArray48 mapE 3dbf697d25899328
+BArray48 of_listE 8ad4a902543a34dd
+BArray48 set128dE aad04fc145b52320
+BArray48 set16dE 93acb400e3f9c3b2
+BArray48 set256dE ea8539b328f82673
+BArray48 set32dE 093dc773f8115473
+BArray48 set64dE 72a1328a91ce659e
+BArray48 setE 4e0a335b0af4daa4
+BArray48 to_listE a35b773272ba0c42
+BArray49 ext_eq 37d39a33516b9904
+BArray49 fillE d05dde13ca0398c1
+BArray49 get128dE ef77bcda55667b84
+BArray49 get16dE 66f3cdb7b7936085
+BArray49 get256dE ad640000e7b8b40a
+BArray49 get32dE 306057a4c2c6ba52
+BArray49 get64dE 0a3e36287b12864e
+BArray49 get_out d36afe3a3387f0f3
+BArray49 initE b59f06b680bdfd39
+BArray49 map2E cb78c2b4e820bd7b
+BArray49 mapE 3dbf697d25899328
+BArray49 of_listE 8ad4a902543a34dd
+BArray49 set128dE aad04fc145b52320
+BArray49 set16dE 93acb400e3f9c3b2
+BArray49 set256dE ea8539b328f82673
+BArray49 set32dE 093dc773f8115473
+BArray49 set64dE 72a1328a91ce659e
+BArray49 setE 4e0a335b0af4daa4
+BArray49 to_listE 58c20844f1eddbaf
 BArray64 ext_eq 9d9d2d0ef8259788
 BArray64 fillE d05dde13ca0398c1
 BArray64 get128dE ef77bcda55667b84
@@ -1729,6 +1919,362 @@ lemma sha512_compress_total:
                   (BitEncoding.BitChunking.chunk 8 (BArray128.to_list blk)))] = (
     Real.(%r) 1).
 
+(* SHA256_Blocks.sha256_compress_one_total *)
+lemma sha256_compress_one_total:
+  forall (h0 : JWord.W32.t List.list) (p0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha256_compress_one :
+             SHA256_Compress.hwords h = h0 /\
+             p = p0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) 64)
+               JModel_x86.ptr_modulus ==>
+             SHA256_Compress.hwords res.`1 =
+             FIPS180_SHA2.SHA256.compress h0
+               (List.map FIPS180_SHA2.be32
+                  (BitEncoding.BitChunking.chunk 4
+                     (SHA512_Blocks.memread JMemory.Glob.mem
+                        (JWord.W64.to_uint p0) 64)))] = (Real.(%r) 1).
+
+(* SHA256_Blocks.sha256_compress_blocks_total *)
+lemma sha256_compress_blocks_total:
+  forall (h0 : JWord.W32.t List.list) (p0 n0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha256_compress_blocks :
+             SHA256_Compress.hwords h = h0 /\
+             p = p0 /\
+             n = n0 /\
+             Int.(<)
+               (Int.(+) (JWord.W64.to_uint p0)
+                  (Int.( * ) 64 (JWord.W64.to_uint n0)))
+               JModel_x86.ptr_modulus ==>
+             SHA256_Compress.hwords res.`1 =
+             List.foldl FIPS180_SHA2.SHA256.compress h0
+               (FIPS180_SHA2.SHA256.parse
+                  (SHA512_Blocks.memread JMemory.Glob.mem
+                     (JWord.W64.to_uint p0)
+                     (Int.( * ) 64 (JWord.W64.to_uint n0))))] = (Real.(%r) 1).
+
+(* SHA512_Blocks.sha512_compress_one_total *)
+lemma sha512_compress_one_total:
+  forall (h0 : JWord.W64.t List.list) (p0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha512_compress_one :
+             SHA512_Compress.hwords h = h0 /\
+             p = p0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) 128)
+               JModel_x86.ptr_modulus ==>
+             SHA512_Compress.hwords res.`1 =
+             FIPS180_SHA2.SHA512.compress h0
+               (List.map FIPS180_SHA2.be64
+                  (BitEncoding.BitChunking.chunk 8
+                     (SHA512_Blocks.memread JMemory.Glob.mem
+                        (JWord.W64.to_uint p0) 128)))] = (Real.(%r) 1).
+
+(* SHA512_Blocks.sha512_compress_blocks_total *)
+lemma sha512_compress_blocks_total:
+  forall (h0 : JWord.W64.t List.list) (p0 n0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha512_compress_blocks :
+             SHA512_Compress.hwords h = h0 /\
+             p = p0 /\
+             n = n0 /\
+             Int.(<)
+               (Int.(+) (JWord.W64.to_uint p0)
+                  (Int.( * ) 128 (JWord.W64.to_uint n0)))
+               JModel_x86.ptr_modulus ==>
+             SHA512_Compress.hwords res.`1 =
+             List.foldl FIPS180_SHA2.SHA512.compress h0
+               (FIPS180_SHA2.SHA512.parse
+                  (SHA512_Blocks.memread JMemory.Glob.mem
+                     (JWord.W64.to_uint p0)
+                     (Int.( * ) 128 (JWord.W64.to_uint n0))))] = (Real.(%r) 1).
+
+(* SHA256_Stream.sha256_absorb_mem_total *)
+lemma sha256_absorb_mem_total:
+  forall (h0 : JWord.W32.t List.list) (m : Bytes.bytes) (p0
+    l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha256_absorb_mem :
+             SHA256_Stream.stream256 h0 m h buf total /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus /\
+             Int.(<) (Int.(+) (List.size m) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             SHA256_Stream.stream256 h0
+               (List.(++) m
+                  (SHA512_Blocks.memread JMemory.Glob.mem
+                     (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))) res.`1
+               res.`2 res.`3] = (Real.(%r) 1).
+
+(* SHA256_Stream.sha256_finalize_total *)
+lemma sha256_finalize_total:
+  forall (h0 : JWord.W32.t List.list) (m : Bytes.bytes),
+    phoare[ HashExtracted.M._sha256_finalize :
+             SHA256_Stream.stream256 h0 m h buf total /\
+             Int.(<) (List.size m) (Ring.IntID.(^) 2 61) ==>
+             ADRS.bytes_of res.`1 =
+             List.flatten
+               (List.map FIPS180_SHA2.w32_be (FIPS180_SHA2.SHA256.hash h0 m))] = (
+    Real.(%r) 1).
+
+(* SHA256_Stream.sha256_mem_total *)
+lemma sha256_mem_total:
+  forall (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha256_mem :
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus /\
+             Int.(<) (JWord.W64.to_uint l0) (Ring.IntID.(^) 2 61) ==>
+             ADRS.bytes_of res.`1 =
+             FIPS180_SHA2.SHA256.sha256
+               (SHA512_Blocks.memread JMemory.Glob.mem (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* SHA256_Stream.sha224_mem_total *)
+lemma sha224_mem_total:
+  forall (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha224_mem :
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus /\
+             Int.(<) (JWord.W64.to_uint l0) (Ring.IntID.(^) 2 61) ==>
+             List.take 28 (ADRS.bytes_of res.`1) =
+             FIPS180_SHA2.SHA256.sha224
+               (SHA512_Blocks.memread JMemory.Glob.mem (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* SHA512_Stream.sha512_absorb_mem_total *)
+lemma sha512_absorb_mem_total:
+  forall (h0 : JWord.W64.t List.list) (m : Bytes.bytes) (p0
+    l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha512_absorb_mem :
+             SHA512_Stream.stream512 h0 m h buf total /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus /\
+             Int.(<) (Int.(+) (List.size m) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             SHA512_Stream.stream512 h0
+               (List.(++) m
+                  (SHA512_Blocks.memread JMemory.Glob.mem
+                     (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))) res.`1
+               res.`2 res.`3] = (Real.(%r) 1).
+
+(* SHA512_Stream.sha512_finalize_total *)
+lemma sha512_finalize_total:
+  forall (h0 : JWord.W64.t List.list) (m : Bytes.bytes),
+    phoare[ HashExtracted.M._sha512_finalize :
+             SHA512_Stream.stream512 h0 m h buf total /\
+             Int.(<) (List.size m) (Ring.IntID.(^) 2 61) ==>
+             BArray64.to_list res.`1 =
+             List.flatten
+               (List.map FIPS180_SHA2.w64_be (FIPS180_SHA2.SHA512.hash h0 m))] = (
+    Real.(%r) 1).
+
+(* SHA512_Stream.sha512_mem_total *)
+lemma sha512_mem_total:
+  forall (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha512_mem :
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus /\
+             Int.(<) (JWord.W64.to_uint l0) (Ring.IntID.(^) 2 61) ==>
+             BArray64.to_list res.`1 =
+             FIPS180_SHA2.SHA512.sha512
+               (SHA512_Blocks.memread JMemory.Glob.mem (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* SHA512_Stream.sha384_mem_total *)
+lemma sha384_mem_total:
+  forall (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha384_mem :
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus /\
+             Int.(<) (JWord.W64.to_uint l0) (Ring.IntID.(^) 2 61) ==>
+             List.take 48 (BArray64.to_list res.`1) =
+             FIPS180_SHA2.SHA512.sha384
+               (SHA512_Blocks.memread JMemory.Glob.mem (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* SHA512_Stream.sha512_224_mem_total *)
+lemma sha512_224_mem_total:
+  forall (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha512_224_mem :
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus /\
+             Int.(<) (JWord.W64.to_uint l0) (Ring.IntID.(^) 2 61) ==>
+             List.take 28 (BArray64.to_list res.`1) =
+             FIPS180_SHA2.SHA512.sha512_224
+               (SHA512_Blocks.memread JMemory.Glob.mem (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* SHA512_Stream.sha512_256_mem_total *)
+lemma sha512_256_mem_total:
+  forall (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha512_256_mem :
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus /\
+             Int.(<) (JWord.W64.to_uint l0) (Ring.IntID.(^) 2 61) ==>
+             List.take 32 (BArray64.to_list res.`1) =
+             FIPS180_SHA2.SHA512.sha512_256
+               (SHA512_Blocks.memread JMemory.Glob.mem (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* HMAC_SHA256.hmac_sha256_blocks *)
+lemma hmac_sha256_blocks:
+  forall (k text : Bytes.bytes),
+    Int.(<=) (List.size k) 64 =>
+    FIPS198_HMAC.hmac_sha256 k text =
+    FIPS180_SHA2.SHA256.sha256
+      (List.(++)
+         (FIPS198_HMAC.xorb
+            (List.(++) k (Bytes.zeros (Int.(-) 64 (List.size k))))
+            (FIPS198_HMAC.opad 64))
+         (FIPS180_SHA2.SHA256.sha256
+            (List.(++)
+               (FIPS198_HMAC.xorb
+                  (List.(++) k (Bytes.zeros (Int.(-) 64 (List.size k))))
+                  (FIPS198_HMAC.ipad 64)) text))).
+
+(* HMAC_SHA256.hmac_sha256_init_total *)
+lemma hmac_sha256_init_total:
+  forall (K : BArray64.t),
+    phoare[ HashExtracted.M.__hmac_sha256_init :
+             k0 = K ==>
+             SHA256_Compress.hwords res.`1 =
+             FIPS180_SHA2.SHA256.compress FIPS180_SHA2.SHA256.H0_256
+               (FIPS180_SHA2_Blocks.words256
+                  (FIPS198_HMAC.xorb (BArray64.to_list K)
+                     (FIPS198_HMAC.ipad 64))) /\
+             SHA256_Compress.hwords res.`2 =
+             FIPS180_SHA2.SHA256.compress FIPS180_SHA2.SHA256.H0_256
+               (FIPS180_SHA2_Blocks.words256
+                  (FIPS198_HMAC.xorb (BArray64.to_list K)
+                     (FIPS198_HMAC.opad 64)))] = (Real.(%r) 1).
+
+(* HMAC_SHA256.hmac_sha256_finalize_total *)
+lemma hmac_sha256_finalize_total:
+  forall (ib ob text : Bytes.bytes),
+    List.size ob = 64 =>
+    phoare[ HashExtracted.M.__hmac_sha256_finalize :
+             SHA256_Stream.stream256 FIPS180_SHA2.SHA256.H0_256
+               (List.(++) ib text) inner buf total /\
+             SHA256_Compress.hwords outer =
+             FIPS180_SHA2.SHA256.compress FIPS180_SHA2.SHA256.H0_256
+               (FIPS180_SHA2_Blocks.words256 ob) /\
+             Int.(<) (List.size (List.(++) ib text)) (Ring.IntID.(^) 2 61) ==>
+             ADRS.bytes_of res.`1 =
+             FIPS180_SHA2.SHA256.sha256
+               (List.(++) ob (FIPS180_SHA2.SHA256.sha256 (List.(++) ib text)))] = (
+    Real.(%r) 1).
+
+(* HMAC_SHA512.hmac_sha512_blocks *)
+lemma hmac_sha512_blocks:
+  forall (k text : Bytes.bytes),
+    Int.(<=) (List.size k) 128 =>
+    FIPS198_HMAC.hmac_sha512 k text =
+    FIPS180_SHA2.SHA512.sha512
+      (List.(++)
+         (FIPS198_HMAC.xorb
+            (List.(++) k (Bytes.zeros (Int.(-) 128 (List.size k))))
+            (FIPS198_HMAC.opad 128))
+         (FIPS180_SHA2.SHA512.sha512
+            (List.(++)
+               (FIPS198_HMAC.xorb
+                  (List.(++) k (Bytes.zeros (Int.(-) 128 (List.size k))))
+                  (FIPS198_HMAC.ipad 128)) text))).
+
+(* HMAC_SHA512.hmac_sha512_init_total *)
+lemma hmac_sha512_init_total:
+  forall (K : BArray128.t),
+    phoare[ HashExtracted.M.__hmac_sha512_init :
+             k0 = K ==>
+             SHA512_Compress.hwords res.`1 =
+             FIPS180_SHA2.SHA512.compress FIPS180_SHA2.SHA512.H0_512
+               (FIPS180_SHA2_Blocks.words512
+                  (FIPS198_HMAC.xorb (BArray128.to_list K)
+                     (FIPS198_HMAC.ipad 128))) /\
+             SHA512_Compress.hwords res.`2 =
+             FIPS180_SHA2.SHA512.compress FIPS180_SHA2.SHA512.H0_512
+               (FIPS180_SHA2_Blocks.words512
+                  (FIPS198_HMAC.xorb (BArray128.to_list K)
+                     (FIPS198_HMAC.opad 128)))] = (Real.(%r) 1).
+
+(* HMAC_SHA512.hmac_sha512_finalize_total *)
+lemma hmac_sha512_finalize_total:
+  forall (ib ob text : Bytes.bytes),
+    List.size ob = 128 =>
+    phoare[ HashExtracted.M.__hmac_sha512_finalize :
+             SHA512_Stream.stream512 FIPS180_SHA2.SHA512.H0_512
+               (List.(++) ib text) inner buf total /\
+             SHA512_Compress.hwords outer =
+             FIPS180_SHA2.SHA512.compress FIPS180_SHA2.SHA512.H0_512
+               (FIPS180_SHA2_Blocks.words512 ob) /\
+             Int.(<) (List.size (List.(++) ib text)) (Ring.IntID.(^) 2 61) ==>
+             BArray64.to_list res.`1 =
+             FIPS180_SHA2.SHA512.sha512
+               (List.(++) ob (FIPS180_SHA2.SHA512.sha512 (List.(++) ib text)))] = (
+    Real.(%r) 1).
+
+(* MGF1_SHA256.mgf64_30_sha256_total *)
+lemma mgf64_30_sha256_total:
+  forall (s : BArray64.t),
+    phoare[ HashExtracted.M.mgf64_30___mgf1_sha256 :
+             seed = s ==>
+             BArray30.to_list res.`1 =
+             RFC8017_MGF1.mgf1_sha256 (BArray64.to_list s) 30] = (Real.(%r) 1).
+
+(* MGF1_SHA256.mgf64_34_sha256_total *)
+lemma mgf64_34_sha256_total:
+  forall (s : BArray64.t),
+    phoare[ HashExtracted.M.mgf64_34___mgf1_sha256 :
+             seed = s ==>
+             BArray34.to_list res.`1 =
+             RFC8017_MGF1.mgf1_sha256 (BArray64.to_list s) 34] = (Real.(%r) 1).
+
+(* MGF1_SHA512.mgf112_39_sha512_total *)
+lemma mgf112_39_sha512_total:
+  forall (s : BArray112.t),
+    phoare[ HashExtracted.M.mgf112_39___mgf1_sha512 :
+             seed = s ==>
+             BArray39.to_list res.`1 =
+             RFC8017_MGF1.mgf1_sha512 (BArray112.to_list s) 39] = (Real.(%r)
+                                                                    1).
+
+(* MGF1_SHA512.mgf112_42_sha512_total *)
+lemma mgf112_42_sha512_total:
+  forall (s : BArray112.t),
+    phoare[ HashExtracted.M.mgf112_42___mgf1_sha512 :
+             seed = s ==>
+             BArray42.to_list res.`1 =
+             RFC8017_MGF1.mgf1_sha512 (BArray112.to_list s) 42] = (Real.(%r)
+                                                                    1).
+
+(* MGF1_SHA512.mgf128_47_sha512_total *)
+lemma mgf128_47_sha512_total:
+  forall (s : BArray128.t),
+    phoare[ HashExtracted.M.mgf128_47___mgf1_sha512 :
+             seed = s ==>
+             BArray47.to_list res.`1 =
+             RFC8017_MGF1.mgf1_sha512 (BArray128.to_list s) 47] = (Real.(%r)
+                                                                    1).
+
+(* MGF1_SHA512.mgf128_49_sha512_total *)
+lemma mgf128_49_sha512_total:
+  forall (s : BArray128.t),
+    phoare[ HashExtracted.M.mgf128_49___mgf1_sha512 :
+             seed = s ==>
+             BArray49.to_list res.`1 =
+             RFC8017_MGF1.mgf1_sha512 (BArray128.to_list s) 49] = (Real.(%r)
+                                                                    1).
+
 (* Keccakf1600_Portable.keccak_round_correct *)
 lemma keccak_round_correct:
   forall (a0 : BArray200.t),
@@ -1745,6 +2291,9 @@ lemma keccakf1600_correct:
             KeccakState.lanes res.`1 =
             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ].
 
+(* Keccakf1600_Portable.keccakf1600_ll *)
+lemma keccakf1600_ll: islossless HashExtracted.M._keccakf1600.
+
 (* Keccakf1600_Portable.keccakf1600_total *)
 lemma keccakf1600_total:
   forall (s0 : BArray200.t),
@@ -1752,6 +2301,584 @@ lemma keccakf1600_total:
              st = s0 ==>
              KeccakState.lanes res.`1 =
              Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0)] = (
+    Real.(%r) 1).
+
+(* Sponge.keccak_absorb_mem_h *)
+lemma keccak_absorb_mem_h:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (r8 : int) (m0 : JWord.W8.t List.list) (mem0 : JMemory.global_mem_t)
+    (p0 l0 : JWord.W64.t),
+    hoare[ HashExtracted.M._keccak_absorb_mem :
+            JMemory.Glob.mem = mem0 /\
+            ShakeSponge.absorbing r8 m0 st pos /\
+            JWord.W64.to_uint rate = r8 /\
+            0 Int.(<) r8 Int.(<) 200 /\
+            in_0 = p0 /\
+            inlen = l0 /\
+            Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+              JModel_x86.ptr_modulus ==>
+            JMemory.Glob.mem = mem0 /\
+            ShakeSponge.absorbing r8
+              (List.(++) m0
+                 (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                    (JWord.W64.to_uint l0))) res.`1 res.`2
+            ].
+
+(* Sponge.keccak_absorb_mem_ll *)
+lemma keccak_absorb_mem_ll:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  phoare[ HashExtracted.M._keccak_absorb_mem :
+           Int.(<) (JWord.W64.to_uint pos) (JWord.W64.to_uint rate) ==> true] = (
+  Real.(%r) 1).
+
+(* Sponge.keccak_absorb_mem_total *)
+lemma keccak_absorb_mem_total:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (r8 : int) (m0 : JWord.W8.t List.list) (mem0 : JMemory.global_mem_t)
+    (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._keccak_absorb_mem :
+             JMemory.Glob.mem = mem0 /\
+             ShakeSponge.absorbing r8 m0 st pos /\
+             JWord.W64.to_uint rate = r8 /\
+             0 Int.(<) r8 Int.(<) 200 /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             ShakeSponge.absorbing r8
+               (List.(++) m0
+                  (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                     (JWord.W64.to_uint l0))) res.`1 res.`2] = (Real.(%r) 1).
+
+(* Sponge.keccak_finalize_h *)
+lemma keccak_finalize_h:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (r8 : int) (m0 : JWord.W8.t List.list) (trail : JWord.W8.t),
+    hoare[ HashExtracted.M._keccak_finalize :
+            ShakeSponge.absorbing r8 m0 st pos /\
+            JWord.W64.to_uint rate = r8 /\
+            0 Int.(<) r8 Int.(<=) 200 /\ JWord.W8u8.truncateu8 ds = trail ==>
+            KeccakState.lanes res.`1 =
+            Keccakf1600_Spec.keccak_f1600_op
+              (Keccak1600_Spec.ABSORB1600 trail r8 m0)
+            ].
+
+(* Sponge.keccak_finalize_ll *)
+lemma keccak_finalize_ll:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  islossless HashExtracted.M._keccak_finalize.
+
+(* Sponge.keccak_finalize_total *)
+lemma keccak_finalize_total:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (r8 : int) (m0 : JWord.W8.t List.list) (trail : JWord.W8.t),
+    phoare[ HashExtracted.M._keccak_finalize :
+             ShakeSponge.absorbing r8 m0 st pos /\
+             JWord.W64.to_uint rate = r8 /\
+             0 Int.(<) r8 Int.(<=) 200 /\ JWord.W8u8.truncateu8 ds = trail ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op
+               (Keccak1600_Spec.ABSORB1600 trail r8 m0)] = (Real.(%r) 1).
+
+(* SpongeSqueeze.extract_mem_h *)
+lemma extract_mem_h:
+  forall (s0 : BArray200.t) (mem0 : JMemory.global_mem_t) (p k q : int),
+    hoare[ HashExtracted.M.__keccak_extract_mem :
+            st = s0 /\
+            JMemory.Glob.mem = mem0 /\
+            JWord.W64.to_uint pos_ = p /\
+            JWord.W64.to_uint n_ = k /\
+            Int.(+) (JWord.W64.to_uint out) (JWord.W64.to_uint off_) = q /\
+            Int.(<=) (Int.(+) p k) 200 /\
+            Int.(<=) (Int.(+) q k) JModel_x86.ptr_modulus /\
+            Int.(<) (Int.(+) (JWord.W64.to_uint off_) k)
+              JModel_x86.ptr_modulus ==>
+            JMemory.Glob.mem = SpongeSqueeze.extx mem0 q s0 p (Int.(+) p k) ].
+
+(* SpongeSqueeze.extract_mem_ll *)
+lemma extract_mem_ll: islossless HashExtracted.M.__keccak_extract_mem.
+
+(* SpongeSqueeze.keccak_squeeze_mem_h *)
+lemma keccak_squeeze_mem_h:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (r8 : int) (s : FIPS202_Keccakf1600.state) (t0 : int)
+    (mem0 : JMemory.global_mem_t) (o0 l0 : JWord.W64.t),
+    hoare[ HashExtracted.M._keccak_squeeze_mem :
+            JMemory.Glob.mem = mem0 /\
+            SpongeSqueeze.squeezing r8 s t0 st pos /\
+            JWord.W64.to_uint rate = r8 /\
+            0 Int.(<) r8 Int.(<=) 200 /\
+            out = o0 /\
+            outlen = l0 /\
+            Int.(<=) (Int.(+) (JWord.W64.to_uint o0) (JWord.W64.to_uint l0))
+              JModel_x86.ptr_modulus ==>
+            JMemory.Glob.mem =
+            JMemory.stores mem0 (JWord.W64.to_uint o0)
+              (List.drop t0
+                 (Keccak1600_Spec.SQUEEZE1600 r8
+                    (Int.(+) t0 (JWord.W64.to_uint l0)) s)) /\
+            SpongeSqueeze.squeezing r8 s (Int.(+) t0 (JWord.W64.to_uint l0))
+              res.`1 res.`2
+            ].
+
+(* SpongeSqueeze.keccak_squeeze_mem_ll *)
+lemma keccak_squeeze_mem_ll:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  phoare[ HashExtracted.M._keccak_squeeze_mem :
+           Int.(<=) (JWord.W64.to_uint pos) (JWord.W64.to_uint rate) /\
+           Int.(<) 0 (JWord.W64.to_uint rate) ==> true] = (Real.(%r) 1).
+
+(* SpongeSqueeze.keccak_squeeze_mem_total *)
+lemma keccak_squeeze_mem_total:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (r8 : int) (s : FIPS202_Keccakf1600.state) (t0 : int)
+    (mem0 : JMemory.global_mem_t) (o0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._keccak_squeeze_mem :
+             JMemory.Glob.mem = mem0 /\
+             SpongeSqueeze.squeezing r8 s t0 st pos /\
+             JWord.W64.to_uint rate = r8 /\
+             0 Int.(<) r8 Int.(<=) 200 /\
+             out = o0 /\
+             outlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint o0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem =
+             JMemory.stores mem0 (JWord.W64.to_uint o0)
+               (List.drop t0
+                  (Keccak1600_Spec.SQUEEZE1600 r8
+                     (Int.(+) t0 (JWord.W64.to_uint l0)) s)) /\
+             SpongeSqueeze.squeezing r8 s (Int.(+) t0 (JWord.W64.to_uint l0))
+               res.`1 res.`2] = (Real.(%r) 1).
+
+(* SHA3_SHAKE.sha3_absorb_all_total *)
+lemma sha3_absorb_all_total:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (r8 : int) (trail : JWord.W8.t) (mem0 : JMemory.global_mem_t) (p0
+    l0 : JWord.W64.t),
+    phoare[ HashExtracted.M.__sha3_absorb_all :
+             JMemory.Glob.mem = mem0 /\
+             JWord.W64.to_uint rate = r8 /\
+             0 Int.(<) r8 Int.(<) 200 /\
+             JWord.W8u8.truncateu8 ds = trail /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op
+               (Keccak1600_Spec.ABSORB1600 trail r8
+                  (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                     (JWord.W64.to_uint l0)))] = (Real.(%r) 1).
+
+(* SHA3_SHAKE.sha3_224_mem_total *)
+lemma sha3_224_mem_total:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (mem0 : JMemory.global_mem_t) (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha3_224_mem :
+             JMemory.Glob.mem = mem0 /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             BArray28.to_list res.`1 =
+             Keccak1600_Spec.SHA3_224
+               (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* SHA3_SHAKE.sha3_256_mem_total *)
+lemma sha3_256_mem_total:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (mem0 : JMemory.global_mem_t) (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha3_256_mem :
+             JMemory.Glob.mem = mem0 /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             ADRS.bytes_of res.`1 =
+             Keccak1600_Spec.SHA3_256
+               (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* SHA3_SHAKE.sha3_384_mem_total *)
+lemma sha3_384_mem_total:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (mem0 : JMemory.global_mem_t) (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha3_384_mem :
+             JMemory.Glob.mem = mem0 /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             BArray48.to_list res.`1 =
+             Keccak1600_Spec.SHA3_384
+               (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* SHA3_SHAKE.sha3_512_mem_total *)
+lemma sha3_512_mem_total:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (mem0 : JMemory.global_mem_t) (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha3_512_mem :
+             JMemory.Glob.mem = mem0 /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             BArray64.to_list res.`1 =
+             Keccak1600_Spec.SHA3_512
+               (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* SHA3_SHAKE.shake_mem_total *)
+lemma shake_mem_total:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (r8 : int) (mem0 : JMemory.global_mem_t) (o0 l0 p0
+    n0 : JWord.W64.t),
+    phoare[ HashExtracted.M.__shake_mem :
+             JMemory.Glob.mem = mem0 /\
+             JWord.W64.to_uint rate = r8 /\
+             0 Int.(<) r8 Int.(<) 200 /\
+             out = o0 /\
+             outlen = l0 /\
+             in_0 = p0 /\
+             inlen = n0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint n0))
+               JModel_x86.ptr_modulus /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint o0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem =
+             JMemory.stores mem0 (JWord.W64.to_uint o0)
+               (Keccak1600_Spec.KECCAK1600 r8
+                  (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                     (JWord.W64.to_uint n0)) Keccak1600_Spec.SHAKE_DS_BYTE
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* SHA3_SHAKE.shake128_mem_total *)
+lemma shake128_mem_total:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (mem0 : JMemory.global_mem_t) (o0 l0 p0 n0 : JWord.W64.t),
+    phoare[ HashExtracted.M._shake128_mem :
+             JMemory.Glob.mem = mem0 /\
+             out = o0 /\
+             outlen = l0 /\
+             in_0 = p0 /\
+             inlen = n0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint n0))
+               JModel_x86.ptr_modulus /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint o0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem =
+             JMemory.stores mem0 (JWord.W64.to_uint o0)
+               (Keccak1600_Spec.SHAKE128
+                  (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                     (JWord.W64.to_uint n0)) (JWord.W64.to_uint l0))] = (
+    Real.(%r) 1).
+
+(* SHA3_SHAKE.shake256_mem_total *)
+lemma shake256_mem_total:
+  (forall (s0 : BArray200.t),
+     hoare[ HashExtracted.M._keccakf1600 :
+             st = s0 ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0) ]) =>
+  islossless HashExtracted.M._keccakf1600 =>
+  forall (mem0 : JMemory.global_mem_t) (o0 l0 p0 n0 : JWord.W64.t),
+    phoare[ HashExtracted.M._shake256_mem :
+             JMemory.Glob.mem = mem0 /\
+             out = o0 /\
+             outlen = l0 /\
+             in_0 = p0 /\
+             inlen = n0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint n0))
+               JModel_x86.ptr_modulus /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint o0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem =
+             JMemory.stores mem0 (JWord.W64.to_uint o0)
+               (Keccak1600_Spec.SHAKE256
+                  (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                     (JWord.W64.to_uint n0)) (JWord.W64.to_uint l0))] = (
+    Real.(%r) 1).
+
+(* Sponge_Portable.keccak_absorb_mem_total *)
+lemma keccak_absorb_mem_total:
+  forall (r8 : int) (m0 : JWord.W8.t List.list) (mem0 : JMemory.global_mem_t)
+    (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._keccak_absorb_mem :
+             JMemory.Glob.mem = mem0 /\
+             ShakeSponge.absorbing r8 m0 st pos /\
+             JWord.W64.to_uint rate = r8 /\
+             0 Int.(<) r8 Int.(<) 200 /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             ShakeSponge.absorbing r8
+               (List.(++) m0
+                  (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                     (JWord.W64.to_uint l0))) res.`1 res.`2] = (Real.(%r) 1).
+
+(* Sponge_Portable.keccak_finalize_total *)
+lemma keccak_finalize_total:
+  forall (r8 : int) (m0 : JWord.W8.t List.list) (trail : JWord.W8.t),
+    phoare[ HashExtracted.M._keccak_finalize :
+             ShakeSponge.absorbing r8 m0 st pos /\
+             JWord.W64.to_uint rate = r8 /\
+             0 Int.(<) r8 Int.(<=) 200 /\ JWord.W8u8.truncateu8 ds = trail ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op
+               (Keccak1600_Spec.ABSORB1600 trail r8 m0)] = (Real.(%r) 1).
+
+(* Sponge_Portable.keccak_squeeze_mem_total *)
+lemma keccak_squeeze_mem_total:
+  forall (r8 : int) (s : FIPS202_Keccakf1600.state) (t0 : int)
+    (mem0 : JMemory.global_mem_t) (o0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._keccak_squeeze_mem :
+             JMemory.Glob.mem = mem0 /\
+             SpongeSqueeze.squeezing r8 s t0 st pos /\
+             JWord.W64.to_uint rate = r8 /\
+             0 Int.(<) r8 Int.(<=) 200 /\
+             out = o0 /\
+             outlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint o0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem =
+             JMemory.stores mem0 (JWord.W64.to_uint o0)
+               (List.drop t0
+                  (Keccak1600_Spec.SQUEEZE1600 r8
+                     (Int.(+) t0 (JWord.W64.to_uint l0)) s)) /\
+             SpongeSqueeze.squeezing r8 s (Int.(+) t0 (JWord.W64.to_uint l0))
+               res.`1 res.`2] = (Real.(%r) 1).
+
+(* Sponge_Portable.sha3_absorb_all_total *)
+lemma sha3_absorb_all_total:
+  forall (r8 : int) (trail : JWord.W8.t) (mem0 : JMemory.global_mem_t) (p0
+    l0 : JWord.W64.t),
+    phoare[ HashExtracted.M.__sha3_absorb_all :
+             JMemory.Glob.mem = mem0 /\
+             JWord.W64.to_uint rate = r8 /\
+             0 Int.(<) r8 Int.(<) 200 /\
+             JWord.W8u8.truncateu8 ds = trail /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op
+               (Keccak1600_Spec.ABSORB1600 trail r8
+                  (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                     (JWord.W64.to_uint l0)))] = (Real.(%r) 1).
+
+(* Sponge_Portable.sha3_224_mem_total *)
+lemma sha3_224_mem_total:
+  forall (mem0 : JMemory.global_mem_t) (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha3_224_mem :
+             JMemory.Glob.mem = mem0 /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             BArray28.to_list res.`1 =
+             Keccak1600_Spec.SHA3_224
+               (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* Sponge_Portable.sha3_256_mem_total *)
+lemma sha3_256_mem_total:
+  forall (mem0 : JMemory.global_mem_t) (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha3_256_mem :
+             JMemory.Glob.mem = mem0 /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             ADRS.bytes_of res.`1 =
+             Keccak1600_Spec.SHA3_256
+               (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* Sponge_Portable.sha3_384_mem_total *)
+lemma sha3_384_mem_total:
+  forall (mem0 : JMemory.global_mem_t) (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha3_384_mem :
+             JMemory.Glob.mem = mem0 /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             BArray48.to_list res.`1 =
+             Keccak1600_Spec.SHA3_384
+               (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* Sponge_Portable.sha3_512_mem_total *)
+lemma sha3_512_mem_total:
+  forall (mem0 : JMemory.global_mem_t) (p0 l0 : JWord.W64.t),
+    phoare[ HashExtracted.M._sha3_512_mem :
+             JMemory.Glob.mem = mem0 /\
+             in_0 = p0 /\
+             inlen = l0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem = mem0 /\
+             BArray64.to_list res.`1 =
+             Keccak1600_Spec.SHA3_512
+               (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* Sponge_Portable.shake_mem_total *)
+lemma shake_mem_total:
+  forall (r8 : int) (mem0 : JMemory.global_mem_t) (o0 l0 p0
+    n0 : JWord.W64.t),
+    phoare[ HashExtracted.M.__shake_mem :
+             JMemory.Glob.mem = mem0 /\
+             JWord.W64.to_uint rate = r8 /\
+             0 Int.(<) r8 Int.(<) 200 /\
+             out = o0 /\
+             outlen = l0 /\
+             in_0 = p0 /\
+             inlen = n0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint n0))
+               JModel_x86.ptr_modulus /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint o0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem =
+             JMemory.stores mem0 (JWord.W64.to_uint o0)
+               (Keccak1600_Spec.KECCAK1600 r8
+                  (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                     (JWord.W64.to_uint n0)) Keccak1600_Spec.SHAKE_DS_BYTE
+                  (JWord.W64.to_uint l0))] = (Real.(%r) 1).
+
+(* Sponge_Portable.shake128_mem_total *)
+lemma shake128_mem_total:
+  forall (mem0 : JMemory.global_mem_t) (o0 l0 p0 n0 : JWord.W64.t),
+    phoare[ HashExtracted.M._shake128_mem :
+             JMemory.Glob.mem = mem0 /\
+             out = o0 /\
+             outlen = l0 /\
+             in_0 = p0 /\
+             inlen = n0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint n0))
+               JModel_x86.ptr_modulus /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint o0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem =
+             JMemory.stores mem0 (JWord.W64.to_uint o0)
+               (Keccak1600_Spec.SHAKE128
+                  (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                     (JWord.W64.to_uint n0)) (JWord.W64.to_uint l0))] = (
+    Real.(%r) 1).
+
+(* Sponge_Portable.shake256_mem_total *)
+lemma shake256_mem_total:
+  forall (mem0 : JMemory.global_mem_t) (o0 l0 p0 n0 : JWord.W64.t),
+    phoare[ HashExtracted.M._shake256_mem :
+             JMemory.Glob.mem = mem0 /\
+             out = o0 /\
+             outlen = l0 /\
+             in_0 = p0 /\
+             inlen = n0 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint n0))
+               JModel_x86.ptr_modulus /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint o0) (JWord.W64.to_uint l0))
+               JModel_x86.ptr_modulus ==>
+             JMemory.Glob.mem =
+             JMemory.stores mem0 (JWord.W64.to_uint o0)
+               (Keccak1600_Spec.SHAKE256
+                  (SHA512_Blocks.memread mem0 (JWord.W64.to_uint p0)
+                     (JWord.W64.to_uint n0)) (JWord.W64.to_uint l0))] = (
     Real.(%r) 1).
 
 (* ADRS.adrs_zero_correct *)
@@ -13757,7 +14884,7 @@ lemma spec_hedged_eq:
 
 * In [operators, predicates or exceptions]:
 
-definitions 2672
+definitions 2695
 
 ADRS.bytes_of abbrev d514b4f2c8f7c3d4
 Array200.Array200."_.[_<-_]" op fdaf541d35ff6144
@@ -14755,6 +15882,9 @@ KeyedHashFunctions.in_t. type e16006776bea2bc2
 KeyedHashFunctions.key_t. type 25d769cd747283ca
 KeyedHashFunctions.out_t. type 6d69a92c8265345d
 KeyedHashFunctions.spexists abbrev 8e858ceb8547cd44
+MGF1_SHA256.lay op 370b2b9afc419836
+MGF1_SHA512.lay112 op 9e9043535291fb92
+MGF1_SHA512.lay128 op 3293f534bb809b1a
 MerkleTrees.cons_ap op 74bdd48213e571ab
 MerkleTrees.extract_collision_bt_ap op e8177891fd7767db
 MerkleTrees.val_ap op f444a86ced302f3b
@@ -14823,6 +15953,7 @@ PRE_From_SPR_DSPR.output. type 336af1c4a0acf247
 RFC8017_MGF1.mgf1 op f54cdcec3b8b9750
 RFC8017_MGF1.mgf1_sha256 op 83e5865162f6039f
 RFC8017_MGF1.mgf1_sha512 op ed8848c66e7a6c44
+SHA256_Blocks.memread abbrev 7d0a69f789134c7f
 SHA256_Compress.T1 op c8a93b7ef6954705
 SHA256_Compress.T2 op 2e300f28e74dd266
 SHA256_Compress.hwords op 0d998c6c2e92aa3d
@@ -14832,6 +15963,12 @@ SHA256_Compress.sched_step op 8b57d6f5d89592ad
 SHA256_Compress.slots_ok op 42821ff1d683998d
 SHA256_Compress.vars op 97f8da2332896303
 SHA256_Compress.window_ok op 7228383cb3eca816
+SHA256_Stream.mfin op 5a4ee42f039a08b1
+SHA256_Stream.nfill op f4fd5d25568110a4
+SHA256_Stream.pending op 1889ec27f6ebc373
+SHA256_Stream.stream256 op 550a06100bfea85a
+SHA256_Stream.tail256 op 39f0bf5d85db93c2
+SHA512_Blocks.memread abbrev 7d0a69f789134c7f
 SHA512_Compress.T1 op ca8cfb47b6ea418c
 SHA512_Compress.T2 op 39f58e239ae6778b
 SHA512_Compress.hwords op f42e99d9e19878f8
@@ -14841,6 +15978,11 @@ SHA512_Compress.sched_step op 417102b9edf7798a
 SHA512_Compress.slots_ok op 51d819a8b7db8dde
 SHA512_Compress.vars op 53df1f5b467fb5e3
 SHA512_Compress.window_ok op 0bd34ba6d3eac34b
+SHA512_Stream.mfin op de23f1fa26845bb8
+SHA512_Stream.nfill op b31babe5ad9d5c57
+SHA512_Stream.pending op 70fdd081bd84707e
+SHA512_Stream.stream512 op 9912dc42ec51a6e4
+SHA512_Stream.tail512 op 21ce0d0775acaacb
 SLHDSA_EUFCMA.HMsg.* nested 484194910dfcb28b 105
 SLHDSA_EUFCMA.HMsg.spexists abbrev c85c85ef9f500013
 SLHDSA_EUFCMA.HMsg_ITSR.Adv_ITSR module-type 26d63617efdb15c9
@@ -16155,6 +17297,14 @@ SPHINCS_Sets.SLH_DSA_SHAKE_256S.wpk_elem op 901bc73e4b034c73
 SPHINCS_Sets.SLH_DSA_SHAKE_256S.wpkv_elem op 4ee680700319bd88
 SPHINCS_Sets.SLH_DSA_SHAKE_256S.wsig_elem op 8e003b872af40c57
 SPHINCS_Sets.SLH_DSA_SHAKE_256S.wsk op 28c6fa5780d8a1e0
+ShakeSponge.abs_state op 7f28e0b2a317affa
+ShakeSponge.absorbing op 341427a96436594c
+ShakeSponge.xorb_at op a19721a7e82d2c1c
+Sponge.xorx op 0bd99f583a7fc6d7
+SpongeSqueeze.extx op 4e53161b7908bbf1
+SpongeSqueeze.sqbyte op 6e9ceda9a562eca2
+SpongeSqueeze.sqseq op 8db276b3e1cb1c9e
+SpongeSqueeze.squeezing op d83ec824fe338f6f
 TweakableHashFunctions.Collection.* nested fa220a5456de1006 54
 TweakableHashFunctions.Collection.O_THFC_Default module e1bb9b1cb3ca501e
 TweakableHashFunctions.Collection.Oracle_THFC module-type 139c5b0a5046e17b
