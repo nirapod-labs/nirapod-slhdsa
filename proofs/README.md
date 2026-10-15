@@ -177,7 +177,9 @@ Limits:
 
 `make extract` runs `jasmin2ec` on two entries, once per (architecture,
 variant) pair listed in the Makefile (`EXTRACTIONS`):
-`extracted/hash.jazz`, which only requires the production hash sources and
+`extracted/hash.jazz`, which only requires the production hash sources
+(SHA-2, HMAC, the sponge, and MGF1 once for each seed and output length of
+the SHA2 parameter sets, since `mgf1.jinc` fixes both at compile time) and
 is extracted under the include roots that select that pair's kernels, and
 `extracted/address.jazz`, which only requires the address code of the
 SLH-DSA core (`src/slhdsa/address.jinc`; it depends on no parameter set).

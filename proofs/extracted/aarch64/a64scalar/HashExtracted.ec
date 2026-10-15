@@ -13,7 +13,7 @@
  * Regenerate:
  *     make -C proofs extract     (check: make -C proofs check-extraction)
  *
- * Entry proofs/extracted/hash.jazz SHA-256 ee2d389dc1c565eeadf2a7218164eacfc55f45165823d299fa6e9defaadbb0fd
+ * Entry proofs/extracted/hash.jazz SHA-256 af99c0cba280c95d4d6ac9c98b53090de1c2b2b723f74f97b7c95386d9d79e20
  * Sources under src/hash (SHA-256, path):
  *     3f9b879d57975656cbaa3d23520ba044fe9bbfa823a6640e0228eee023193392  ./aarch64/word.jinc
  *     5e10960ea822ac46820eacbfca5ee743235a6c0c8fbc48faeb21b046937f16b1  ./keccak/aarch64/scalar/keccakf1600.jinc
@@ -63,7 +63,9 @@ from Jasmin require import JModel_armv8a.
 import SLH64.
 
 require import
-BArray32 BArray64 BArray128 BArray192 BArray200 BArray256 BArray640.
+BArray30 BArray32 BArray34 BArray39 BArray42 BArray47 BArray49 BArray64
+BArray112 BArray128 BArray192 BArray200 BArray256 BArray320 BArray640
+SBArray192_64 SBArray320_64 SBArray192_128 SBArray320_128.
 
 abbrev kECCAK_RC =
 (BArray192.of_list64
@@ -977,6 +979,226 @@ module M = {
     (out, ms) <@ __sha512_mem_from (out, h, in_0, inlen, ms);
     return (out, ms);
   }
+  proc _hmac_sha256_keyblock_mem (k0:BArray64.t, key:W64.t, keylen:W64.t,
+                                  ms:W64.t) : BArray64.t * W64.t = {
+    var j:int;
+    var long:bool;
+    var i:W64.t;
+    var more:bool;
+    var t:W64.t;
+    var digest:BArray32.t;
+    var z:W64.t;
+    digest <- witness;
+    j <- 0;
+    while ((j < 8)) {
+      k0 <- (BArray64.set64 k0 j (W64.of_int 0));
+      j <- (j + 1);
+    }
+    long <- ((W64.of_int 64) \ult keylen);
+    if (long) {
+      ms <- (update_msf long ms);
+      (* Erased call to spill *)
+      (digest, ms) <@ _sha256_mem (digest, key, keylen, ms);
+      (* Erased call to unspill *)
+      k0 <- (protect_ptr k0 ms);
+      j <- 0;
+      while ((j < 4)) {
+        t <- (BArray32.get64 digest j);
+        k0 <- (BArray64.set64 k0 j t);
+        j <- (j + 1);
+      }
+      i <- (W64.of_int 32);
+    } else {
+      ms <- (update_msf (! long) ms);
+      i <- (W64.of_int 0);
+      more <- (i \ult keylen);
+      while (more) {
+        ms <- (update_msf more ms);
+        t <- (zeroextu64 (loadW8 Glob.mem (W64.to_uint (key + i))));
+        k0 <- (BArray64.set8 k0 (W64.to_uint i) (truncateu8 t));
+        i <- (i + (W64.of_int 1));
+        more <- (i \ult keylen);
+      }
+      ms <- (update_msf (! more) ms);
+    }
+    z <- (W64.of_int 0);
+    more <- (i \ult (W64.of_int 64));
+    while (more) {
+      ms <- (update_msf more ms);
+      k0 <- (BArray64.set8 k0 (W64.to_uint i) (truncateu8 z));
+      i <- (i + (W64.of_int 1));
+      more <- (i \ult (W64.of_int 64));
+    }
+    ms <- (update_msf (! more) ms);
+    return (k0, ms);
+  }
+  proc _hmac_sha512_keyblock_mem (k0:BArray128.t, key:W64.t, keylen:W64.t,
+                                  ms:W64.t) : BArray128.t * W64.t = {
+    var j:int;
+    var long:bool;
+    var i:W64.t;
+    var more:bool;
+    var t:W64.t;
+    var digest:BArray64.t;
+    var z:W64.t;
+    digest <- witness;
+    j <- 0;
+    while ((j < 16)) {
+      k0 <- (BArray128.set64 k0 j (W64.of_int 0));
+      j <- (j + 1);
+    }
+    long <- ((W64.of_int 128) \ult keylen);
+    if (long) {
+      ms <- (update_msf long ms);
+      (* Erased call to spill *)
+      (digest, ms) <@ _sha512_mem (digest, key, keylen, ms);
+      (* Erased call to unspill *)
+      k0 <- (protect_ptr k0 ms);
+      j <- 0;
+      while ((j < 8)) {
+        t <- (BArray64.get64 digest j);
+        k0 <- (BArray128.set64 k0 j t);
+        j <- (j + 1);
+      }
+      i <- (W64.of_int 64);
+    } else {
+      ms <- (update_msf (! long) ms);
+      i <- (W64.of_int 0);
+      more <- (i \ult keylen);
+      while (more) {
+        ms <- (update_msf more ms);
+        t <- (zeroextu64 (loadW8 Glob.mem (W64.to_uint (key + i))));
+        k0 <- (BArray128.set8 k0 (W64.to_uint i) (truncateu8 t));
+        i <- (i + (W64.of_int 1));
+        more <- (i \ult keylen);
+      }
+      ms <- (update_msf (! more) ms);
+    }
+    z <- (W64.of_int 0);
+    more <- (i \ult (W64.of_int 128));
+    while (more) {
+      ms <- (update_msf more ms);
+      k0 <- (BArray128.set8 k0 (W64.to_uint i) (truncateu8 z));
+      i <- (i + (W64.of_int 1));
+      more <- (i \ult (W64.of_int 128));
+    }
+    ms <- (update_msf (! more) ms);
+    return (k0, ms);
+  }
+  proc __hmac_sha256_init (inner:BArray32.t, outer:BArray32.t, k0:BArray64.t,
+                           ms:W64.t) : BArray32.t * BArray32.t * W64.t = {
+    var mi:W64.t;
+    var mo:W64.t;
+    var i:int;
+    var t:W64.t;
+    var u:W64.t;
+    var ipad:BArray64.t;
+    var opad:BArray64.t;
+    ipad <- witness;
+    opad <- witness;
+    mi <- (W64.of_int 3906369333256140342);
+    mo <- (W64.of_int 6655295901103053916);
+    i <- 0;
+    while ((i < 8)) {
+      t <- (BArray64.get64 k0 i);
+      u <- t;
+      t <- (t `^` mi);
+      u <- (u `^` mo);
+      ipad <- (BArray64.set64 ipad i t);
+      opad <- (BArray64.set64 opad i u);
+      i <- (i + 1);
+    }
+    inner <@ __sha256_init (inner);
+    (inner, ms) <@ _sha256_compress (inner, ipad, ms);
+    outer <@ __sha256_init (outer);
+    (outer, ms) <@ _sha256_compress (outer, opad, ms);
+    return (inner, outer, ms);
+  }
+  proc __hmac_sha512_init (inner:BArray64.t, outer:BArray64.t,
+                           k0:BArray128.t, ms:W64.t) : BArray64.t *
+                                                       BArray64.t * W64.t = {
+    var mi:W64.t;
+    var mo:W64.t;
+    var i:int;
+    var t:W64.t;
+    var u:W64.t;
+    var ipad:BArray128.t;
+    var opad:BArray128.t;
+    ipad <- witness;
+    opad <- witness;
+    mi <- (W64.of_int 3906369333256140342);
+    mo <- (W64.of_int 6655295901103053916);
+    i <- 0;
+    while ((i < 16)) {
+      t <- (BArray128.get64 k0 i);
+      u <- t;
+      t <- (t `^` mi);
+      u <- (u `^` mo);
+      ipad <- (BArray128.set64 ipad i t);
+      opad <- (BArray128.set64 opad i u);
+      i <- (i + 1);
+    }
+    inner <@ __sha512_init (inner);
+    (inner, ms) <@ _sha512_compress (inner, ipad, ms);
+    outer <@ __sha512_init (outer);
+    (outer, ms) <@ _sha512_compress (outer, opad, ms);
+    return (inner, outer, ms);
+  }
+  proc __hmac_sha256_finalize (out:BArray32.t, inner:BArray32.t,
+                               buf:BArray64.t, total:W64.t, outer:BArray32.t,
+                               ms:W64.t) : BArray32.t * BArray32.t *
+                                           BArray64.t * W64.t = {
+    var digest:BArray32.t;
+    var i:int;
+    var x:W32.t;
+    var t:W64.t;
+    digest <- witness;
+    (digest, inner, buf, ms) <@ _sha256_finalize (digest, inner, buf, 
+    total, ms);
+    i <- 0;
+    while ((i < 8)) {
+      x <- (BArray32.get32 outer i);
+      inner <- (BArray32.set32 inner i x);
+      i <- (i + 1);
+    }
+    i <- 0;
+    while ((i < 4)) {
+      t <- (BArray32.get64 digest i);
+      buf <- (BArray64.set64 buf i t);
+      i <- (i + 1);
+    }
+    total <- (W64.of_int (64 + 32));
+    (out, inner, buf, ms) <@ _sha256_finalize (out, inner, buf, total, ms);
+    return (out, inner, buf, ms);
+  }
+  proc __hmac_sha512_finalize (out:BArray64.t, inner:BArray64.t,
+                               buf:BArray128.t, total:W64.t,
+                               outer:BArray64.t, ms:W64.t) : BArray64.t *
+                                                             BArray64.t *
+                                                             BArray128.t *
+                                                             W64.t = {
+    var digest:BArray64.t;
+    var i:int;
+    var t:W64.t;
+    digest <- witness;
+    (digest, inner, buf, ms) <@ _sha512_finalize (digest, inner, buf, 
+    total, ms);
+    i <- 0;
+    while ((i < 8)) {
+      t <- (BArray64.get64 outer i);
+      inner <- (BArray64.set64 inner i t);
+      i <- (i + 1);
+    }
+    i <- 0;
+    while ((i < 8)) {
+      t <- (BArray64.get64 digest i);
+      buf <- (BArray128.set64 buf i t);
+      i <- (i + 1);
+    }
+    total <- (W64.of_int (128 + 64));
+    (out, inner, buf, ms) <@ _sha512_finalize (out, inner, buf, total, ms);
+    return (out, inner, buf, ms);
+  }
   proc __keccak_rho (x:int, y:int) : int = {
     var r:int;
     var cx:int;
@@ -1372,5 +1594,785 @@ module M = {
     }
     ms <- (update_msf (! more) ms);
     return (st, pos, ms);
+  }
+  proc mgf64_30____mgf1_layout (m:BArray192.t, seed:BArray64.t, padded:int) : 
+  BArray192.t = {
+    var inc:int;
+    var z:W64.t;
+    var i:int;
+    var t:W64.t;
+    z <- (W64.of_int 0);
+    inc <- padded;
+    i <- 0;
+    while ((i < inc)) {
+      m <- (BArray192.set8 m i (truncateu8 z));
+      i <- (i + 1);
+    }
+    i <- 0;
+    while ((i < 64)) {
+      t <- (zeroextu64 (BArray64.get8 seed i));
+      m <- (BArray192.set8 m i (truncateu8 t));
+      i <- (i + 1);
+    }
+    t <- (W64.of_int 128);
+    m <- (BArray192.set8 m (64 + 4) (truncateu8 t));
+    t <- (W64.of_int ((64 + 4) * 8));
+    i <- 0;
+    while ((i < 8)) {
+      m <- (BArray192.set8 m ((padded - 1) - i) (truncateu8 t));
+      t <- (t `>>` (W8.of_int 8));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf64_30____mgf1_set_counter (m:BArray192.t, c:int) : BArray192.t = {
+    var t:W64.t;
+    var i:int;
+    i <- 0;
+    while ((i < 4)) {
+      t <- (W64.of_int c);
+      t <- (t `>>` (W8.of_int (8 * (3 - i))));
+      m <- (BArray192.set8 m (64 + i) (truncateu8 t));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf64_30___mgf1_sha256 (out:BArray30.t, seed:BArray64.t, ms:W64.t) : 
+  BArray30.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray192.t;
+    var c:int;
+    var h:BArray32.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var x:W32.t;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf64_30____mgf1_layout (m, seed,
+    (64 * (((((64 + 4) + 1) + 8) + 63) %/ 64)));
+    inc <- ((30 + 31) %/ 32);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf64_30____mgf1_set_counter (m, c);
+      h <@ __sha256_init (h);
+      inc_0 <- (((((64 + 4) + 1) + 8) + 63) %/ 64);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha256_compress (h, (SBArray192_64.get_sub8 m (64 * b)),
+        ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((30 - (32 * c)) < 32) ? (30 - (32 * c)) : 32);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        x <- (BArray32.get32 h (i %/ 4));
+        x <- (x `>>` (W8.of_int (8 * (3 - (i %% 4)))));
+        t <- (zeroextu64 x);
+        out <- (BArray30.set8 out ((32 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
+  }
+  proc mgf64_30___mgf1_sha512 (out:BArray30.t, seed:BArray64.t, ms:W64.t) : 
+  BArray30.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray192.t;
+    var c:int;
+    var h:BArray64.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf64_30____mgf1_layout (m, seed,
+    (128 * (((((64 + 4) + 1) + 16) + 127) %/ 128)));
+    inc <- ((30 + 63) %/ 64);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf64_30____mgf1_set_counter (m, c);
+      h <@ __sha512_init (h);
+      inc_0 <- (((((64 + 4) + 1) + 16) + 127) %/ 128);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha512_compress (h,
+        (SBArray192_128.get_sub8 m (128 * b)), ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((30 - (64 * c)) < 64) ? (30 - (64 * c)) : 64);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        t <- (BArray64.get64 h (i %/ 8));
+        t <- (t `>>` (W8.of_int (8 * (7 - (i %% 8)))));
+        out <- (BArray30.set8 out ((64 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
+  }
+  proc mgf64_34____mgf1_layout (m:BArray192.t, seed:BArray64.t, padded:int) : 
+  BArray192.t = {
+    var inc:int;
+    var z:W64.t;
+    var i:int;
+    var t:W64.t;
+    z <- (W64.of_int 0);
+    inc <- padded;
+    i <- 0;
+    while ((i < inc)) {
+      m <- (BArray192.set8 m i (truncateu8 z));
+      i <- (i + 1);
+    }
+    i <- 0;
+    while ((i < 64)) {
+      t <- (zeroextu64 (BArray64.get8 seed i));
+      m <- (BArray192.set8 m i (truncateu8 t));
+      i <- (i + 1);
+    }
+    t <- (W64.of_int 128);
+    m <- (BArray192.set8 m (64 + 4) (truncateu8 t));
+    t <- (W64.of_int ((64 + 4) * 8));
+    i <- 0;
+    while ((i < 8)) {
+      m <- (BArray192.set8 m ((padded - 1) - i) (truncateu8 t));
+      t <- (t `>>` (W8.of_int 8));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf64_34____mgf1_set_counter (m:BArray192.t, c:int) : BArray192.t = {
+    var t:W64.t;
+    var i:int;
+    i <- 0;
+    while ((i < 4)) {
+      t <- (W64.of_int c);
+      t <- (t `>>` (W8.of_int (8 * (3 - i))));
+      m <- (BArray192.set8 m (64 + i) (truncateu8 t));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf64_34___mgf1_sha256 (out:BArray34.t, seed:BArray64.t, ms:W64.t) : 
+  BArray34.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray192.t;
+    var c:int;
+    var h:BArray32.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var x:W32.t;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf64_34____mgf1_layout (m, seed,
+    (64 * (((((64 + 4) + 1) + 8) + 63) %/ 64)));
+    inc <- ((34 + 31) %/ 32);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf64_34____mgf1_set_counter (m, c);
+      h <@ __sha256_init (h);
+      inc_0 <- (((((64 + 4) + 1) + 8) + 63) %/ 64);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha256_compress (h, (SBArray192_64.get_sub8 m (64 * b)),
+        ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((34 - (32 * c)) < 32) ? (34 - (32 * c)) : 32);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        x <- (BArray32.get32 h (i %/ 4));
+        x <- (x `>>` (W8.of_int (8 * (3 - (i %% 4)))));
+        t <- (zeroextu64 x);
+        out <- (BArray34.set8 out ((32 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
+  }
+  proc mgf64_34___mgf1_sha512 (out:BArray34.t, seed:BArray64.t, ms:W64.t) : 
+  BArray34.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray192.t;
+    var c:int;
+    var h:BArray64.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf64_34____mgf1_layout (m, seed,
+    (128 * (((((64 + 4) + 1) + 16) + 127) %/ 128)));
+    inc <- ((34 + 63) %/ 64);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf64_34____mgf1_set_counter (m, c);
+      h <@ __sha512_init (h);
+      inc_0 <- (((((64 + 4) + 1) + 16) + 127) %/ 128);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha512_compress (h,
+        (SBArray192_128.get_sub8 m (128 * b)), ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((34 - (64 * c)) < 64) ? (34 - (64 * c)) : 64);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        t <- (BArray64.get64 h (i %/ 8));
+        t <- (t `>>` (W8.of_int (8 * (7 - (i %% 8)))));
+        out <- (BArray34.set8 out ((64 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
+  }
+  proc mgf112_39____mgf1_layout (m:BArray320.t, seed:BArray112.t, padded:int) : 
+  BArray320.t = {
+    var inc:int;
+    var z:W64.t;
+    var i:int;
+    var t:W64.t;
+    z <- (W64.of_int 0);
+    inc <- padded;
+    i <- 0;
+    while ((i < inc)) {
+      m <- (BArray320.set8 m i (truncateu8 z));
+      i <- (i + 1);
+    }
+    i <- 0;
+    while ((i < 112)) {
+      t <- (zeroextu64 (BArray112.get8 seed i));
+      m <- (BArray320.set8 m i (truncateu8 t));
+      i <- (i + 1);
+    }
+    t <- (W64.of_int 128);
+    m <- (BArray320.set8 m (112 + 4) (truncateu8 t));
+    t <- (W64.of_int ((112 + 4) * 8));
+    i <- 0;
+    while ((i < 8)) {
+      m <- (BArray320.set8 m ((padded - 1) - i) (truncateu8 t));
+      t <- (t `>>` (W8.of_int 8));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf112_39____mgf1_set_counter (m:BArray320.t, c:int) : BArray320.t = {
+    var t:W64.t;
+    var i:int;
+    i <- 0;
+    while ((i < 4)) {
+      t <- (W64.of_int c);
+      t <- (t `>>` (W8.of_int (8 * (3 - i))));
+      m <- (BArray320.set8 m (112 + i) (truncateu8 t));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf112_39___mgf1_sha256 (out:BArray39.t, seed:BArray112.t, ms:W64.t) : 
+  BArray39.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray320.t;
+    var c:int;
+    var h:BArray32.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var x:W32.t;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf112_39____mgf1_layout (m, seed,
+    (64 * (((((112 + 4) + 1) + 8) + 63) %/ 64)));
+    inc <- ((39 + 31) %/ 32);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf112_39____mgf1_set_counter (m, c);
+      h <@ __sha256_init (h);
+      inc_0 <- (((((112 + 4) + 1) + 8) + 63) %/ 64);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha256_compress (h, (SBArray320_64.get_sub8 m (64 * b)),
+        ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((39 - (32 * c)) < 32) ? (39 - (32 * c)) : 32);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        x <- (BArray32.get32 h (i %/ 4));
+        x <- (x `>>` (W8.of_int (8 * (3 - (i %% 4)))));
+        t <- (zeroextu64 x);
+        out <- (BArray39.set8 out ((32 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
+  }
+  proc mgf112_39___mgf1_sha512 (out:BArray39.t, seed:BArray112.t, ms:W64.t) : 
+  BArray39.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray320.t;
+    var c:int;
+    var h:BArray64.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf112_39____mgf1_layout (m, seed,
+    (128 * (((((112 + 4) + 1) + 16) + 127) %/ 128)));
+    inc <- ((39 + 63) %/ 64);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf112_39____mgf1_set_counter (m, c);
+      h <@ __sha512_init (h);
+      inc_0 <- (((((112 + 4) + 1) + 16) + 127) %/ 128);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha512_compress (h,
+        (SBArray320_128.get_sub8 m (128 * b)), ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((39 - (64 * c)) < 64) ? (39 - (64 * c)) : 64);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        t <- (BArray64.get64 h (i %/ 8));
+        t <- (t `>>` (W8.of_int (8 * (7 - (i %% 8)))));
+        out <- (BArray39.set8 out ((64 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
+  }
+  proc mgf112_42____mgf1_layout (m:BArray320.t, seed:BArray112.t, padded:int) : 
+  BArray320.t = {
+    var inc:int;
+    var z:W64.t;
+    var i:int;
+    var t:W64.t;
+    z <- (W64.of_int 0);
+    inc <- padded;
+    i <- 0;
+    while ((i < inc)) {
+      m <- (BArray320.set8 m i (truncateu8 z));
+      i <- (i + 1);
+    }
+    i <- 0;
+    while ((i < 112)) {
+      t <- (zeroextu64 (BArray112.get8 seed i));
+      m <- (BArray320.set8 m i (truncateu8 t));
+      i <- (i + 1);
+    }
+    t <- (W64.of_int 128);
+    m <- (BArray320.set8 m (112 + 4) (truncateu8 t));
+    t <- (W64.of_int ((112 + 4) * 8));
+    i <- 0;
+    while ((i < 8)) {
+      m <- (BArray320.set8 m ((padded - 1) - i) (truncateu8 t));
+      t <- (t `>>` (W8.of_int 8));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf112_42____mgf1_set_counter (m:BArray320.t, c:int) : BArray320.t = {
+    var t:W64.t;
+    var i:int;
+    i <- 0;
+    while ((i < 4)) {
+      t <- (W64.of_int c);
+      t <- (t `>>` (W8.of_int (8 * (3 - i))));
+      m <- (BArray320.set8 m (112 + i) (truncateu8 t));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf112_42___mgf1_sha256 (out:BArray42.t, seed:BArray112.t, ms:W64.t) : 
+  BArray42.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray320.t;
+    var c:int;
+    var h:BArray32.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var x:W32.t;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf112_42____mgf1_layout (m, seed,
+    (64 * (((((112 + 4) + 1) + 8) + 63) %/ 64)));
+    inc <- ((42 + 31) %/ 32);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf112_42____mgf1_set_counter (m, c);
+      h <@ __sha256_init (h);
+      inc_0 <- (((((112 + 4) + 1) + 8) + 63) %/ 64);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha256_compress (h, (SBArray320_64.get_sub8 m (64 * b)),
+        ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((42 - (32 * c)) < 32) ? (42 - (32 * c)) : 32);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        x <- (BArray32.get32 h (i %/ 4));
+        x <- (x `>>` (W8.of_int (8 * (3 - (i %% 4)))));
+        t <- (zeroextu64 x);
+        out <- (BArray42.set8 out ((32 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
+  }
+  proc mgf112_42___mgf1_sha512 (out:BArray42.t, seed:BArray112.t, ms:W64.t) : 
+  BArray42.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray320.t;
+    var c:int;
+    var h:BArray64.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf112_42____mgf1_layout (m, seed,
+    (128 * (((((112 + 4) + 1) + 16) + 127) %/ 128)));
+    inc <- ((42 + 63) %/ 64);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf112_42____mgf1_set_counter (m, c);
+      h <@ __sha512_init (h);
+      inc_0 <- (((((112 + 4) + 1) + 16) + 127) %/ 128);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha512_compress (h,
+        (SBArray320_128.get_sub8 m (128 * b)), ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((42 - (64 * c)) < 64) ? (42 - (64 * c)) : 64);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        t <- (BArray64.get64 h (i %/ 8));
+        t <- (t `>>` (W8.of_int (8 * (7 - (i %% 8)))));
+        out <- (BArray42.set8 out ((64 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
+  }
+  proc mgf128_47____mgf1_layout (m:BArray320.t, seed:BArray128.t, padded:int) : 
+  BArray320.t = {
+    var inc:int;
+    var z:W64.t;
+    var i:int;
+    var t:W64.t;
+    z <- (W64.of_int 0);
+    inc <- padded;
+    i <- 0;
+    while ((i < inc)) {
+      m <- (BArray320.set8 m i (truncateu8 z));
+      i <- (i + 1);
+    }
+    i <- 0;
+    while ((i < 128)) {
+      t <- (zeroextu64 (BArray128.get8 seed i));
+      m <- (BArray320.set8 m i (truncateu8 t));
+      i <- (i + 1);
+    }
+    t <- (W64.of_int 128);
+    m <- (BArray320.set8 m (128 + 4) (truncateu8 t));
+    t <- (W64.of_int ((128 + 4) * 8));
+    i <- 0;
+    while ((i < 8)) {
+      m <- (BArray320.set8 m ((padded - 1) - i) (truncateu8 t));
+      t <- (t `>>` (W8.of_int 8));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf128_47____mgf1_set_counter (m:BArray320.t, c:int) : BArray320.t = {
+    var t:W64.t;
+    var i:int;
+    i <- 0;
+    while ((i < 4)) {
+      t <- (W64.of_int c);
+      t <- (t `>>` (W8.of_int (8 * (3 - i))));
+      m <- (BArray320.set8 m (128 + i) (truncateu8 t));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf128_47___mgf1_sha256 (out:BArray47.t, seed:BArray128.t, ms:W64.t) : 
+  BArray47.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray320.t;
+    var c:int;
+    var h:BArray32.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var x:W32.t;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf128_47____mgf1_layout (m, seed,
+    (64 * (((((128 + 4) + 1) + 8) + 63) %/ 64)));
+    inc <- ((47 + 31) %/ 32);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf128_47____mgf1_set_counter (m, c);
+      h <@ __sha256_init (h);
+      inc_0 <- (((((128 + 4) + 1) + 8) + 63) %/ 64);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha256_compress (h, (SBArray320_64.get_sub8 m (64 * b)),
+        ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((47 - (32 * c)) < 32) ? (47 - (32 * c)) : 32);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        x <- (BArray32.get32 h (i %/ 4));
+        x <- (x `>>` (W8.of_int (8 * (3 - (i %% 4)))));
+        t <- (zeroextu64 x);
+        out <- (BArray47.set8 out ((32 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
+  }
+  proc mgf128_47___mgf1_sha512 (out:BArray47.t, seed:BArray128.t, ms:W64.t) : 
+  BArray47.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray320.t;
+    var c:int;
+    var h:BArray64.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf128_47____mgf1_layout (m, seed,
+    (128 * (((((128 + 4) + 1) + 16) + 127) %/ 128)));
+    inc <- ((47 + 63) %/ 64);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf128_47____mgf1_set_counter (m, c);
+      h <@ __sha512_init (h);
+      inc_0 <- (((((128 + 4) + 1) + 16) + 127) %/ 128);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha512_compress (h,
+        (SBArray320_128.get_sub8 m (128 * b)), ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((47 - (64 * c)) < 64) ? (47 - (64 * c)) : 64);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        t <- (BArray64.get64 h (i %/ 8));
+        t <- (t `>>` (W8.of_int (8 * (7 - (i %% 8)))));
+        out <- (BArray47.set8 out ((64 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
+  }
+  proc mgf128_49____mgf1_layout (m:BArray320.t, seed:BArray128.t, padded:int) : 
+  BArray320.t = {
+    var inc:int;
+    var z:W64.t;
+    var i:int;
+    var t:W64.t;
+    z <- (W64.of_int 0);
+    inc <- padded;
+    i <- 0;
+    while ((i < inc)) {
+      m <- (BArray320.set8 m i (truncateu8 z));
+      i <- (i + 1);
+    }
+    i <- 0;
+    while ((i < 128)) {
+      t <- (zeroextu64 (BArray128.get8 seed i));
+      m <- (BArray320.set8 m i (truncateu8 t));
+      i <- (i + 1);
+    }
+    t <- (W64.of_int 128);
+    m <- (BArray320.set8 m (128 + 4) (truncateu8 t));
+    t <- (W64.of_int ((128 + 4) * 8));
+    i <- 0;
+    while ((i < 8)) {
+      m <- (BArray320.set8 m ((padded - 1) - i) (truncateu8 t));
+      t <- (t `>>` (W8.of_int 8));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf128_49____mgf1_set_counter (m:BArray320.t, c:int) : BArray320.t = {
+    var t:W64.t;
+    var i:int;
+    i <- 0;
+    while ((i < 4)) {
+      t <- (W64.of_int c);
+      t <- (t `>>` (W8.of_int (8 * (3 - i))));
+      m <- (BArray320.set8 m (128 + i) (truncateu8 t));
+      i <- (i + 1);
+    }
+    return m;
+  }
+  proc mgf128_49___mgf1_sha256 (out:BArray49.t, seed:BArray128.t, ms:W64.t) : 
+  BArray49.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray320.t;
+    var c:int;
+    var h:BArray32.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var x:W32.t;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf128_49____mgf1_layout (m, seed,
+    (64 * (((((128 + 4) + 1) + 8) + 63) %/ 64)));
+    inc <- ((49 + 31) %/ 32);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf128_49____mgf1_set_counter (m, c);
+      h <@ __sha256_init (h);
+      inc_0 <- (((((128 + 4) + 1) + 8) + 63) %/ 64);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha256_compress (h, (SBArray320_64.get_sub8 m (64 * b)),
+        ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((49 - (32 * c)) < 32) ? (49 - (32 * c)) : 32);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        x <- (BArray32.get32 h (i %/ 4));
+        x <- (x `>>` (W8.of_int (8 * (3 - (i %% 4)))));
+        t <- (zeroextu64 x);
+        out <- (BArray49.set8 out ((32 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
+  }
+  proc mgf128_49___mgf1_sha512 (out:BArray49.t, seed:BArray128.t, ms:W64.t) : 
+  BArray49.t * W64.t = {
+    var inc:int;
+    var inc_0:int;
+    var m:BArray320.t;
+    var c:int;
+    var h:BArray64.t;
+    var b:int;
+    var n:int;
+    var i:int;
+    var t:W64.t;
+    h <- witness;
+    m <- witness;
+    m <@ mgf128_49____mgf1_layout (m, seed,
+    (128 * (((((128 + 4) + 1) + 16) + 127) %/ 128)));
+    inc <- ((49 + 63) %/ 64);
+    c <- 0;
+    while ((c < inc)) {
+      m <@ mgf128_49____mgf1_set_counter (m, c);
+      h <@ __sha512_init (h);
+      inc_0 <- (((((128 + 4) + 1) + 16) + 127) %/ 128);
+      b <- 0;
+      while ((b < inc_0)) {
+        (* Erased call to spill *)
+        (h, ms) <@ _sha512_compress (h,
+        (SBArray320_128.get_sub8 m (128 * b)), ms);
+        (* Erased call to unspill *)
+        out <- (protect_ptr out ms);
+        b <- (b + 1);
+      }
+      n <- (((49 - (64 * c)) < 64) ? (49 - (64 * c)) : 64);
+      inc_0 <- n;
+      i <- 0;
+      while ((i < inc_0)) {
+        t <- (BArray64.get64 h (i %/ 8));
+        t <- (t `>>` (W8.of_int (8 * (7 - (i %% 8)))));
+        out <- (BArray49.set8 out ((64 * c) + i) (truncateu8 t));
+        i <- (i + 1);
+      }
+      c <- (c + 1);
+    }
+    return (out, ms);
   }
 }.

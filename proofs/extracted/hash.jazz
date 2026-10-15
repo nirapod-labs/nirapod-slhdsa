@@ -6,13 +6,66 @@
  * =========
  *
  * Extraction entry for the hash-function correctness proofs. It contains no
- * code of its own: it requires the production SHA-2 and sponge sources, so
- * that jasmin2ec extracts their functions from the source files themselves,
- * under the include roots of each (architecture, variant). HMAC, MGF1, the
- * FIPS 202 functions and the multi-way code are not extracted.
- * `make -C proofs extract` runs it; see proofs/README.md.
+ * code of its own: it requires the production SHA-2, HMAC, MGF1 and sponge
+ * sources, so that jasmin2ec extracts their functions from the source
+ * files themselves, under the include roots of each (architecture,
+ * variant). The FIPS 202 functions and the multi-way code are not
+ * extracted. `make extract` runs it; see proofs/README.md.
+ *
+ * MGF1 has compile-time seed and output lengths (sha2/mgf1.jinc), so it is
+ * instantiated once for each (seed length, output length) that the SHA2
+ * parameter sets of FIPS 205 use for H_msg (section 11.2):
+ *
+ *     namespace   hash      seed = 2n + digest   out = m   sets
+ *     Mgf64_30    SHA-256   64                   30        128s
+ *     Mgf64_34    SHA-256   64                   34        128f
+ *     Mgf112_39   SHA-512   112                  39        192s
+ *     Mgf112_42   SHA-512   112                  42        192f
+ *     Mgf128_47   SHA-512   128                  47        256s
+ *     Mgf128_49   SHA-512   128                  49        256f
+ *
+ * Jasmin reads a required file once per spelling of its path, so each
+ * instance spells the path of mgf1.jinc differently ("sha2/./mgf1.jinc",
+ * ...); every spelling names the same file.
  */
 
 from Hash require "sha2/sha256.jinc"
 from Hash require "sha2/sha512.jinc"
+from Hash require "sha2/hmac.jinc"
 from Hash require "keccak/sponge.jinc"
+
+namespace Mgf64_30 {
+  param int MGF1_SEED_LEN = 64;
+  param int MGF1_OUT_LEN = 30;
+  from Hash require "sha2/mgf1.jinc"
+}
+
+namespace Mgf64_34 {
+  param int MGF1_SEED_LEN = 64;
+  param int MGF1_OUT_LEN = 34;
+  from Hash require "sha2/./mgf1.jinc"
+}
+
+namespace Mgf112_39 {
+  param int MGF1_SEED_LEN = 112;
+  param int MGF1_OUT_LEN = 39;
+  from Hash require "sha2/././mgf1.jinc"
+}
+
+namespace Mgf112_42 {
+  param int MGF1_SEED_LEN = 112;
+  param int MGF1_OUT_LEN = 42;
+  from Hash require "sha2/./././mgf1.jinc"
+}
+
+namespace Mgf128_47 {
+  param int MGF1_SEED_LEN = 128;
+  param int MGF1_OUT_LEN = 47;
+  from Hash require "sha2/././././mgf1.jinc"
+}
+
+namespace Mgf128_49 {
+  param int MGF1_SEED_LEN = 128;
+  param int MGF1_OUT_LEN = 49;
+  from Hash require "sha2/./././././mgf1.jinc"
+}
