@@ -70,7 +70,8 @@ Proven, on the x86-64 and AArch64 models, total correctness:
 - **Core encodings.** For each of the 12 parameter sets, on the models of that
   set (the core's code depends on the set, so it is extracted once per set and
   architecture):
-  - `__node_copy` of `src/slhdsa/encoding.jinc` returns its n-byte source.
+  - `__node_copy` of `src/slhdsa/encoding.jinc` returns its n-byte source;
+  - `__node_concat` returns the 2n bytes of its first argument followed by those of its second.
 
 Not proven:
 

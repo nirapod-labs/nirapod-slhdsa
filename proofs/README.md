@@ -394,7 +394,9 @@ Theorems so far, each checked on every pair unless it says otherwise:
 Per-set theorems, each checked against the 24 per-set models:
 
 - `node_copy_correct` (`correctness/core/Encoding.ec`): `__node_copy`
-  of `src/slhdsa/encoding.jinc` returns its n-byte source.
+  of `src/slhdsa/encoding.jinc` returns its n-byte source;
+- `node_concat_correct`: `__node_concat` returns the 2n bytes of a
+  followed by those of b.
 
 The SHA-2 and Keccak `_correct` theorems are partial-correctness (Hoare)
 statements about the extracted model: when the procedure returns, its

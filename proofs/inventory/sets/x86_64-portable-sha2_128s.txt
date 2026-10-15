@@ -1075,5 +1075,14 @@ lemma node_copy_correct:
     phoare[ CoreExtracted.M.__node_copy : src = s0 ==> res = s0] = (Real.(%r)
                                                                     1).
 
+(* Encoding.node_concat_correct *)
+lemma node_concat_correct:
+  forall (a0 b0 : BArray16.t),
+    phoare[ CoreExtracted.M.__node_concat :
+             a = a0 /\ b = b0 ==>
+             BArray32.to_list res =
+             List.(++) (BArray16.to_list a0) (BArray16.to_list b0)] = (
+    Real.(%r) 1).
+
 definitions 0
 
