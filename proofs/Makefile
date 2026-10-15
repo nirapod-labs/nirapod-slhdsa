@@ -371,6 +371,10 @@ set_inventory_file = inventory/sets/$(subst /,-,$(1))-$(2).txt
 SET_THEOREMS := Encoding.node_copy_correct Encoding.node_concat_correct \
                 DigestIndices.digest_tree_leaf_correct DigestIndices.fors_indices_correct \
                 Wots.wots_digits_correct WotsChain.wots_chain_correct WotsPk.wots_pk_from_sig_correct \
+                WotsLeaf.wots_leaf_x4_correct XmssPk.xmss_pk_from_sig_correct \
+                TreeFold.treehash_fold_correct Xmss.xmss_node_correct Xmss.xmss_sign_correct \
+                ForsPk.fors_pk_from_sig_correct ForsTree.fors_tree_correct ForsSign.fors_sign_correct \
+                Hypertree.ht_sign_correct Hypertree.ht_verify_correct \
                 ADRSc.adrs_compress_into64_correct ADRSc.adrs_compress_into128_correct \
                 Thash.thash_f_correct Thash.thash_prf_correct Thash.thash_h_correct \
                 PreHash.prehash_ll PreHash.prehash_h PreHash.prehash_total

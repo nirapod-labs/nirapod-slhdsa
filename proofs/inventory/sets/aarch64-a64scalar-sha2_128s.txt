@@ -13,7 +13,7 @@
 # Generator: proofs/tools/inventory.py
 # Regenerate: make -C proofs inventory   (check: make -C proofs check-inventory)
 
-axioms 1078
+axioms 1230
 
 AlgTactic.Requires Cn_eq0 bdecb18de0dc9f6d
 AlgTactic.Requires Cp_idp 80a851cbf22ee9d6
@@ -90,6 +90,25 @@ BArray10 set32dE 093dc773f8115473
 BArray10 set64dE 72a1328a91ce659e
 BArray10 setE 4e0a335b0af4daa4
 BArray10 to_listE 5a83194f8481271b
+BArray112 ext_eq 95c54b72b15dda55
+BArray112 fillE d05dde13ca0398c1
+BArray112 get128dE ef77bcda55667b84
+BArray112 get16dE 66f3cdb7b7936085
+BArray112 get256dE ad640000e7b8b40a
+BArray112 get32dE 306057a4c2c6ba52
+BArray112 get64dE 0a3e36287b12864e
+BArray112 get_out 246ee4ba673bf454
+BArray112 initE a74934c56351400d
+BArray112 map2E cb78c2b4e820bd7b
+BArray112 mapE 3dbf697d25899328
+BArray112 of_listE 8ad4a902543a34dd
+BArray112 set128dE aad04fc145b52320
+BArray112 set16dE 93acb400e3f9c3b2
+BArray112 set256dE ea8539b328f82673
+BArray112 set32dE 093dc773f8115473
+BArray112 set64dE 72a1328a91ce659e
+BArray112 setE 4e0a335b0af4daa4
+BArray112 to_listE 064455ad8264c07a
 BArray128 ext_eq 8da5701f83273c19
 BArray128 fillE d05dde13ca0398c1
 BArray128 get128dE ef77bcda55667b84
@@ -261,6 +280,25 @@ BArray257 set32dE 093dc773f8115473
 BArray257 set64dE 72a1328a91ce659e
 BArray257 setE 4e0a335b0af4daa4
 BArray257 to_listE 8ac77d8d3e0cc37d
+BArray28 ext_eq 2441031b57bcd30a
+BArray28 fillE d05dde13ca0398c1
+BArray28 get128dE ef77bcda55667b84
+BArray28 get16dE 66f3cdb7b7936085
+BArray28 get256dE ad640000e7b8b40a
+BArray28 get32dE 306057a4c2c6ba52
+BArray28 get64dE 0a3e36287b12864e
+BArray28 get_out 52a52322c4e52f46
+BArray28 initE 7481bf8d15adcdf5
+BArray28 map2E cb78c2b4e820bd7b
+BArray28 mapE 3dbf697d25899328
+BArray28 of_listE 8ad4a902543a34dd
+BArray28 set128dE aad04fc145b52320
+BArray28 set16dE 93acb400e3f9c3b2
+BArray28 set256dE ea8539b328f82673
+BArray28 set32dE 093dc773f8115473
+BArray28 set64dE 72a1328a91ce659e
+BArray28 setE 4e0a335b0af4daa4
+BArray28 to_listE 7b8f77e44aca1257
 BArray2912 ext_eq e6002a4cf5fca543
 BArray2912 fillE d05dde13ca0398c1
 BArray2912 get128dE ef77bcda55667b84
@@ -318,6 +356,25 @@ BArray32 set32dE 093dc773f8115473
 BArray32 set64dE 72a1328a91ce659e
 BArray32 setE 4e0a335b0af4daa4
 BArray32 to_listE bc66cf26599b94d8
+BArray320 ext_eq 8a5723117e1f7aa5
+BArray320 fillE d05dde13ca0398c1
+BArray320 get128dE ef77bcda55667b84
+BArray320 get16dE 66f3cdb7b7936085
+BArray320 get256dE ad640000e7b8b40a
+BArray320 get32dE 306057a4c2c6ba52
+BArray320 get64dE 0a3e36287b12864e
+BArray320 get_out 617269002ab2e3bc
+BArray320 initE 6bc9c957d1032b62
+BArray320 map2E cb78c2b4e820bd7b
+BArray320 mapE 3dbf697d25899328
+BArray320 of_listE 8ad4a902543a34dd
+BArray320 set128dE aad04fc145b52320
+BArray320 set16dE 93acb400e3f9c3b2
+BArray320 set256dE ea8539b328f82673
+BArray320 set32dE 093dc773f8115473
+BArray320 set64dE 72a1328a91ce659e
+BArray320 setE 4e0a335b0af4daa4
+BArray320 to_listE 3401873646f87187
 BArray332 ext_eq d15d8ec80ba1cdeb
 BArray332 fillE d05dde13ca0398c1
 BArray332 get128dE ef77bcda55667b84
@@ -337,6 +394,25 @@ BArray332 set32dE 093dc773f8115473
 BArray332 set64dE 72a1328a91ce659e
 BArray332 setE 4e0a335b0af4daa4
 BArray332 to_listE 068f0279a61cbbbb
+BArray34 ext_eq b827b27dc12e52f6
+BArray34 fillE d05dde13ca0398c1
+BArray34 get128dE ef77bcda55667b84
+BArray34 get16dE 66f3cdb7b7936085
+BArray34 get256dE ad640000e7b8b40a
+BArray34 get32dE 306057a4c2c6ba52
+BArray34 get64dE 0a3e36287b12864e
+BArray34 get_out d6f78f23f42b1d8b
+BArray34 initE 9bfa64a9ce2d277f
+BArray34 map2E cb78c2b4e820bd7b
+BArray34 mapE 3dbf697d25899328
+BArray34 of_listE 8ad4a902543a34dd
+BArray34 set128dE aad04fc145b52320
+BArray34 set16dE 93acb400e3f9c3b2
+BArray34 set256dE ea8539b328f82673
+BArray34 set32dE 093dc773f8115473
+BArray34 set64dE 72a1328a91ce659e
+BArray34 setE 4e0a335b0af4daa4
+BArray34 to_listE 31f37854f8374556
 BArray35 ext_eq 6c371bdb4fed2df8
 BArray35 fillE d05dde13ca0398c1
 BArray35 get128dE ef77bcda55667b84
@@ -375,6 +451,63 @@ BArray384 set32dE 093dc773f8115473
 BArray384 set64dE 72a1328a91ce659e
 BArray384 setE 4e0a335b0af4daa4
 BArray384 to_listE 06421e9578fb892c
+BArray39 ext_eq 577172edfe805ce4
+BArray39 fillE d05dde13ca0398c1
+BArray39 get128dE ef77bcda55667b84
+BArray39 get16dE 66f3cdb7b7936085
+BArray39 get256dE ad640000e7b8b40a
+BArray39 get32dE 306057a4c2c6ba52
+BArray39 get64dE 0a3e36287b12864e
+BArray39 get_out 51548f808b587b52
+BArray39 initE 8a53795cd7b1f2b9
+BArray39 map2E cb78c2b4e820bd7b
+BArray39 mapE 3dbf697d25899328
+BArray39 of_listE 8ad4a902543a34dd
+BArray39 set128dE aad04fc145b52320
+BArray39 set16dE 93acb400e3f9c3b2
+BArray39 set256dE ea8539b328f82673
+BArray39 set32dE 093dc773f8115473
+BArray39 set64dE 72a1328a91ce659e
+BArray39 setE 4e0a335b0af4daa4
+BArray39 to_listE 2a460f941b8dcbd9
+BArray42 ext_eq ac57b82ebe7ccbe1
+BArray42 fillE d05dde13ca0398c1
+BArray42 get128dE ef77bcda55667b84
+BArray42 get16dE 66f3cdb7b7936085
+BArray42 get256dE ad640000e7b8b40a
+BArray42 get32dE 306057a4c2c6ba52
+BArray42 get64dE 0a3e36287b12864e
+BArray42 get_out b26acfe8f543487e
+BArray42 initE 1002ac262d2869a1
+BArray42 map2E cb78c2b4e820bd7b
+BArray42 mapE 3dbf697d25899328
+BArray42 of_listE 8ad4a902543a34dd
+BArray42 set128dE aad04fc145b52320
+BArray42 set16dE 93acb400e3f9c3b2
+BArray42 set256dE ea8539b328f82673
+BArray42 set32dE 093dc773f8115473
+BArray42 set64dE 72a1328a91ce659e
+BArray42 setE 4e0a335b0af4daa4
+BArray42 to_listE 0aab4c2d5c61663b
+BArray47 ext_eq 7b5613393fb9511d
+BArray47 fillE d05dde13ca0398c1
+BArray47 get128dE ef77bcda55667b84
+BArray47 get16dE 66f3cdb7b7936085
+BArray47 get256dE ad640000e7b8b40a
+BArray47 get32dE 306057a4c2c6ba52
+BArray47 get64dE 0a3e36287b12864e
+BArray47 get_out 1b8860f03a501fd9
+BArray47 initE 4a7941a78cbe61b5
+BArray47 map2E cb78c2b4e820bd7b
+BArray47 mapE 3dbf697d25899328
+BArray47 of_listE 8ad4a902543a34dd
+BArray47 set128dE aad04fc145b52320
+BArray47 set16dE 93acb400e3f9c3b2
+BArray47 set256dE ea8539b328f82673
+BArray47 set32dE 093dc773f8115473
+BArray47 set64dE 72a1328a91ce659e
+BArray47 setE 4e0a335b0af4daa4
+BArray47 to_listE e96eed3a3a122a8f
 BArray48 ext_eq 71b01a0604f5e745
 BArray48 fillE d05dde13ca0398c1
 BArray48 get128dE ef77bcda55667b84
@@ -394,6 +527,25 @@ BArray48 set32dE 093dc773f8115473
 BArray48 set64dE 72a1328a91ce659e
 BArray48 setE 4e0a335b0af4daa4
 BArray48 to_listE a35b773272ba0c42
+BArray49 ext_eq 37d39a33516b9904
+BArray49 fillE d05dde13ca0398c1
+BArray49 get128dE ef77bcda55667b84
+BArray49 get16dE 66f3cdb7b7936085
+BArray49 get256dE ad640000e7b8b40a
+BArray49 get32dE 306057a4c2c6ba52
+BArray49 get64dE 0a3e36287b12864e
+BArray49 get_out d36afe3a3387f0f3
+BArray49 initE b59f06b680bdfd39
+BArray49 map2E cb78c2b4e820bd7b
+BArray49 mapE 3dbf697d25899328
+BArray49 of_listE 8ad4a902543a34dd
+BArray49 set128dE aad04fc145b52320
+BArray49 set16dE 93acb400e3f9c3b2
+BArray49 set256dE ea8539b328f82673
+BArray49 set32dE 093dc773f8115473
+BArray49 set64dE 72a1328a91ce659e
+BArray49 setE 4e0a335b0af4daa4
+BArray49 to_listE 58c20844f1eddbaf
 BArray4928 ext_eq 593059e9a785cc19
 BArray4928 fillE d05dde13ca0398c1
 BArray4928 get128dE ef77bcda55667b84
@@ -1199,6 +1351,564 @@ lemma wots_pk_from_sig_correct:
                        FIPS205_Address.WOTS_HASH) (JWord.W32.to_uint kp0))] = (
       Real.(%r) 1).
 
+(* WotsLeaf.wots_leaf_x4_correct *)
+lemma wots_leaf_x4_correct:
+  forall (pk_seed : Bytes.bytes) (c0 : BArray96.t),
+    (forall (k0 : BArray16.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_prf_x4 :
+                sk_seed = k0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.PRF SetModel.P pk_seed (BArray16.to_list k0)
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))] = (
+       Real.(%r) 1)) =>
+    (forall (x0 : BArray64.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_f_x4 :
+                x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.F SetModel.P pk_seed
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                    (WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                       (BArray64.to_list x0))] = (Real.(%r) 1)) =>
+    (forall (m0 : BArray2240.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_t_len_x4 :
+                in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.T_l SetModel.P pk_seed
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                    (WotsLeaf.lanev
+                       (Int.( * ) (FIPS205_Params.len SetModel.P)
+                          (FIPS205_Params.n SetModel.P)) k
+                       (BArray2240.to_list m0))] = (Real.(%r) 1)) =>
+    forall (s0 : BArray560.t) (k0 : BArray16.t) (a0 : BArray32.t)
+      (q0 : JWord.W32.t) (st0 : BArray35.t) (ln0 : JWord.W64.t),
+      Int.(<) (Int.(+) (JWord.W32.to_uint q0) 3) JWord.W32.modulus =>
+      phoare[ CoreExtracted.M._wots_leaf_x4 :
+               sig = s0 /\
+               sk_seed = k0 /\
+               ctx = c0 /\
+               adrs = a0 /\
+               kp0 = q0 /\
+               steps = st0 /\
+               lane = ln0 /\
+               forall (i : int),
+                 0 Int.(<=) i Int.(<) FIPS205_Params.len SetModel.P =>
+                 Int.(<)
+                   (List.nth 0
+                      (List.map JWord.W8.to_uint (BArray35.to_list st0)) i)
+                   16 ==>
+               (forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_WOTS.wots_pkGen SetModel.P (BArray16.to_list k0)
+                    pk_seed
+                    (WotsLeaf.adA (ADRS.bytes_of a0)
+                       FIPS205_Address.WOTS_HASH
+                       (Int.(+) (JWord.W32.to_uint q0) k))) /\
+               (Int.(<) (JWord.W64.to_uint ln0) 4 =>
+                BArray560.to_list res.`2 =
+                List.flatten
+                  (List.map
+                     (fun (i : int) =>
+                        WotsLeaf.cend pk_seed (BArray16.to_list k0)
+                          (ADRS.bytes_of a0)
+                          (Int.(+) (JWord.W32.to_uint q0)
+                             (JWord.W64.to_uint ln0))
+                          (List.nth 0
+                             (List.map JWord.W8.to_uint
+                                (BArray35.to_list st0)) i) i)
+                     (List.Range.range 0 (FIPS205_Params.len SetModel.P)))) /\
+               (Int.(<=) 4 (JWord.W64.to_uint ln0) => res.`2 = s0)] = (
+      Real.(%r) 1).
+
+(* XmssPk.xmss_pk_from_sig_correct *)
+lemma xmss_pk_from_sig_correct:
+  forall (pk_seed : Bytes.bytes) (c0 : BArray96.t),
+    (forall (x0 : BArray16.t) (a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_f :
+                x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.F SetModel.P pk_seed (ADRS.bytes_of a0)
+                  (BArray16.to_list x0)] = (Real.(%r) 1)) =>
+    (forall (m0 : BArray560.t) (a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_t_len :
+                in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.T_l SetModel.P pk_seed (ADRS.bytes_of a0)
+                  (BArray560.to_list m0)] = (Real.(%r) 1)) =>
+    (forall (x0 a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_h :
+                in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.H SetModel.P pk_seed (ADRS.bytes_of a0)
+                  (ADRS.bytes_of x0)] = (Real.(%r) 1)) =>
+    forall (s0 : BArray704.t) (m0 : BArray16.t) (a0 : BArray32.t)
+      (i0 : JWord.W32.t),
+      phoare[ CoreExtracted.M._xmss_pk_from_sig :
+               sig = s0 /\ msg = m0 /\ ctx = c0 /\ adrs = a0 /\ idx = i0 ==>
+               BArray16.to_list res.`1 =
+               FIPS205_XMSS.xmss_pkFromSig SetModel.P (JWord.W32.to_uint i0)
+                 (BArray704.to_list s0) (BArray16.to_list m0) pk_seed
+                 (ADRS.bytes_of a0)] = (Real.(%r) 1).
+
+(* TreeFold.treehash_fold_correct *)
+lemma treehash_fold_correct:
+  forall (pk : Bytes.bytes) (c0 : BArray96.t) (N : int -> int -> Bytes.bytes)
+    (na : FIPS205_Address.adrs) (base t : int),
+    (forall (x0 a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_h :
+                in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.H SetModel.P pk (ADRS.bytes_of a0)
+                  (ADRS.bytes_of x0)] = (Real.(%r) 1)) =>
+    (forall (z j : int),
+       0 Int.(<=) z Int.(<) t =>
+       Int.(<=) 0 j =>
+       N (Int.(+) z 1) j =
+       FIPS205_Hash.H SetModel.P pk
+         (FIPS205_Address.setTreeIndex
+            (FIPS205_Address.setTreeHeight na (Int.(+) z 1))
+            (Int.(+) (IntDiv.(%/) base (Ring.IntID.(^) 2 (Int.(+) z 1))) j))
+         (List.(++) (N z (Int.( * ) 2 j)) (N z (Int.(+) (Int.( * ) 2 j) 1)))) =>
+    0 Int.(<=) t Int.(<=) FIPS205_Params.a SetModel.P =>
+    IntDiv.(%|) (Ring.IntID.(^) 2 t) base =>
+    forall (nd0 au0 : BArray208.t) (x0 : BArray16.t) (id0 ai0
+      tg0 : JWord.W32.t) (na0 : BArray32.t),
+      phoare[ CoreExtracted.M._treehash_fold :
+               nodes = nd0 /\
+               auth = au0 /\
+               node = x0 /\
+               idx = id0 /\
+               adrs_idx = ai0 /\
+               target = tg0 /\
+               ctx = c0 /\
+               node_adrs = na0 /\
+               Int.(<) (JWord.W32.to_uint id0) (Ring.IntID.(^) 2 t) /\
+               JWord.W32.to_uint ai0 = Int.(+) base (JWord.W32.to_uint id0) /\
+               BArray16.to_list x0 = N 0 (JWord.W32.to_uint id0) /\
+               List.take 24 (ADRS.bytes_of na0) = List.take 24 na /\
+               TreeFold.fs N nd0 t (JWord.W32.to_uint id0) /\
+               TreeFold.au N au0 t (JWord.W32.to_uint id0)
+                 (JWord.W32.to_uint tg0) ==>
+               TreeFold.fs N res.`1 t (Int.(+) (JWord.W32.to_uint id0) 1) /\
+               TreeFold.au N res.`2 t (Int.(+) (JWord.W32.to_uint id0) 1)
+                 (JWord.W32.to_uint tg0) /\
+               List.take 24 (ADRS.bytes_of res.`4) = List.take 24 na] = (
+      Real.(%r) 1).
+
+(* Xmss.xmss_node_correct *)
+lemma xmss_node_correct:
+  forall (pk : Bytes.bytes) (c0 : BArray96.t),
+    (forall (k0 : BArray16.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_prf_x4 :
+                sk_seed = k0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.PRF SetModel.P pk (BArray16.to_list k0)
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))] = (
+       Real.(%r) 1)) =>
+    (forall (x0 : BArray64.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_f_x4 :
+                x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.F SetModel.P pk
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                    (WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                       (BArray64.to_list x0))] = (Real.(%r) 1)) =>
+    (forall (m0 : BArray2240.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_t_len_x4 :
+                in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.T_l SetModel.P pk
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                    (WotsLeaf.lanev
+                       (Int.( * ) (FIPS205_Params.len SetModel.P)
+                          (FIPS205_Params.n SetModel.P)) k
+                       (BArray2240.to_list m0))] = (Real.(%r) 1)) =>
+    (forall (x0 a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_h :
+                in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.H SetModel.P pk (ADRS.bytes_of a0)
+                  (ADRS.bytes_of x0)] = (Real.(%r) 1)) =>
+    forall (r0 : BArray16.t) (s0 : BArray704.t) (k0 : BArray16.t)
+      (a0 : BArray32.t) (tg0 : JWord.W32.t) (st0 : BArray35.t),
+      phoare[ CoreExtracted.M._xmss_treehash :
+               root = r0 /\
+               sig = s0 /\
+               sk_seed = k0 /\
+               ctx = c0 /\
+               adrs = a0 /\
+               target = tg0 /\
+               steps = st0 /\
+               forall (i : int),
+                 0 Int.(<=) i Int.(<) FIPS205_Params.len SetModel.P =>
+                 Int.(<)
+                   (List.nth 0
+                      (List.map JWord.W8.to_uint (BArray35.to_list st0)) i)
+                   16 ==>
+               BArray16.to_list res.`1 =
+               FIPS205_XMSS.xmss_node SetModel.P (BArray16.to_list k0) 0
+                 (FIPS205_Params.hp SetModel.P) pk (ADRS.bytes_of a0) /\
+               (Int.(<=) (Ring.IntID.(^) 2 (FIPS205_Params.hp SetModel.P))
+                  (JWord.W32.to_uint tg0) =>
+                res.`2 = s0)] = (Real.(%r) 1).
+
+(* Xmss.xmss_sign_correct *)
+lemma xmss_sign_correct:
+  forall (pk : Bytes.bytes) (c0 : BArray96.t),
+    (forall (k0 : BArray16.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_prf_x4 :
+                sk_seed = k0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.PRF SetModel.P pk (BArray16.to_list k0)
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))] = (
+       Real.(%r) 1)) =>
+    (forall (x0 : BArray64.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_f_x4 :
+                x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.F SetModel.P pk
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                    (WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                       (BArray64.to_list x0))] = (Real.(%r) 1)) =>
+    (forall (m0 : BArray2240.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_t_len_x4 :
+                in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.T_l SetModel.P pk
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                    (WotsLeaf.lanev
+                       (Int.( * ) (FIPS205_Params.len SetModel.P)
+                          (FIPS205_Params.n SetModel.P)) k
+                       (BArray2240.to_list m0))] = (Real.(%r) 1)) =>
+    (forall (x0 a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_h :
+                in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.H SetModel.P pk (ADRS.bytes_of a0)
+                  (ADRS.bytes_of x0)] = (Real.(%r) 1)) =>
+    forall (r0 : BArray16.t) (s0 : BArray704.t) (k0 : BArray16.t)
+      (a0 : BArray32.t) (tg0 : JWord.W32.t) (st0 : BArray35.t)
+      (m0 : BArray16.t),
+      phoare[ CoreExtracted.M._xmss_treehash :
+               root = r0 /\
+               sig = s0 /\
+               sk_seed = k0 /\
+               ctx = c0 /\
+               adrs = a0 /\
+               target = tg0 /\
+               steps = st0 /\
+               Int.(<) (JWord.W32.to_uint tg0)
+                 (Ring.IntID.(^) 2 (FIPS205_Params.hp SetModel.P)) /\
+               List.map JWord.W8.to_uint (BArray35.to_list st0) =
+               FIPS205_WOTS.wots_digits SetModel.P (BArray16.to_list m0) ==>
+               BArray16.to_list res.`1 =
+               FIPS205_XMSS.xmss_node SetModel.P (BArray16.to_list k0) 0
+                 (FIPS205_Params.hp SetModel.P) pk (ADRS.bytes_of a0) /\
+               BArray704.to_list res.`2 =
+               FIPS205_XMSS.xmss_sign SetModel.P (BArray16.to_list m0)
+                 (BArray16.to_list k0) (JWord.W32.to_uint tg0) pk
+                 (ADRS.bytes_of a0)] = (Real.(%r) 1).
+
+(* ForsPk.fors_pk_from_sig_correct *)
+lemma fors_pk_from_sig_correct:
+  forall (pk_seed : Bytes.bytes) (c0 : BArray96.t),
+    (forall (x0 : BArray16.t) (a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_f :
+                x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.F SetModel.P pk_seed (ADRS.bytes_of a0)
+                  (BArray16.to_list x0)] = (Real.(%r) 1)) =>
+    (forall (x0 a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_h :
+                in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.H SetModel.P pk_seed (ADRS.bytes_of a0)
+                  (ADRS.bytes_of x0)] = (Real.(%r) 1)) =>
+    (forall (m0 : BArray224.t) (a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_t_k :
+                in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.T_l SetModel.P pk_seed (ADRS.bytes_of a0)
+                  (BArray224.to_list m0)] = (Real.(%r) 1)) =>
+    forall (s0 : BArray2912.t) (i0 : BArray56.t) (a0 : BArray32.t)
+      (md : Bytes.bytes),
+      phoare[ CoreExtracted.M._fors_pk_from_sig :
+               sig = s0 /\
+               indices = i0 /\
+               ctx = c0 /\
+               adrs = a0 /\
+               forall (j : int),
+                 0 Int.(<=) j Int.(<) FIPS205_Params.k SetModel.P =>
+                 JWord.W32.to_uint (BArray56.get32d i0 (Int.( * ) 4 j)) =
+                 List.nth 0
+                   (FIPS205_Encoding.base_2b md (FIPS205_Params.a SetModel.P)
+                      (FIPS205_Params.k SetModel.P)) j ==>
+               BArray16.to_list res.`1 =
+               FIPS205_FORS.fors_pkFromSig SetModel.P (BArray2912.to_list s0)
+                 md pk_seed (ADRS.bytes_of a0)] = (Real.(%r) 1).
+
+(* ForsTree.fors_tree_correct *)
+lemma fors_tree_correct:
+  forall (pk_seed : Bytes.bytes) (c0 : BArray96.t),
+    (forall (k0 : BArray16.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_prf_x4 :
+                sk_seed = k0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.PRF SetModel.P pk_seed (BArray16.to_list k0)
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))] = (
+       Real.(%r) 1)) =>
+    (forall (x0 : BArray64.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_f_x4 :
+                x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.F SetModel.P pk_seed
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                    (WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                       (BArray64.to_list x0))] = (Real.(%r) 1)) =>
+    (forall (x0 a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_h :
+                in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.H SetModel.P pk_seed (ADRS.bytes_of a0)
+                  (ADRS.bytes_of x0)] = (Real.(%r) 1)) =>
+    forall (k0 : BArray16.t) (a0 : BArray32.t) (t0 tg0 : JWord.W32.t) (l tr y
+      kp w1 w0 : int),
+      ADRS.bytes_of a0 = FIPS205_Address_Props.mk_adrs l tr y kp w1 w0 =>
+      0 Int.(<=) kp Int.(<) JWord.W32.modulus =>
+      Int.(<) (JWord.W32.to_uint t0) (FIPS205_Params.k SetModel.P) =>
+      Int.(<) (JWord.W32.to_uint tg0)
+        (Ring.IntID.(^) 2 (FIPS205_Params.a SetModel.P)) =>
+      phoare[ CoreExtracted.M._fors_tree :
+               sk_seed = k0 /\
+               ctx = c0 /\ adrs = a0 /\ tree = t0 /\ target = tg0 ==>
+               BArray16.to_list res.`2 =
+               ForsTree.fnode pk_seed (BArray16.to_list k0) l tr y kp
+                 (JWord.W32.to_uint t0) (FIPS205_Params.a SetModel.P) 0 /\
+               BArray208.to_list res.`1 =
+               List.(++)
+                 (FIPS205_TreeForms.fors_sk SetModel.P (BArray16.to_list k0)
+                    pk_seed l tr kp
+                    (Int.(+)
+                       (Int.( * ) (JWord.W32.to_uint t0)
+                          (Ring.IntID.(^) 2 (FIPS205_Params.a SetModel.P)))
+                       (JWord.W32.to_uint tg0)))
+                 (List.flatten
+                    (List.map
+                       (fun (z : int) =>
+                          ForsTree.fnode pk_seed (BArray16.to_list k0) l tr y
+                            kp (JWord.W32.to_uint t0) z
+                            (MerkleTrees_FIPS205.gsibling
+                               (IntDiv.(%/) (JWord.W32.to_uint tg0)
+                                  (Ring.IntID.(^) 2 z))))
+                       (List.Range.range 0 (FIPS205_Params.a SetModel.P))))] = (
+      Real.(%r) 1).
+
+(* ForsSign.fors_sign_correct *)
+lemma fors_sign_correct:
+  forall (pk_seed : Bytes.bytes) (c0 : BArray96.t),
+    (forall (k0 : BArray16.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_prf_x4 :
+                sk_seed = k0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.PRF SetModel.P pk_seed (BArray16.to_list k0)
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))] = (
+       Real.(%r) 1)) =>
+    (forall (x0 : BArray64.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_f_x4 :
+                x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.F SetModel.P pk_seed
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                    (WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                       (BArray64.to_list x0))] = (Real.(%r) 1)) =>
+    (forall (x0 a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_h :
+                in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.H SetModel.P pk_seed (ADRS.bytes_of a0)
+                  (ADRS.bytes_of x0)] = (Real.(%r) 1)) =>
+    (forall (m0 : BArray224.t) (a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_t_k :
+                in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.T_l SetModel.P pk_seed (ADRS.bytes_of a0)
+                  (BArray224.to_list m0)] = (Real.(%r) 1)) =>
+    forall (s0 : BArray7856.t) (i0 : BArray56.t) (k0 : BArray16.t)
+      (a0 : BArray32.t) (md : Bytes.bytes) (l tr y kp w1 w0 : int),
+      ADRS.bytes_of a0 = FIPS205_Address_Props.mk_adrs l tr y kp w1 w0 =>
+      0 Int.(<=) kp Int.(<) JWord.W32.modulus =>
+      phoare[ CoreExtracted.M._fors_sign :
+               sig = s0 /\
+               indices = i0 /\
+               sk_seed = k0 /\
+               ctx = c0 /\
+               adrs = a0 /\
+               forall (j : int),
+                 0 Int.(<=) j Int.(<) FIPS205_Params.k SetModel.P =>
+                 JWord.W32.to_uint (BArray56.get32d i0 (Int.( * ) 4 j)) =
+                 List.nth 0
+                   (FIPS205_Encoding.base_2b md (FIPS205_Params.a SetModel.P)
+                      (FIPS205_Params.k SetModel.P)) j ==>
+               BArray7856.to_list res.`1 =
+               List.(++)
+                 (List.(++)
+                    (List.take (FIPS205_Params.n SetModel.P)
+                       (BArray7856.to_list s0))
+                    (FIPS205_FORS.fors_sign SetModel.P md
+                       (BArray16.to_list k0) pk_seed (ADRS.bytes_of a0)))
+                 (List.drop
+                    (Int.(+) (FIPS205_Params.n SetModel.P)
+                       (Int.( * ) (FIPS205_Params.k SetModel.P)
+                          (Int.( * )
+                             (Int.(+) (FIPS205_Params.a SetModel.P) 1)
+                             (FIPS205_Params.n SetModel.P))))
+                    (BArray7856.to_list s0)) /\
+               BArray16.to_list res.`2 =
+               FIPS205_FORS.fors_pkFromSig SetModel.P
+                 (FIPS205_FORS.fors_sign SetModel.P md (BArray16.to_list k0)
+                    pk_seed (ADRS.bytes_of a0)) md pk_seed (ADRS.bytes_of a0)] = (
+      Real.(%r) 1).
+
+(* Hypertree.ht_sign_correct *)
+lemma ht_sign_correct:
+  forall (pk : Bytes.bytes) (c0 : BArray96.t),
+    (forall (k0 : BArray16.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_prf_x4 :
+                sk_seed = k0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.PRF SetModel.P pk (BArray16.to_list k0)
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))] = (
+       Real.(%r) 1)) =>
+    (forall (x0 : BArray64.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_f_x4 :
+                x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.F SetModel.P pk
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                    (WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                       (BArray64.to_list x0))] = (Real.(%r) 1)) =>
+    (forall (m0 : BArray2240.t) (a0 : BArray128.t),
+       phoare[ CoreExtracted.M._thash_t_len_x4 :
+                in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
+                forall (k : int),
+                  0 Int.(<=) k Int.(<) 4 =>
+                  WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list res.`1) =
+                  FIPS205_Hash.T_l SetModel.P pk
+                    (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                    (WotsLeaf.lanev
+                       (Int.( * ) (FIPS205_Params.len SetModel.P)
+                          (FIPS205_Params.n SetModel.P)) k
+                       (BArray2240.to_list m0))] = (Real.(%r) 1)) =>
+    (forall (x0 a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_h :
+                in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.H SetModel.P pk (ADRS.bytes_of a0)
+                  (ADRS.bytes_of x0)] = (Real.(%r) 1)) =>
+    forall (s0 : BArray7856.t) (m0 k0 : BArray16.t) (it0 : JWord.W64.t)
+      (il0 : JWord.W32.t),
+      Int.(<) (JWord.W32.to_uint il0)
+        (Ring.IntID.(^) 2 (FIPS205_Params.hp SetModel.P)) =>
+      phoare[ CoreExtracted.M._ht_sign :
+               sig = s0 /\
+               msg = m0 /\
+               sk_seed = k0 /\ ctx = c0 /\ idx_tree = it0 /\ idx_leaf = il0 ==>
+               BArray7856.to_list res.`1 =
+               List.(++) (List.take Hypertree.ht_off (BArray7856.to_list s0))
+                 (FIPS205_Hypertree.ht_sign SetModel.P (BArray16.to_list m0)
+                    (BArray16.to_list k0) pk (JWord.W64.to_uint it0)
+                    (JWord.W32.to_uint il0)) /\
+               BArray16.to_list res.`2 =
+               FIPS205_XMSS.xmss_node SetModel.P (BArray16.to_list k0) 0
+                 (FIPS205_Params.hp SetModel.P) pk
+                 (FIPS205_Address_Props.mk_adrs
+                    (Int.(-) (FIPS205_Params.d SetModel.P) 1)
+                    (FIPS205_TreeForms.ht_tree SetModel.P
+                       (JWord.W64.to_uint it0)
+                       (Int.(-) (FIPS205_Params.d SetModel.P) 1)) 0 0 0 0)] = (
+      Real.(%r) 1).
+
+(* Hypertree.ht_verify_correct *)
+lemma ht_verify_correct:
+  forall (pk : Bytes.bytes) (c0 : BArray96.t),
+    (forall (x0 : BArray16.t) (a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_f :
+                x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.F SetModel.P pk (ADRS.bytes_of a0)
+                  (BArray16.to_list x0)] = (Real.(%r) 1)) =>
+    (forall (m0 : BArray560.t) (a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_t_len :
+                in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.T_l SetModel.P pk (ADRS.bytes_of a0)
+                  (BArray560.to_list m0)] = (Real.(%r) 1)) =>
+    (forall (x0 a0 : BArray32.t),
+       phoare[ CoreExtracted.M._thash_h :
+                in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+                BArray16.to_list res.`1 =
+                FIPS205_Hash.H SetModel.P pk (ADRS.bytes_of a0)
+                  (ADRS.bytes_of x0)] = (Real.(%r) 1)) =>
+    forall (s0 : BArray4928.t) (m0 r0 : BArray16.t) (it0 : JWord.W64.t)
+      (il0 : JWord.W32.t),
+      phoare[ CoreExtracted.M._ht_verify :
+               sig = s0 /\
+               msg = m0 /\
+               pk_root = r0 /\ ctx = c0 /\ idx_tree = it0 /\ idx_leaf = il0 ==>
+               res.`1 =
+               if FIPS205_Hypertree.ht_verify SetModel.P
+                    (BArray16.to_list m0) (BArray4928.to_list s0) pk
+                    (JWord.W64.to_uint it0) (JWord.W32.to_uint il0)
+                    (BArray16.to_list r0) then JWord.W64.zero
+               else JWord.W64.of_int (Int.([-]) 1)] = (Real.(%r) 1).
+
 (* ADRSc.adrs_compress_into64_correct *)
 lemma adrs_compress_into64_correct:
   forall (d0 : BArray64.t) (a0 : BArray32.t),
@@ -1305,6 +2015,42 @@ lemma thash_h_correct:
              FIPS205_Hash.H SetModel.P pk (ADRS.bytes_of a0)
                (ADRS.bytes_of x0)] = (Real.(%r) 1).
 
+(* PreHash.prehash_ll *)
+lemma prehash_ll: islossless CoreExtracted.M._prehash.
+
+(* PreHash.prehash_h *)
+lemma prehash_h:
+  forall (s p0 l0 : JWord.W64.t) (mem0 : JMemory.global_mem_t),
+    hoare[ CoreExtracted.M._prehash :
+            sel = s /\
+            msg = p0 /\
+            msg_len = l0 /\
+            JMemory.Glob.mem = mem0 /\
+            1 Int.(<=) JWord.W64.to_uint s Int.(<=) 12 /\
+            Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+              JModel_armv8a.ptr_modulus /\
+            External.ph_dom (JWord.W64.to_uint s) p0 l0 ==>
+            List.take (JWord.W64.to_uint res.`2) (BArray64.to_list res.`1) =
+            FIPS205_External.ph_apply (External.ph_of (JWord.W64.to_uint s))
+              (External.m_of mem0 p0 l0)
+            ].
+
+(* PreHash.prehash_total *)
+lemma prehash_total:
+  forall (s p0 l0 : JWord.W64.t) (mem0 : JMemory.global_mem_t),
+    phoare[ CoreExtracted.M._prehash :
+             sel = s /\
+             msg = p0 /\
+             msg_len = l0 /\
+             JMemory.Glob.mem = mem0 /\
+             1 Int.(<=) JWord.W64.to_uint s Int.(<=) 12 /\
+             Int.(<=) (Int.(+) (JWord.W64.to_uint p0) (JWord.W64.to_uint l0))
+               JModel_armv8a.ptr_modulus /\
+             External.ph_dom (JWord.W64.to_uint s) p0 l0 ==>
+             List.take (JWord.W64.to_uint res.`2) (BArray64.to_list res.`1) =
+             FIPS205_External.ph_apply (External.ph_of (JWord.W64.to_uint s))
+               (External.m_of mem0 p0 l0)] = (Real.(%r) 1).
+
 (* Thash.thash_ctx_init_correct *)
 lemma thash_ctx_init_correct:
   (forall (h0 : JWord.W32.t List.list) (blk : BArray64.t),
@@ -1328,22 +2074,326 @@ lemma thash_ctx_init_correct:
              pk_seed = s0 ==> Thash.ctx_ok (BArray16.to_list s0) res.`1] = (
     Real.(%r) 1).
 
-definitions 17
+(* HMsg.h_msg_correct *)
+lemma h_msg_correct:
+  forall (r0 : BArray16.t) (p0 : BArray32.t) (x0 : BArray332.t) (pl m
+    ml : JWord.W64.t) (mem0 : JMemory.global_mem_t),
+    phoare[ CoreExtracted.M._h_msg :
+             r = r0 /\
+             pk = p0 /\
+             prefix = x0 /\
+             prefix_len = pl /\
+             msg = m /\
+             msg_len = ml /\
+             JMemory.Glob.mem = mem0 /\ Internal.msg_ok pl m ml ==>
+             BArray30.to_list res.`1 =
+             FIPS205_Hash.H_msg SetModel.P (BArray16.to_list r0)
+               (Bytes.slice (ADRS.bytes_of p0) 0
+                  (FIPS205_Params.n SetModel.P))
+               (Bytes.slice (ADRS.bytes_of p0) (FIPS205_Params.n SetModel.P)
+                  (Int.( * ) 2 (FIPS205_Params.n SetModel.P)))
+               (Internal.slh_msg mem0 x0 pl m ml)] = (Real.(%r) 1).
+
+(* ThashT.thash_t_len_total *)
+lemma thash_t_len_total:
+  forall (pk : Bytes.bytes) (c0 : BArray96.t) (a0 : BArray32.t)
+    (x0 : BArray560.t),
+    phoare[ CoreExtracted.M._thash_t_len :
+             in_0 = x0 /\
+             ctx = c0 /\
+             adrs = a0 /\
+             List.size pk = FIPS205_Params.n SetModel.P /\ Thash.ctx_ok pk c0 ==>
+             BArray16.to_list res.`1 =
+             FIPS205_Hash.T_l SetModel.P pk (ADRS.bytes_of a0)
+               (BArray560.to_list x0)] = (Real.(%r) 1).
+
+(* ThashT.thash_t_k_total *)
+lemma thash_t_k_total:
+  forall (pk : Bytes.bytes) (c0 : BArray96.t) (a0 : BArray32.t)
+    (x0 : BArray224.t),
+    phoare[ CoreExtracted.M._thash_t_k :
+             in_0 = x0 /\
+             ctx = c0 /\
+             adrs = a0 /\
+             List.size pk = FIPS205_Params.n SetModel.P /\ Thash.ctx_ok pk c0 ==>
+             BArray16.to_list res.`1 =
+             FIPS205_Hash.T_l SetModel.P pk (ADRS.bytes_of a0)
+               (BArray224.to_list x0)] = (Real.(%r) 1).
+
+(* ThashX4.thash_prf_x4_total *)
+lemma thash_prf_x4_total:
+  forall (pk : Bytes.bytes) (c0 : BArray96.t) (k0 : BArray16.t)
+    (a0 : BArray128.t),
+    phoare[ CoreExtracted.M._thash_prf_x4 :
+             sk_seed = k0 /\
+             ctx = c0 /\
+             adrs = a0 /\
+             List.size pk = FIPS205_Params.n SetModel.P /\ Thash.ctx_ok pk c0 ==>
+             forall (k : int),
+               0 Int.(<=) k Int.(<) 4 =>
+               WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                 (BArray64.to_list res.`1) =
+               FIPS205_Hash.PRF SetModel.P pk (BArray16.to_list k0)
+                 (WotsLeaf.lanev 32 k (BArray128.to_list a0))] = (Real.(%r) 1).
+
+(* ThashX4.thash_f_x4_total *)
+lemma thash_f_x4_total:
+  forall (pk : Bytes.bytes) (c0 : BArray96.t) (x0 : BArray64.t)
+    (a0 : BArray128.t),
+    phoare[ CoreExtracted.M._thash_f_x4 :
+             x = x0 /\
+             ctx = c0 /\
+             adrs = a0 /\
+             List.size pk = FIPS205_Params.n SetModel.P /\ Thash.ctx_ok pk c0 ==>
+             forall (k : int),
+               0 Int.(<=) k Int.(<) 4 =>
+               WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                 (BArray64.to_list res.`1) =
+               FIPS205_Hash.F SetModel.P pk
+                 (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                 (WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                    (BArray64.to_list x0))] = (Real.(%r) 1).
+
+(* ThashX4.thash_t_len_x4_total *)
+lemma thash_t_len_x4_total:
+  forall (pk : Bytes.bytes) (c0 : BArray96.t) (m0 : BArray2240.t)
+    (a0 : BArray128.t),
+    phoare[ CoreExtracted.M._thash_t_len_x4 :
+             in_0 = m0 /\
+             ctx = c0 /\
+             adrs = a0 /\
+             List.size pk = FIPS205_Params.n SetModel.P /\ Thash.ctx_ok pk c0 ==>
+             forall (k : int),
+               0 Int.(<=) k Int.(<) 4 =>
+               WotsLeaf.lanev (FIPS205_Params.n SetModel.P) k
+                 (BArray64.to_list res.`1) =
+               FIPS205_Hash.T_l SetModel.P pk
+                 (WotsLeaf.lanev 32 k (BArray128.to_list a0))
+                 (WotsLeaf.lanev
+                    (Int.( * ) (FIPS205_Params.len SetModel.P)
+                       (FIPS205_Params.n SetModel.P)) k
+                    (BArray2240.to_list m0))] = (Real.(%r) 1).
+
+(* Theorems.slh_verify_total *)
+lemma slh_verify_total:
+  forall (s0 : BArray7856.t) (x0 : BArray332.t) (pl m ml : JWord.W64.t)
+    (p0 : BArray32.t) (mem0 : JMemory.global_mem_t),
+    phoare[ CoreExtracted.M._slh_verify :
+             sig = s0 /\
+             prefix = x0 /\
+             prefix_len = pl /\
+             msg = m /\
+             msg_len = ml /\
+             pk = p0 /\ JMemory.Glob.mem = mem0 /\ Internal.msg_ok pl m ml ==>
+             res.`1 =
+             if FIPS205_Internal.slh_verify_internal SetModel.P
+                  (Internal.slh_msg mem0 x0 pl m ml) (BArray7856.to_list s0)
+                  (ADRS.bytes_of p0) then JWord.W64.zero
+             else JWord.W64.of_int (Int.([-]) 1)] = (Real.(%r) 1).
+
+(* Theorems.slh_sign_total *)
+lemma slh_sign_total:
+  forall (s0 : BArray7856.t) (x0 : BArray332.t) (pl m ml : JWord.W64.t)
+    (k0 : BArray64.t) (o0 : BArray16.t) (mem0 : JMemory.global_mem_t),
+    phoare[ CoreExtracted.M._slh_sign :
+             sig = s0 /\
+             prefix = x0 /\
+             prefix_len = pl /\
+             msg = m /\
+             msg_len = ml /\
+             sk = k0 /\
+             opt_rand = o0 /\
+             JMemory.Glob.mem = mem0 /\ Internal.msg_ok pl m ml ==>
+             BArray7856.to_list res.`1 =
+             FIPS205_Internal.slh_sign_internal SetModel.P
+               (Internal.slh_msg mem0 x0 pl m ml) (BArray64.to_list k0)
+               (Some (BArray16.to_list o0))] = (Real.(%r) 1).
+
+(* Theorems.slh_keygen_total *)
+lemma slh_keygen_total:
+  forall (e0 : BArray48.t),
+    phoare[ CoreExtracted.M._slh_keygen :
+             seeds = e0 ==>
+             (BArray64.to_list res.`2, ADRS.bytes_of res.`1) =
+             FIPS205_Internal.slh_keygen_internal SetModel.P
+               (Bytes.slice (BArray48.to_list e0) 0
+                  (FIPS205_Params.n SetModel.P))
+               (Bytes.slice (BArray48.to_list e0)
+                  (FIPS205_Params.n SetModel.P)
+                  (Int.( * ) 2 (FIPS205_Params.n SetModel.P)))
+               (Bytes.slice (BArray48.to_list e0)
+                  (Int.( * ) 2 (FIPS205_Params.n SetModel.P))
+                  (Int.( * ) 3 (FIPS205_Params.n SetModel.P)))] = (Real.(%r)
+                                                                    1).
+
+(* Theorems.sign_total *)
+lemma sign_total:
+  forall (s0 : BArray7856.t) (m ml : JWord.W64.t) (d0 : BArray257.t)
+    (k0 : BArray64.t) (o0 : BArray16.t) (mem0 : JMemory.global_mem_t),
+    phoare[ CoreExtracted.M.sign :
+             sig = s0 /\
+             msg = m /\
+             msg_len = ml /\
+             domain = d0 /\
+             sk = k0 /\
+             opt_rand = o0 /\
+             JMemory.Glob.mem = mem0 /\
+             Internal.msg_dom (JWord.W64.of_int BArray332.size) m ml /\
+             External.ph_dom (External.dsel d0) m ml ==>
+             if Int.(<=) (External.dsel d0) 12 then
+               res.`2 = JWord.W64.zero /\
+               External.ext_sign d0 (External.m_of mem0 m ml)
+                 (BArray64.to_list k0) (Some (BArray16.to_list o0)) =
+               Some (BArray7856.to_list res.`1)
+             else
+               res.`2 = JWord.W64.of_int (Int.([-]) 1) /\
+               res.`1 = s0 /\
+               External.ext_sign d0 (External.m_of mem0 m ml)
+                 (BArray64.to_list k0) (Some (BArray16.to_list o0)) =
+               None<:JWord.W8.t List.list>] = (Real.(%r) 1).
+
+(* Theorems.verify_total *)
+lemma verify_total:
+  forall (s0 : BArray7856.t) (m ml : JWord.W64.t) (d0 : BArray257.t)
+    (p0 : BArray32.t) (mem0 : JMemory.global_mem_t),
+    phoare[ CoreExtracted.M.verify :
+             sig = s0 /\
+             msg = m /\
+             msg_len = ml /\
+             domain = d0 /\
+             pk = p0 /\
+             JMemory.Glob.mem = mem0 /\
+             Internal.msg_dom (JWord.W64.of_int BArray332.size) m ml /\
+             External.ph_dom (External.dsel d0) m ml ==>
+             res =
+             if External.ext_verify d0 (External.m_of mem0 m ml)
+                  (BArray7856.to_list s0) (ADRS.bytes_of p0) then
+               JWord.W64.zero
+             else JWord.W64.of_int (Int.([-]) 1)] = (Real.(%r) 1).
+
+(* Theorems.keygen_total *)
+lemma keygen_total:
+  forall (e0 : BArray48.t),
+    phoare[ CoreExtracted.M.keygen :
+             seeds = e0 ==>
+             (BArray64.to_list res.`2, ADRS.bytes_of res.`1) =
+             FIPS205_External.slh_keygen SetModel.P
+               (Bytes.slice (BArray48.to_list e0) 0
+                  (FIPS205_Params.n SetModel.P))
+               (Bytes.slice (BArray48.to_list e0)
+                  (FIPS205_Params.n SetModel.P)
+                  (Int.( * ) 2 (FIPS205_Params.n SetModel.P)))
+               (Bytes.slice (BArray48.to_list e0)
+                  (Int.( * ) 2 (FIPS205_Params.n SetModel.P))
+                  (Int.( * ) 3 (FIPS205_Params.n SetModel.P)))] = (Real.(%r)
+                                                                    1).
+
+(* Theorems.sign_internal_total *)
+lemma sign_internal_total:
+  forall (s0 : BArray7856.t) (m ml : JWord.W64.t) (k0 : BArray64.t)
+    (o0 : BArray16.t) (mem0 : JMemory.global_mem_t),
+    phoare[ CoreExtracted.M.sign_internal :
+             sig = s0 /\
+             msg = m /\
+             msg_len = ml /\
+             sk = k0 /\
+             opt_rand = o0 /\
+             JMemory.Glob.mem = mem0 /\ Internal.msg_dom JWord.W64.zero m ml ==>
+             BArray7856.to_list res =
+             FIPS205_Internal.slh_sign_internal SetModel.P
+               (External.m_of mem0 m ml) (BArray64.to_list k0)
+               (Some (BArray16.to_list o0))] = (Real.(%r) 1).
+
+(* Theorems.verify_internal_total *)
+lemma verify_internal_total:
+  forall (s0 : BArray7856.t) (m ml : JWord.W64.t) (p0 : BArray32.t)
+    (mem0 : JMemory.global_mem_t),
+    phoare[ CoreExtracted.M.verify_internal :
+             sig = s0 /\
+             msg = m /\
+             msg_len = ml /\
+             pk = p0 /\
+             JMemory.Glob.mem = mem0 /\ Internal.msg_dom JWord.W64.zero m ml ==>
+             res =
+             if FIPS205_Internal.slh_verify_internal SetModel.P
+                  (External.m_of mem0 m ml) (BArray7856.to_list s0)
+                  (ADRS.bytes_of p0) then JWord.W64.zero
+             else JWord.W64.of_int (Int.([-]) 1)] = (Real.(%r) 1).
+
+definitions 75
 
 ADRSc.adrsc_src op 0d45f59ab1064ee6
-ADRSc.written128 op 7b314c658afd2480
-ADRSc.written64 op 40e94c8db33ed79c
+ADRSc.written128 op 447d179585d21c7f
+ADRSc.written64 op 776d001fc3bfc548
+External.dctx op 26f42e5e4baaf6c9
+External.dlen op e91f3d72b1869d5a
+External.dsel op 59c59f014a1df438
+External.ext_sign op a9cfcae945ccdf3d
+External.ext_verify op e090b50114e3d5b1
+External.fbyte op 4199a045141307ca
+External.frame op 9b20b7b57c894095
+External.frame_out op 892b945d626fc181
+External.m_of op 57383be7544eb10c
+External.oid_c op 7e5c2414ae1f785f
+External.ph_dom op 679f2f783e813368
+External.ph_of op b63914f2e8105d55
+ForsPk.fau op 81b0700efe7973c2
+ForsPk.fld op 2ab3025d7e8485d5
+ForsPk.flf op b75d76fb647c884c
+ForsSign.ftsig op 4bbb7c5b6f663ea5
+ForsTree.fnode op 5474606d8454c006
+HMsg.head_of op 290f6cf094e6d884
+Hypertree.hsg op 13daa3aedabcadb3
+Hypertree.ht_off op 70dc0e426dc18b09
+Hypertree.hvg op 6cdee2f6cbbb21c4
+Internal.adrs_ok op 500aff2e02ba9a56
+Internal.msg_dom op de2b289d115dd4ce
+Internal.msg_ok op 746f1ac7390af2d3
+Internal.sA op cecf09b0cc2436cb
+Internal.seeds_in op a7d4adfe9775a545
+Internal.sha2_msg_max op d4e90f663fc6f911
+Internal.sha2_msg_ok op 9a6cee525cf5d298
+Internal.slh_msg op 9fff3ea49b2fbb19
+Mgf1.lay op 28835a609924e7f0
+Mgf1.pad_len256 op 6a3a21ff5922755c
+Mgf1.pad_len512 op 9739f4961dc70b04
+MsgHash.kb256 op 7b2302dc25c5dcab
+MsgHash.kb512 op 58937c297e64a9ab
 Thash.ctx_ok op 7f2e9ba38e14505a
 Thash.cv256 op 6ef23c962b59b3db
 Thash.cv512 op 00eb0988916ca863
 Thash.cvs256 op 49dbdfd3ddf11379
 Thash.cvs512 op 6d7aef432cd73efe
-Thash.hw256 op 60cdddad79ee2d37
-Thash.hw512 op 2668c4881f0a6216
+Thash.hw256 op e6200adbc54235c0
+Thash.hw512 op 5bc4acd8b301530d
 Thash.init_block op 23cca3993bfbb156
 Thash.seed_block op df40bb4b48e0f2fd
-Thash.seeded op 945c7d309d15610f
+Thash.seeded op cebed55c81d3595b
 ThashBlocks.pad_tail256 op f7c3b72402b36d4c
 ThashBlocks.pad_tail512 op dbf0fcf6825e9fd5
+ThashT.tin op 3179a3a1194ca05c
+ThashT.tk_pl256 op 4fe68346e2b474e8
+ThashT.tk_pl512 op 5e844a01399a1fd4
+ThashT.tlay op dc76bfc5f5acccab
+ThashT.tlen_pl256 op 416672cc8d67f4f8
+ThashT.tlen_pl512 op f9e63f9edb9da193
+ThashX4.adrs_lane op 425146fe0b612cb4
+ThashX4.node_lane op ee2943ad75d1c537
+ThashX4.nx4 op aad8f200348a40f0
+TreeFold.au op 5a4e76efc36e2ba8
+TreeFold.aum op b159f5caef231711
+TreeFold.fmid op 0054f248ebe38159
+TreeFold.fs op 788541b6892c6078
+TreeFold.slot op 5b5fe7d10f0391e7
 Wots.csum op fcda3065d6f37011
 WotsChain.chain_step op 5409b1d855869353
+WotsLeaf.adA op f1c5a1657f4488bb
+WotsLeaf.cend op 8d58fd3bcceec1b2
+WotsLeaf.lane op 4e9348fb2ecd346f
+WotsLeaf.lanev abbrev ef84db5e6ca49670
+Xmss.kinv op 70c91c39fb62821a
+Xmss.oinv op 2dba0f9974ed73c3
+Xmss.wsg op 79bed4ebf216a3b1
+Xmss.xn op ac9f219490511612
+XmssPk.auth_of op 33442ad957a55211
+XmssPk.xnode0 op 25da0251fccca8b6
