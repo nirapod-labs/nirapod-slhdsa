@@ -19,6 +19,10 @@
 #   lists notwithstanding;
 #   a toolchain file changes every key; a toolchain option only its
 #   platform's;
+#   ci/checks.toml enters each key through that check's own entry: a
+#   comment, another check's entry or a field no check reads changes
+#   nothing, a check's own entry or a list it uses changes its key, and a
+#   registry field the keys do not know fails them all;
 #   the work tree plays no part: only the commit does.
 
 import os
@@ -79,23 +83,29 @@ class Keys(unittest.TestCase):
 
     @classmethod
     def keys(cls, reg=None):
-        reg = reg or cls.reg
+        reg = reg or registry.load(cls.repo)
         tree = key.Tree(cwd=cls.repo)
         out = {(c, p): key.key(tree, reg, c, p)[0] for c, p in registry.legs(reg)}
         out[("agree", "any")] = key.agree_key(tree, reg)[0]
         return out
 
-    def changed_by(self, path, text=None):
+    def changed_by(self, path, text=None, old=None):
         """The legs whose key differs after appending a byte to PATH (or
-        creating it with TEXT) in a new commit; the commit is undone."""
+        creating it with TEXT; or replacing OLD, once, with TEXT) in a new
+        commit; the commit is undone."""
         full = os.path.join(self.repo, path)
         existed = os.path.exists(full)
         if existed:
             with open(full, "rb") as f:
                 before = f.read()
         os.makedirs(os.path.dirname(full) or self.repo, exist_ok=True)
-        with open(full, "ab") as f:
-            f.write((text or " ").encode())
+        if old is not None:
+            self.assertEqual(before.count(old.encode()), 1, old)
+            with open(full, "wb") as f:
+                f.write(before.replace(old.encode(), text.encode()))
+        else:
+            with open(full, "ab") as f:
+                f.write((text or " ").encode())
         git(self.repo, "add", "-A")
         git(self.repo, "commit", "-q", "-m", "change")
         try:
@@ -180,8 +190,61 @@ class Keys(unittest.TestCase):
                          {l for l in after if l[1] == "linux-aarch64"} | {("agree", "any")})
 
     def test_shared_ci_files_change_every_key(self):
-        for path in ("ci/key.py", "ci/checks.toml", ".github/workflows/ci.yml"):
+        for path in ("ci/key.py", "ci/registry.py", ".github/workflows/ci.yml"):
             self.assertEqual(self.changed_by(path), self.all_legs(), path)
+
+    def test_registry_comments_change_nothing(self):
+        reg = "ci/checks.toml"
+        self.assertEqual(self.changed_by(reg, "\n# a comment\n"), set())
+        self.assertEqual(self.changed_by(reg, "# Two comments.\n[checks.safety]\n",
+                                         old="[checks.safety]\n"), set())
+        # A field read only by the layout check, which has no key.
+        self.assertEqual(self.changed_by(reg, '"build", "x"]', old='"build"]'), set())
+
+    def test_registry_entry_of_a_check_is_its_own(self):
+        reg = "ci/checks.toml"
+        # Its own entry: that check alone, on every platform.
+        got = self.changed_by(reg, 'recipe = "test-hash"\njobs = 1',
+                              old='recipe = "test-hash"')
+        self.assertEqual(got, self.legs_of("test-hash"))
+        # Another platform list, another check's skip list.
+        got = self.changed_by(reg, '"proofs/inventory", "x", "ci/hash-sets.toml"]\n\n'
+                              '[checks.proofs-spec]',
+                              old='"proofs/inventory", "ci/hash-sets.toml"]\n\n'
+                              '[checks.proofs-spec]')
+        self.assertEqual(got, self.legs_of("proofs-crypto-specs"))
+        # test-core's entry reaches agree through test-core's keys.
+        got = self.changed_by(reg, '"bench", "x", "analysis",\n        "proofs"',
+                              old='"bench", "analysis",\n        "proofs"')
+        self.assertEqual(got, self.legs_of("test-core", "agree"))
+
+    def test_registry_lists_reach_their_users(self):
+        reg = "ci/checks.toml"
+        self.assertEqual(self.changed_by(reg, 'skip-all = [\n  "x",', old='skip-all = [\n'),
+                         self.all_legs())
+        got = self.changed_by(reg, "jobs = 3\n\n# -----", old="jobs = 2\n\n# -----")
+        self.assertEqual(got, {l for l in self.base if l[1] == "macos-aarch64"}
+                         | {("agree", "any")})
+        # The directories of a component: the checks of that component, and
+        # every check once it is required.
+        self.assertEqual(self.changed_by(reg, 'gen = ["gen", "x"]', old='gen = ["gen"]'),
+                         self.legs_of("generated"))
+        self.assertEqual(self.changed_by(reg, '"acvp", "diff", "gen"]', old='"acvp", "diff"]'),
+                         self.all_legs())
+
+    def test_unknown_registry_fields_fail_every_key(self):
+        tree = key.Tree(cwd=self.repo)
+        for table in ("components", "inputs"):
+            reg = registry.load(self.repo)
+            reg[table]["extra"] = []
+            with self.assertRaises(key.KeyFailure):
+                key.key(tree, reg, "test-hash", "linux-x86_64")
+            with self.assertRaises(key.KeyFailure):
+                key.agree_key(tree, reg)
+        reg = registry.load(self.repo)
+        reg["extra"] = {}
+        with self.assertRaises(key.KeyFailure):
+            key.key(tree, reg, "proofs-spec", "linux-x86_64")
 
     def test_work_tree_plays_no_part(self):
         p = os.path.join(self.repo, "src/hash/keccak/keccakf1600.jinc")

@@ -19,8 +19,11 @@
 # checks; and the files under toolchain/ enter through the toolchain
 # identity instead.
 #
-# Changing this file changes the key of every check, so every check runs
-# again: an input list is where a wrong exclusion would hide a stale pass.
+# This file is not an input as a whole: each check's key covers what the
+# file says about that check (its own table, its platform's, skip-all and
+# the components it depends on; ci/key.py), so a comment or another
+# check's entry leaves its key unchanged. An input list is where a wrong
+# exclusion would hide a stale pass.
 
 format = 2
 

@@ -39,7 +39,8 @@ python3 -m unittest discover -s ci/tests           # the tests of this directory
 ## How a run decides what to run
 
 Each check's key covers the content of every file it reads, the
-toolchain's source files, the platform and the runner label (`key.py`
+toolchain's source files, the platform and the runner label, and what
+`checks.toml` says about that check, not the file as a whole (`key.py`
 explains the exact definition). A check reads every tracked file except the
 paths `checks.toml` lists for it, so a new file is read by every check
 until someone shows that a check does not read it.

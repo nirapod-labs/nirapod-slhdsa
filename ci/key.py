@@ -16,7 +16,7 @@
 #     platform P
 #     runner <the hosted runner label of P>
 #     toolchain <toolchain identity of P>
-#     inputs <digest of the input set of C>
+#     inputs <digest of the input set of C, then its registry line>
 #
 # and the key is v2-C-P-<SHA-256 of the key text>, also the record's name.
 #
@@ -41,6 +41,7 @@
 #   - the paths of [inputs] skip-all and of C's skip list (a path and
 #     everything under it; ci/checks.toml),
 #   - the files under toolchain/ (they are the toolchain identity),
+#   - ci/checks.toml itself (it enters through the registry line),
 #   - the recipes ci/checks/*.mk other than C's own, and the rules
 #     ci/rules/*.toml other than C's own,
 #
@@ -49,18 +50,45 @@
 # includes them all.
 # So a path nobody listed is an input of every check.
 #
+# The registry line ends the input digest: "registry <SHA-256 of the
+# entry>" LF, where the entry is what ci/checks.toml says about C on P,
+# serialised as JSON with sorted keys, no spaces and ASCII escapes, then
+# LF (`key.py registry C P` prints it):
+#
+#   format      the registry's format
+#   check       C's own table, every field of it
+#   platform    P's table, every field of it
+#   skip-all    the [inputs] list
+#   components  the required list, and the directories of the required
+#               components and of those C names (component, needs,
+#               not-run-when): what decides whether C runs at all
+#
+# Comments, layout and the entries of other checks and platforms are not in
+# it, so they leave C's key alone. The rest of the file reaches no check:
+# [components] containers and other-roots are read by the layout check of
+# ci/source.py, which runs on every commit and has no key, and [agree] by
+# agree alone. The rule fails closed: registry.py refuses any table or field
+# it does not know, and REGISTRY_FIELDS below must name every one it
+# accepts, so that a field added to the registry without a decision here
+# fails every key instead of silently staying out of them. A field that can
+# change what a check runs, where, or on which inputs belongs in the entry.
+#
 # The key of agree is over the keys of the test-core legs instead of files:
 # its inputs line is the SHA-256 of their key names, one per line, sorted,
-# with platform "any", runner "-" and the toolchain identity without
-# options.
+# then its registry line, with platform "any", runner "-" and the toolchain
+# identity without options. Its entry is the format, [agree], every
+# platform's table (agree reads the build record of each) and the
+# components as above for its component.
 #
 # Usage, from the repository root:
 #
 #   key.py key CHECK PLATFORM     the key text, then "key <name>"
 #   key.py inputs CHECK PLATFORM  the paths of the input set, one per line
+#   key.py registry CHECK PLATFORM  the registry entry, as serialised
 #   key.py agree                  the key text and name of agree
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -72,6 +100,18 @@ FORMAT = 2
 RECIPES = "ci/checks/"
 RULES = "ci/rules/"
 TOOLCHAIN = "toolchain/"
+REGISTRY = registry.REGISTRY
+
+# Every table and field registry.load() accepts, as it accepts them. A
+# change on either side without the other fails every key (header).
+REGISTRY_FIELDS = {
+    "format": None,
+    "platforms": None,
+    "components": {"required", "containers", "other-roots", "dirs"},
+    "inputs": {"skip-all"},
+    "checks": None,
+    "agree": None,
+}
 
 
 class KeyFailure(Exception):
@@ -149,7 +189,7 @@ def input_set(tree, reg, check):
         if included_by_top_makefile(p):
             kept.append(p)
             continue
-        if p.startswith(TOOLCHAIN) or under(p, skip):
+        if p.startswith(TOOLCHAIN) or p == REGISTRY or under(p, skip):
             continue
         if p.startswith(RECIPES) and p.endswith(".mk") and p != own_recipe \
                 and "/" not in p[len(RECIPES):]:
@@ -160,6 +200,50 @@ def input_set(tree, reg, check):
     if not kept:
         raise KeyFailure(f"{check}: the input set is empty")
     return kept
+
+
+def _known_fields(reg):
+    if set(reg) != set(REGISTRY_FIELDS):
+        raise KeyFailure(f"{REGISTRY}: tables {sorted(reg)}, "
+                         f"the keys know {sorted(REGISTRY_FIELDS)}")
+    for table, fields in REGISTRY_FIELDS.items():
+        if fields is not None and set(reg[table]) != fields:
+            raise KeyFailure(f"{REGISTRY}: [{table}] fields {sorted(reg[table])}, "
+                             f"the keys know {sorted(fields)}")
+
+
+def _components(reg, names):
+    comp = reg["components"]
+    names = set(names) | set(comp["required"])
+    return {"required": comp["required"], "dirs": {n: comp["dirs"][n] for n in sorted(names)}}
+
+
+def registry_entry(reg, check, platform):
+    """What the registry says about CHECK on PLATFORM (header)."""
+    _known_fields(reg)
+    c = reg["checks"][check]
+    named = [c["component"], *c.get("needs", []), *c.get("not-run-when", [])]
+    return {"format": reg["format"], "check": {check: c},
+            "platform": {platform: reg["platforms"][platform]},
+            "skip-all": reg["inputs"]["skip-all"], "components": _components(reg, named)}
+
+
+def agree_entry(reg):
+    _known_fields(reg)
+    return {"format": reg["format"], "agree": reg["agree"], "platforms": reg["platforms"],
+            "components": _components(reg, [reg["agree"]["component"]])}
+
+
+def serialise(entry):
+    try:
+        return json.dumps(entry, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+                          allow_nan=False) + "\n"
+    except (TypeError, ValueError) as e:
+        raise KeyFailure(f"{REGISTRY}: a value the keys cannot serialise ({e})") from None
+
+
+def registry_line(entry):
+    return f"registry {hashlib.sha256(serialise(entry).encode()).hexdigest()}\n".encode()
 
 
 def toolchain_identity(tree, options):
@@ -180,16 +264,19 @@ def key(tree, reg, check, platform):
     if platform not in reg["checks"][check]["platforms"]:
         raise KeyFailure(f"{check} does not run on {platform}")
     p = reg["platforms"][platform]
+    inputs = digest(tree, input_set(tree, reg, check),
+                    registry_line(registry_entry(reg, check, platform)))
     text = (f"format {FORMAT}\ncheck {check}\nplatform {platform}\nrunner {p['runner']}\n"
             f"toolchain {toolchain_identity(tree, p['toolchain-options'])}\n"
-            f"inputs {digest(tree, input_set(tree, reg, check))}\n")
+            f"inputs {inputs}\n")
     return name(check, platform, text), text
 
 
 def agree_key(tree, reg):
     over = reg["agree"]["over"]
     names = sorted(key(tree, reg, over, p)[0] for p in reg["checks"][over]["platforms"])
-    inputs = hashlib.sha256("".join(n + "\n" for n in names).encode()).hexdigest()
+    inputs = hashlib.sha256("".join(n + "\n" for n in names).encode()
+                            + registry_line(agree_entry(reg))).hexdigest()
     text = (f"format {FORMAT}\ncheck agree\nplatform any\nrunner -\n"
             f"toolchain {toolchain_identity(tree, '')}\ninputs {inputs}\n")
     return name("agree", "any", text), text
@@ -208,6 +295,10 @@ def main(argv):
             for p in sorted(input_set(tree, reg, argv[2]), key=lambda s: s.encode()):
                 print(p)
             return 0
+        if len(argv) == 4 and argv[1] == "registry":
+            key(tree, reg, argv[2], argv[3])
+            sys.stdout.write(serialise(registry_entry(reg, argv[2], argv[3])))
+            return 0
         if len(argv) == 2 and argv[1] == "agree":
             n, text = agree_key(tree, reg)
             print(text + f"key {n}")
@@ -215,7 +306,8 @@ def main(argv):
     except (KeyFailure, registry.RegistryError) as e:
         print(f"key.py: {e}", file=sys.stderr)
         return 1
-    print("usage: key.py key CHECK PLATFORM | inputs CHECK PLATFORM | agree", file=sys.stderr)
+    print("usage: key.py key CHECK PLATFORM | inputs CHECK PLATFORM | registry CHECK PLATFORM"
+          " | agree", file=sys.stderr)
     return 2
 
 
