@@ -14850,14 +14850,11 @@ lemma shake256_mem_total:
                      (JWord.W64.to_uint n0)) (JWord.W64.to_uint l0))] = (
     Real.(%r) 1).
 
-* In [operators, predicates or exceptions]:
-
 definitions 2702
 
 ADRS.bytes_of abbrev d514b4f2c8f7c3d4
 Array200.Array200."_.[_<-_]" op fdaf541d35ff6144
 Array200.Array200."_.[_]" op 0d4e637e047d1c2d
-Array200.Array200.'a type 9e4ef61c3fc07c74
 Array200.Array200.all op 462dff30748321b6
 Array200.Array200.all_eq op 5de30a0098602fa6
 Array200.Array200.create op feadc4af66841878
@@ -14867,10 +14864,10 @@ Array200.Array200.map op bbda921eb999d091
 Array200.Array200.map2 op b893ca1bbf8d1717
 Array200.Array200.of_list op ed1caef0374e9e21
 Array200.Array200.sub op 3bc47fbae85dec53
+Array200.Array200.t type 9e4ef61c3fc07c74
 Array200.Array200.to_list op 4d85babb90916c28
 Array24.Array24."_.[_<-_]" op fdaf541d35ff6144
 Array24.Array24."_.[_]" op 0d4e637e047d1c2d
-Array24.Array24.'a type 9e4ef61c3fc07c74
 Array24.Array24.all op 4519e27c134d7bca
 Array24.Array24.all_eq op b7846160fc8e0cad
 Array24.Array24.create op feadc4af66841878
@@ -14880,10 +14877,10 @@ Array24.Array24.map op bbda921eb999d091
 Array24.Array24.map2 op b893ca1bbf8d1717
 Array24.Array24.of_list op ed1caef0374e9e21
 Array24.Array24.sub op 3bc47fbae85dec53
+Array24.Array24.t type 9e4ef61c3fc07c74
 Array24.Array24.to_list op 9f491f792e1037a2
 Array25.Array25."_.[_<-_]" op fdaf541d35ff6144
 Array25.Array25."_.[_]" op 0d4e637e047d1c2d
-Array25.Array25.'a type 9e4ef61c3fc07c74
 Array25.Array25.all op dd5405cca1babaae
 Array25.Array25.all_eq op dcc620358928587e
 Array25.Array25.create op feadc4af66841878
@@ -14893,10 +14890,10 @@ Array25.Array25.map op bbda921eb999d091
 Array25.Array25.map2 op b893ca1bbf8d1717
 Array25.Array25.of_list op ed1caef0374e9e21
 Array25.Array25.sub op 3bc47fbae85dec53
+Array25.Array25.t type 9e4ef61c3fc07c74
 Array25.Array25.to_list op 430b8c474be8f238
 Array5.Array5."_.[_<-_]" op fdaf541d35ff6144
 Array5.Array5."_.[_]" op 0d4e637e047d1c2d
-Array5.Array5.'a type 9e4ef61c3fc07c74
 Array5.Array5.all op b345992f5cd844e2
 Array5.Array5.all_eq op 5f2e7c1f6ab23225
 Array5.Array5.create op feadc4af66841878
@@ -14906,8 +14903,9 @@ Array5.Array5.map op bbda921eb999d091
 Array5.Array5.map2 op b893ca1bbf8d1717
 Array5.Array5.of_list op ed1caef0374e9e21
 Array5.Array5.sub op 3bc47fbae85dec53
+Array5.Array5.t type 9e4ef61c3fc07c74
 Array5.Array5.to_list op 378da4a5af689eda
-BinaryTrees.'a type d7fac93045a6fcc7
+BinaryTrees.bintree type d7fac93045a6fcc7
 BinaryTrees.fully_balanced op 049e78191efc0a8b
 BinaryTrees.height op 37cb4088c9c650ae
 BinaryTrees.list2tree op b7450a115be078df
@@ -15166,14 +15164,14 @@ FL_SL_XMSS_MT_ES.DBHPL.P op da6abea68019acea
 FL_SL_XMSS_MT_ES.DBHPL.T type f670f1c0de03233b
 FL_SL_XMSS_MT_ES.DBHPL.insub op 441e9a938e5fbecd
 FL_SL_XMSS_MT_ES.DBHPL.insubd op 527dd8960802b260
-FL_SL_XMSS_MT_ES.DBHPL.sT. type 59dfe1d2454002df
+FL_SL_XMSS_MT_ES.DBHPL.sT type 59dfe1d2454002df
 FL_SL_XMSS_MT_ES.DBHPL.val op 6c52814e3c688f84
 FL_SL_XMSS_MT_ES.DigestBlock.* nested 8ba3512f4a263ecc 2
 FL_SL_XMSS_MT_ES.DigestBlock.P op 42f7c7eb96929b24
 FL_SL_XMSS_MT_ES.DigestBlock.T type 3760d150a64a237f
 FL_SL_XMSS_MT_ES.DigestBlock.insub op 244bb2b558740b51
 FL_SL_XMSS_MT_ES.DigestBlock.insubd op a5f19213f572df4d
-FL_SL_XMSS_MT_ES.DigestBlock.sT. type 59dfe1d2454002df
+FL_SL_XMSS_MT_ES.DigestBlock.sT type 59dfe1d2454002df
 FL_SL_XMSS_MT_ES.DigestBlock.val op abd34b4ba5f046a2
 FL_SL_XMSS_MT_ES.DigestBlockFT.card op d2e0c78d1d6264b5
 FL_SL_XMSS_MT_ES.DigestBlockFT.enum op 7600440b8b3ceaa8
@@ -15181,7 +15179,7 @@ FL_SL_XMSS_MT_ES.DigestBlockFT.t type 6f990eeadfefd842
 FL_SL_XMSS_MT_ES.EUF_NAGCMA_FLSLXMSSMTTWESNPRF module bb9679781d9e456b
 FL_SL_XMSS_MT_ES.FL_SL_XMSS_MT_ES module dfbc0959d6dd3af7
 FL_SL_XMSS_MT_ES.FL_SL_XMSS_MT_ES_NPRF module 92a1ca0c7f89f619
-FL_SL_XMSS_MT_ES.HA.* nested e80cd9d03ed0540f 6
+FL_SL_XMSS_MT_ES.HA.* nested 602ada3f341cfddd 6
 FL_SL_XMSS_MT_ES.HA.adrs type f4d53588130e519d
 FL_SL_XMSS_MT_ES.HA.eq_idx op bee2e5249166e264
 FL_SL_XMSS_MT_ES.HA.get_idx op 0c1ee96375e1c436
@@ -15193,12 +15191,12 @@ FL_SL_XMSS_MT_ES.Index.P op f700ad11054db810
 FL_SL_XMSS_MT_ES.Index.T type b055b81f3511606a
 FL_SL_XMSS_MT_ES.Index.insub op e9a25b19b4bc9590
 FL_SL_XMSS_MT_ES.Index.insubd op f8249fa7d3a8f58f
-FL_SL_XMSS_MT_ES.Index.sT. type 59dfe1d2454002df
+FL_SL_XMSS_MT_ES.Index.sT type 59dfe1d2454002df
 FL_SL_XMSS_MT_ES.Index.val op b05a7aee4c4e3c33
 FL_SL_XMSS_MT_ES.O_THFC module d9141c6aa8078aaf
 FL_SL_XMSS_MT_ES.O_THFC module d9141c6aa8078aaf
 FL_SL_XMSS_MT_ES.O_THFC module d9141c6aa8078aaf
-FL_SL_XMSS_MT_ES.PKCO.* nested 1728c6c27ac686e7 97
+FL_SL_XMSS_MT_ES.PKCO.* nested 1fc21f4f6b328529 97
 FL_SL_XMSS_MT_ES.PKCOC.* nested fff7afb889c897ee 54
 FL_SL_XMSS_MT_ES.PKCOC.O_THFC_Default module 2fc87318d2747219
 FL_SL_XMSS_MT_ES.PKCOC.Oracle_THFC module-type 4c09b421c2b7ff2d
@@ -15219,9 +15217,9 @@ FL_SL_XMSS_MT_ES.SAPDL.P op db8fbfbc7e30f72e
 FL_SL_XMSS_MT_ES.SAPDL.T type d2424133c71d77d5
 FL_SL_XMSS_MT_ES.SAPDL.insub op 0501afc983319d52
 FL_SL_XMSS_MT_ES.SAPDL.insubd op a2dcc440dfbae404
-FL_SL_XMSS_MT_ES.SAPDL.sT. type 59dfe1d2454002df
+FL_SL_XMSS_MT_ES.SAPDL.sT type 59dfe1d2454002df
 FL_SL_XMSS_MT_ES.SAPDL.val op 557735e802f86085
-FL_SL_XMSS_MT_ES.TRH.* nested c20953a2d1cf5ba3 97
+FL_SL_XMSS_MT_ES.TRH.* nested 67e8af364a413b15 97
 FL_SL_XMSS_MT_ES.TRHC.* nested fff7afb889c897ee 54
 FL_SL_XMSS_MT_ES.TRHC.O_THFC_Default module 2fc87318d2747219
 FL_SL_XMSS_MT_ES.TRHC.Oracle_THFC module-type 4c09b421c2b7ff2d
@@ -15234,7 +15232,7 @@ FL_SL_XMSS_MT_ES.TRHC_TCR.O_SMDTTCR_Default module 08ce9a5b808b6401
 FL_SL_XMSS_MT_ES.TRHC_TCR.Oracle_SMDTTCR module-type 575923e9fcbd971d
 FL_SL_XMSS_MT_ES.TRHC_TCR.SM_DT_TCR module 8079e33b03e839c2
 FL_SL_XMSS_MT_ES.TRHC_TCR.SM_DT_TCR_C module dd2c0d1cb011348d
-FL_SL_XMSS_MT_ES.WTWES.* nested f4450f0980465f03 223
+FL_SL_XMSS_MT_ES.WTWES.* nested 442102ccd37470c8 223
 FL_SL_XMSS_MT_ES.WTWES.A module 39de382c4550fbb8
 FL_SL_XMSS_MT_ES.WTWES.A module 8ad08aaba4397dcf
 FL_SL_XMSS_MT_ES.WTWES.A module 9ed8e731314e8c2a
@@ -15349,7 +15347,7 @@ FL_SL_XMSS_MT_ES.pkFLSLXMSSMTTW type b102de4e023c17d9
 FL_SL_XMSS_MT_ES.pkFLXMSSMTTW type 0bb7bedd9b993c3b
 FL_SL_XMSS_MT_ES.pkco op 5148d442ff482390
 FL_SL_XMSS_MT_ES.pkcotype op c81ca4efea18bfbf
-FL_SL_XMSS_MT_ES.pseed. type 7656bcf498a731bd
+FL_SL_XMSS_MT_ES.pseed type 7656bcf498a731bd
 FL_SL_XMSS_MT_ES.set_kpidx op 5550320134c1b2ce
 FL_SL_XMSS_MT_ES.set_lidx op 1e0c41c154a5a18a
 FL_SL_XMSS_MT_ES.set_ltidx op daacbb8f2d461d26
@@ -15358,7 +15356,7 @@ FL_SL_XMSS_MT_ES.set_tidx op 66161cb46559257a
 FL_SL_XMSS_MT_ES.set_typeidx op 993a3ebfc25a2675
 FL_SL_XMSS_MT_ES.sigFLSLXMSSMTTW type 7f10c7f3a97d6709
 FL_SL_XMSS_MT_ES.skFLSLXMSSMTTW type 72f023bdd5f953de
-FL_SL_XMSS_MT_ES.sseed. type 634f8bcf2ecf5dc9
+FL_SL_XMSS_MT_ES.sseed type 634f8bcf2ecf5dc9
 FL_SL_XMSS_MT_ES.thfc op 8f2f03871e19fc6c
 FL_SL_XMSS_MT_ES.trh op b13fcf5d57f5747f
 FL_SL_XMSS_MT_ES.trhi op c345e8d2b4b4d708
@@ -15399,36 +15397,36 @@ FORS_ES.Adv_EUFCMA_MFORSTWESNPRF module-type f6d73b24e3ff92d5
 FORS_ES.BLKAL.* nested 54bbd494385365f0 2
 FORS_ES.BLKAL.insub op 33ac8efeb9d3d6ea
 FORS_ES.BLKAL.insubd op 2d7953e1fcf55cc9
-FORS_ES.BLKAL.sT. type 59dfe1d2454002df
+FORS_ES.BLKAL.sT type 59dfe1d2454002df
 FORS_ES.BLKAL.val op ec4ed07b7f2aa9a1
 FORS_ES.DBAL.* nested 887e719d68f779e2 2
 FORS_ES.DBAL.insub op efc5e8351cac0833
 FORS_ES.DBAL.insubd op a110e93cdbc57d77
-FORS_ES.DBAL.sT. type 59dfe1d2454002df
+FORS_ES.DBAL.sT type 59dfe1d2454002df
 FORS_ES.DBAL.val op 8dbfd36057ec508e
 FORS_ES.DBAPKL.* nested 5b213799a3e045c4 2
 FORS_ES.DBAPKL.insub op 1557a4063997db6c
 FORS_ES.DBAPKL.insubd op c60e2194d61123f7
-FORS_ES.DBAPKL.sT. type 59dfe1d2454002df
+FORS_ES.DBAPKL.sT type 59dfe1d2454002df
 FORS_ES.DBAPKL.val op de794a44288f956c
 FORS_ES.DBLLKTL.* nested d0121bb60f1a36fa 2
 FORS_ES.DBLLKTL.insub op f94ccfedc01c4a32
 FORS_ES.DBLLKTL.insubd op 478e3e454e9bd573
-FORS_ES.DBLLKTL.sT. type 59dfe1d2454002df
+FORS_ES.DBLLKTL.sT type 59dfe1d2454002df
 FORS_ES.DBLLKTL.val op 0d74104fc2f9ab60
 FORS_ES.DigestBlock.* nested 8ba3512f4a263ecc 2
 FORS_ES.DigestBlock.insub op 244bb2b558740b51
 FORS_ES.DigestBlock.insubd op a5f19213f572df4d
-FORS_ES.DigestBlock.sT. type 59dfe1d2454002df
+FORS_ES.DigestBlock.sT type 59dfe1d2454002df
 FORS_ES.DigestBlock.val op abd34b4ba5f046a2
 FORS_ES.DigestBlockFT.card op d2e0c78d1d6264b5
 FORS_ES.DigestBlockFT.enum op 7600440b8b3ceaa8
 FORS_ES.DigestBlockFT.t type 6f990eeadfefd842
 FORS_ES.EUF_CMA_MFORSTWESNPRF module 915067d09775bd8f
-FORS_ES.F.* nested 7e1a6fc0a14a2424 97
+FORS_ES.F.* nested a563b57024ea45c4 97
 FORS_ES.FL_FORS_ES module 480cabfebc7732a4
 FORS_ES.FL_FORS_ES_NPRF module f121c122f6438754
-FORS_ES.FP_OPRETCRDSPR.* nested 552eaf20f5de77c6 118
+FORS_ES.FP_OPRETCRDSPR.* nested be19fe26c60292cc 118
 FORS_ES.FP_OPRETCRDSPR.O_SMDTOpenPRE module b3fb362c64c2779d
 FORS_ES.FP_OPRETCRDSPR.O_SMDTOpenPRE module b3fb362c64c2779d
 FORS_ES.FP_OPRETCRDSPR.R_DSPR_OpenPRE module bad4d3ab316d8237
@@ -15438,7 +15436,7 @@ FORS_ES.F_OpenPRE.Adv_SMDTOpenPRE module-type f4e679ca47a6e405
 FORS_ES.F_OpenPRE.O_SMDTOpenPRE_Default module c0ca9a410addb998
 FORS_ES.F_OpenPRE.Oracle_SMDTOpenPRE module-type 17abcdf60956159d
 FORS_ES.F_OpenPRE.SM_DT_OpenPRE module afe291857f490116
-FORS_ES.HA.* nested e80cd9d03ed0540f 6
+FORS_ES.HA.* nested 602ada3f341cfddd 6
 FORS_ES.HA.adrs type f4d53588130e519d
 FORS_ES.HA.eq_idx op bee2e5249166e264
 FORS_ES.HA.get_idx op 0c1ee96375e1c436
@@ -15450,7 +15448,7 @@ FORS_ES.Index.P op 93c12f76e373534f
 FORS_ES.Index.T type b055b81f3511606a
 FORS_ES.Index.insub op e9a25b19b4bc9590
 FORS_ES.Index.insubd op f8249fa7d3a8f58f
-FORS_ES.Index.sT. type 59dfe1d2454002df
+FORS_ES.Index.sT type 59dfe1d2454002df
 FORS_ES.Index.val op b05a7aee4c4e3c33
 FORS_ES.MCO.* nested 44689d5f84b866f0 105
 FORS_ES.MCO.spexists abbrev 962b74d185f0ea60
@@ -15473,7 +15471,7 @@ FORS_ES.R_ITSR_EUFCMA module 3697d51ff6d3230a
 FORS_ES.R_TRCOSMDTTCRC_EUFCMA module 6e4dfdfdef1da0de
 FORS_ES.R_TRHSMDTTCRC_EUFCMA module 1b6a32fa4e89eda3
 FORS_ES.SOracle_CMA_MFORSTWESNPRF module-type 1148b21abe8e34f8
-FORS_ES.TRCO.* nested 1139cf010311d051 97
+FORS_ES.TRCO.* nested 345fc322fec8dae0 97
 FORS_ES.TRCOC.* nested 218e192f3c4262b2 54
 FORS_ES.TRCOC.O_THFC_Default module 2fc87318d2747219
 FORS_ES.TRCOC.Oracle_THFC module-type 4c09b421c2b7ff2d
@@ -15486,7 +15484,7 @@ FORS_ES.TRCOC_TCR.O_SMDTTCR_Default module 08ce9a5b808b6401
 FORS_ES.TRCOC_TCR.Oracle_SMDTTCR module-type 575923e9fcbd971d
 FORS_ES.TRCOC_TCR.SM_DT_TCR module 8079e33b03e839c2
 FORS_ES.TRCOC_TCR.SM_DT_TCR_C module dd2c0d1cb011348d
-FORS_ES.TRH.* nested 7e1a6fc0a14a2424 97
+FORS_ES.TRH.* nested a563b57024ea45c4 97
 FORS_ES.TRHC.* nested 218e192f3c4262b2 54
 FORS_ES.TRHC.O_THFC_Default module 2fc87318d2747219
 FORS_ES.TRHC.Oracle_THFC module-type 4c09b421c2b7ff2d
@@ -15527,16 +15525,16 @@ FORS_ES.index type 62a7f81173fd0113
 FORS_ES.k op b58fc7fe35ff27c5
 FORS_ES.l op f5d1d3c873ca4057
 FORS_ES.mco op 5b00fad1aee8b965
-FORS_ES.mkey. type c6e3be1b2502a473
+FORS_ES.mkey type c6e3be1b2502a473
 FORS_ES.mkg op 0e444744b7ed5bb4
-FORS_ES.mseed. type 1de51c1e7c1f0f9e
-FORS_ES.msg. type b4ff773f268f43ce
+FORS_ES.mseed type 1de51c1e7c1f0f9e
+FORS_ES.msg type b4ff773f268f43ce
 FORS_ES.msgFORSTW type 47195fe23851c389
 FORS_ES.n op 4cb49501698be610
 FORS_ES.nr_nodes op 3df35650ab75db76
 FORS_ES.pkFORS type fe5b71508016f5f2
 FORS_ES.pkFORSTW type 041a6f96c3eb26e5
-FORS_ES.pseed. type 7656bcf498a731bd
+FORS_ES.pseed type 7656bcf498a731bd
 FORS_ES.s op 899050899c4d03bc
 FORS_ES.set_kpidx op 20aa7d1ee5d0d414
 FORS_ES.set_thtbidx op 28a7d67b42208191
@@ -15546,7 +15544,7 @@ FORS_ES.sigFORSTW type a50227667449bd00
 FORS_ES.skFORS type 427a4dbdeea94149
 FORS_ES.skFORSTW type 7d61a01ea5896b33
 FORS_ES.skg op 4206755ede8ab58a
-FORS_ES.sseed. type 634f8bcf2ecf5dc9
+FORS_ES.sseed type 634f8bcf2ecf5dc9
 FORS_ES.t op 2537628f2e627786
 FORS_ES.thfc op 88e888c732ad92e1
 FORS_ES.trco op 5bb75b4713feff7e
@@ -15576,12 +15574,12 @@ FORS_ES.valid_tidx op c089f8a00f28388a
 HashAddresses.Adrs.* nested 5404138f73536916 2
 HashAddresses.Adrs.insub op 14b454275984496b
 HashAddresses.Adrs.insubd op fdb594bf9424cc57
-HashAddresses.Adrs.sT. type 59dfe1d2454002df
+HashAddresses.Adrs.sT type 59dfe1d2454002df
 HashAddresses.Adrs.val op 8acaee529b230450
 HashAddresses.adrs type a12ed36d8f890fc9
 HashAddresses.eq_idx op bee2e5249166e264
 HashAddresses.get_idx op 1814d453832bba53
-HashAddresses.index. type 20ba6090170ec17c
+HashAddresses.index type 20ba6090170ec17c
 HashAddresses.l op f5d1d3c873ca4057
 HashAddresses.set_idx op 973b7563b53a6471
 HashAddresses.valid_adrsidxs op 4845077aef0738f8
@@ -15589,12 +15587,12 @@ HashAddresses.valid_idxvals op b32e92c2c5279482
 HashAddresses.valid_setidx op de5e61d2097f868c
 JWordList.Bytes2Bits.bytes_from_bits op d5b45f307e213697
 JWordList.Bytes2Bits.bytes_to_bits op 87683e70af16e3a7
-JWordList.ListEmbedding.SSS. type dfade82cad286dea
+JWordList.ListEmbedding.SSS type dfade82cad286dea
 JWordList.ListEmbedding.SSS_from_TTTs op 2aa975b898899e88
 JWordList.ListEmbedding.SSS_to_TTTs op 01b3f8d99a7be2f1
 JWordList.ListEmbedding.SSSs_from_TTTs op b183a346bc8ef3dc
 JWordList.ListEmbedding.SSSs_to_TTTs op 2b225203984e9648
-JWordList.ListEmbedding.TTT. type 531d8b90a2b824dd
+JWordList.ListEmbedding.TTT type 531d8b90a2b824dd
 JWordList.ListEmbedding.dSSS op f9baf1eb27899e92
 JWordList.ListEmbedding.dTTT op 99150ff82c538abb
 JWordList.ListEmbedding.n op 4cb49501698be610
@@ -15853,9 +15851,9 @@ KeyedHashFunctions.UD.din op 581f3581fe9d759d
 KeyedHashFunctions.UD.dkey op ae2d1cbd195b2601
 KeyedHashFunctions.UD.dout op 6059dfa28db431af
 KeyedHashFunctions.f op d14ddf97e5af2d4f
-KeyedHashFunctions.in_t. type e16006776bea2bc2
-KeyedHashFunctions.key_t. type 25d769cd747283ca
-KeyedHashFunctions.out_t. type 6d69a92c8265345d
+KeyedHashFunctions.in_t type e16006776bea2bc2
+KeyedHashFunctions.key_t type 25d769cd747283ca
+KeyedHashFunctions.out_t type 6d69a92c8265345d
 KeyedHashFunctions.spexists abbrev 8e858ceb8547cd44
 MGF1_SHA256.lay op 370b2b9afc419836
 MGF1_SHA512.lay112 op 9e9043535291fb92
@@ -15870,7 +15868,7 @@ MerkleTrees_FIPS205.gsibling op f823ca09c98013c8
 MerkleTrees_FIPS205.hts op c8295d2be877b529
 MerkleTrees_FIPS205.lift_trh op 4e3a583152b0ed53
 MerkleTrees_FIPS205.upd_hb op 5279215b6df78e2e
-OpenPRE_From_TCR_DSPR_THF.F.* nested 1b6a6a687968f853 97
+OpenPRE_From_TCR_DSPR_THF.F.* nested a6ab250a82150187 97
 OpenPRE_From_TCR_DSPR_THF.F_DSPR.A module 46a2095cf72e40a1
 OpenPRE_From_TCR_DSPR_THF.F_DSPR.A module 46a2095cf72e40a1
 OpenPRE_From_TCR_DSPR_THF.F_DSPR.Adv_SMDTDSPR module-type c6d3dc158fbaddbb
@@ -15899,11 +15897,11 @@ OpenPRE_From_TCR_DSPR_THF.R_TCR_OpenPRE module 0aeffc05a6c5eae0
 OpenPRE_From_TCR_DSPR_THF.din op 581f3581fe9d759d
 OpenPRE_From_TCR_DSPR_THF.dpp op 01e07febef65b9fd
 OpenPRE_From_TCR_DSPR_THF.f op ce3471132a5d4e33
-OpenPRE_From_TCR_DSPR_THF.in_t. type e16006776bea2bc2
-OpenPRE_From_TCR_DSPR_THF.out_t. type 6d69a92c8265345d
-OpenPRE_From_TCR_DSPR_THF.pp_t. type 1b13ad5358f3bdd8
+OpenPRE_From_TCR_DSPR_THF.in_t type e16006776bea2bc2
+OpenPRE_From_TCR_DSPR_THF.out_t type 6d69a92c8265345d
+OpenPRE_From_TCR_DSPR_THF.pp_t type 1b13ad5358f3bdd8
 OpenPRE_From_TCR_DSPR_THF.t op f5abcc994e2087b8
-OpenPRE_From_TCR_DSPR_THF.tw_t. type 5aaf82e3885ef25d
+OpenPRE_From_TCR_DSPR_THF.tw_t type 5aaf82e3885ef25d
 PRE_From_SPR_DSPR.F.* nested 8d79e596cbbdcabf 105
 PRE_From_SPR_DSPR.F.spexists abbrev a8a1af03afdf435f
 PRE_From_SPR_DSPR.F_DSPR.Adv_DSPR module-type 7a137ad1f3261bec
@@ -15921,10 +15919,10 @@ PRE_From_SPR_DSPR.R_SPR_PRE module e57e743759af1c09
 PRE_From_SPR_DSPR.dinput op 13c75eccf7000831
 PRE_From_SPR_DSPR.dkey op e7f22fb79f5e0767
 PRE_From_SPR_DSPR.f op 204df811b1971ed1
-PRE_From_SPR_DSPR.input. type 92c839cec9c32e60
-PRE_From_SPR_DSPR.key. type f97c7d71191c1f54
+PRE_From_SPR_DSPR.input type 92c839cec9c32e60
+PRE_From_SPR_DSPR.key type f97c7d71191c1f54
 PRE_From_SPR_DSPR.max op a9f61c32725b66c3
-PRE_From_SPR_DSPR.output. type 336af1c4a0acf247
+PRE_From_SPR_DSPR.output type 336af1c4a0acf247
 RFC8017_MGF1.mgf1 op f54cdcec3b8b9750
 RFC8017_MGF1.mgf1_sha256 op 83e5865162f6039f
 RFC8017_MGF1.mgf1_sha512 op ed8848c66e7a6c44
@@ -15968,7 +15966,7 @@ SLHDSA_EUFCMA.HMsg_ITSR.h op 5acbddfd41aaf52d
 SLHDSA_EUFCMA.NBytes.* nested 82b424f6d999463e 2
 SLHDSA_EUFCMA.NBytes.insub op 53f8e64f0837e6e3
 SLHDSA_EUFCMA.NBytes.insubd op 3fe144c16a55536b
-SLHDSA_EUFCMA.NBytes.sT. type 59dfe1d2454002df
+SLHDSA_EUFCMA.NBytes.sT type 59dfe1d2454002df
 SLHDSA_EUFCMA.NBytes.val op 46500526310f60bc
 SLHDSA_EUFCMA.O' module 21ddb1d289d38ac6
 SLHDSA_EUFCMA.O' module a8343133f8b4a2e2
@@ -15984,7 +15982,7 @@ SLHDSA_EUFCMA.PRFMsg_PRF.Oracle_PRF module-type 4c3eeefd14a8e305
 SLHDSA_EUFCMA.PRFMsg_PRF.PRF module 6e4b2ccc41609520
 SLHDSA_EUFCMA.R module 67a7842ff6c78483
 SLHDSA_EUFCMA.SLH_Internal module 9c83ca0f994341d3
-SLHDSA_EUFCMA.SP.* nested bbe4f44fe6c26c28 1812
+SLHDSA_EUFCMA.SP.* nested 4429d4ed69224e74 1812
 SLHDSA_EUFCMA.SP.O_CMA module 24781fe6c1245178
 SLHDSA_EUFCMA.SP.O_CMA module 41481dfafdecda24
 SLHDSA_EUFCMA.SP.O_CMA module afd043259b5677fb
@@ -16096,7 +16094,7 @@ SLHDSA_Hedged.HMsg_ITSR.h op 5acbddfd41aaf52d
 SLHDSA_Hedged.NBytes.* nested 82b424f6d999463e 2
 SLHDSA_Hedged.NBytes.insub op 53f8e64f0837e6e3
 SLHDSA_Hedged.NBytes.insubd op 3fe144c16a55536b
-SLHDSA_Hedged.NBytes.sT. type 59dfe1d2454002df
+SLHDSA_Hedged.NBytes.sT type 59dfe1d2454002df
 SLHDSA_Hedged.NBytes.val op 46500526310f60bc
 SLHDSA_Hedged.O' module 21ddb1d289d38ac6
 SLHDSA_Hedged.O' module 3956e131f6c1a6e6
@@ -16114,7 +16112,7 @@ SLHDSA_Hedged.PRFMsg_PRF.PRF module 6e4b2ccc41609520
 SLHDSA_Hedged.R module 67a7842ff6c78483
 SLHDSA_Hedged.SLH_Hedged module 9907fe866529acd6
 SLHDSA_Hedged.SLH_Internal module 9c83ca0f994341d3
-SLHDSA_Hedged.SP.* nested bbe4f44fe6c26c28 1812
+SLHDSA_Hedged.SP.* nested 4429d4ed69224e74 1812
 SLHDSA_Hedged.SP.O_CMA module 24781fe6c1245178
 SLHDSA_Hedged.SP.O_CMA module 41481dfafdecda24
 SLHDSA_Hedged.SP.O_CMA module afd043259b5677fb
@@ -16224,10 +16222,10 @@ SLHDSA_Hedged.wsk op 95a4bb76a4f71725
 SPHINCS_Instance.NBytes.* nested 82b424f6d999463e 2
 SPHINCS_Instance.NBytes.insub op 53f8e64f0837e6e3
 SPHINCS_Instance.NBytes.insubd op 3fe144c16a55536b
-SPHINCS_Instance.NBytes.sT. type 59dfe1d2454002df
+SPHINCS_Instance.NBytes.sT type 59dfe1d2454002df
 SPHINCS_Instance.NBytes.val op 46500526310f60bc
 SPHINCS_Instance.P op 976dc50b99408a34
-SPHINCS_Instance.SP.* nested 474cd3ba66394d26 1812
+SPHINCS_Instance.SP.* nested c6b3199774deaac3 1812
 SPHINCS_Instance.SP.O_CMA module 2346db6fca675f9c
 SPHINCS_Instance.SP.O_CMA module 2346db6fca675f9c
 SPHINCS_Instance.SP.O_CMA module 24781fe6c1245178
@@ -16304,12 +16302,12 @@ SPHINCS_PLUS.DigestBlock.P op 42f7c7eb96929b24
 SPHINCS_PLUS.DigestBlock.T type 3760d150a64a237f
 SPHINCS_PLUS.DigestBlock.insub op 244bb2b558740b51
 SPHINCS_PLUS.DigestBlock.insubd op a5f19213f572df4d
-SPHINCS_PLUS.DigestBlock.sT. type 59dfe1d2454002df
+SPHINCS_PLUS.DigestBlock.sT type 59dfe1d2454002df
 SPHINCS_PLUS.DigestBlock.val op abd34b4ba5f046a2
 SPHINCS_PLUS.DigestBlockFT.card op d2e0c78d1d6264b5
 SPHINCS_PLUS.DigestBlockFT.enum op 7600440b8b3ceaa8
 SPHINCS_PLUS.DigestBlockFT.t type 6f990eeadfefd842
-SPHINCS_PLUS.FSSLXMTWES.* nested 6b2a9007c5b051f8 641
+SPHINCS_PLUS.FSSLXMTWES.* nested 32e31dde1291f269 641
 SPHINCS_PLUS.FSSLXMTWES.Adv_EUFNAGCMA_FLSLXMSSMTTWESNPRF module-type 41eb1e08f6751ee3
 SPHINCS_PLUS.FSSLXMTWES.EUF_NAGCMA_FLSLXMSSMTTWESNPRF module 3d3fc3ab8a52ebcb
 SPHINCS_PLUS.FSSLXMTWES.FL_SL_XMSS_MT_ES module 6b14d3ada8cc5490
@@ -16355,7 +16353,7 @@ SPHINCS_PLUS.FSSLXMTWES.valid_xidxvalslp op 78a5c550755afecb
 SPHINCS_PLUS.FSSLXMTWES.valid_xidxvalslpch op e196a6c6d6a5e956
 SPHINCS_PLUS.FSSLXMTWES.valid_xidxvalslppkco op 3399e4518d019317
 SPHINCS_PLUS.FSSLXMTWES.valid_xidxvalslptrh op 7a2e44dd7bbdb48f
-SPHINCS_PLUS.FTWES.* nested 82ff1bd9db94f094 683
+SPHINCS_PLUS.FTWES.* nested 23bfa782ad2f6c22 683
 SPHINCS_PLUS.FTWES.Adv_EUFCMA_MFORSTWESNPRF module-type e31297b2a90d7d7a
 SPHINCS_PLUS.FTWES.EUF_CMA_MFORSTWESNPRF module dcfa101da68b22df
 SPHINCS_PLUS.FTWES.FL_FORS_ES module ce961246e94bd2c0
@@ -16405,7 +16403,7 @@ SPHINCS_PLUS.FTWES.valid_fidxvals op 68e607197b6e37ef
 SPHINCS_PLUS.FTWES.valid_fidxvalslp op da744b48bd549c90
 SPHINCS_PLUS.FTWES.valid_fidxvalslptrco op 14a398ee3cf19973
 SPHINCS_PLUS.FTWES.valid_fidxvalslptrh op 136ac54966e393ac
-SPHINCS_PLUS.HA.* nested e80cd9d03ed0540f 6
+SPHINCS_PLUS.HA.* nested 602ada3f341cfddd 6
 SPHINCS_PLUS.HA.adrs type f4d53588130e519d
 SPHINCS_PLUS.HA.eq_idx op bee2e5249166e264
 SPHINCS_PLUS.HA.get_idx op 0c1ee96375e1c436
@@ -16417,7 +16415,7 @@ SPHINCS_PLUS.Index.P op f700ad11054db810
 SPHINCS_PLUS.Index.T type b055b81f3511606a
 SPHINCS_PLUS.Index.insub op e9a25b19b4bc9590
 SPHINCS_PLUS.Index.insubd op f8249fa7d3a8f58f
-SPHINCS_PLUS.Index.sT. type 59dfe1d2454002df
+SPHINCS_PLUS.Index.sT type 59dfe1d2454002df
 SPHINCS_PLUS.Index.val op b05a7aee4c4e3c33
 SPHINCS_PLUS.MKG.* nested 300f84959d3c3c9e 105
 SPHINCS_PLUS.MKG.spexists abbrev 1d4dffaf98d95c07
@@ -16466,10 +16464,10 @@ SPHINCS_PLUS.len op d43ebf9bfb2dab15
 SPHINCS_PLUS.len1 op 223416281b811ae0
 SPHINCS_PLUS.len2 op 181883bf753a7756
 SPHINCS_PLUS.log2_w op 5a68dd709a1c39bf
-SPHINCS_PLUS.mkey. type c6e3be1b2502a473
+SPHINCS_PLUS.mkey type c6e3be1b2502a473
 SPHINCS_PLUS.mkg op 0e444744b7ed5bb4
-SPHINCS_PLUS.mseed. type 1de51c1e7c1f0f9e
-SPHINCS_PLUS.msg. type b4ff773f268f43ce
+SPHINCS_PLUS.mseed type 1de51c1e7c1f0f9e
+SPHINCS_PLUS.msg type b4ff773f268f43ce
 SPHINCS_PLUS.n op 4cb49501698be610
 SPHINCS_PLUS.nr_nodesf op fc4a5b0421ba8f9a
 SPHINCS_PLUS.nr_nodesx op 070dec78d09e4198
@@ -16477,7 +16475,7 @@ SPHINCS_PLUS.nr_trees op 61ff0b4b28c77b6a
 SPHINCS_PLUS.pkSPHINCSPLUSTW type 4d8a78b6138e04a4
 SPHINCS_PLUS.pkco op acb7c8d190707d07
 SPHINCS_PLUS.pkcotype op c81ca4efea18bfbf
-SPHINCS_PLUS.pseed. type 7656bcf498a731bd
+SPHINCS_PLUS.pseed type 7656bcf498a731bd
 SPHINCS_PLUS.set_kpidx op 349a0522cad3d508
 SPHINCS_PLUS.set_lidx op 181f95f0efe39a3f
 SPHINCS_PLUS.set_ltidx op ac092a3d09abb986
@@ -16487,7 +16485,7 @@ SPHINCS_PLUS.set_typeidx op 650eb2f32291d3b1
 SPHINCS_PLUS.sigSPHINCSPLUSTW type 1bca9a680aa26839
 SPHINCS_PLUS.skSPHINCSPLUSTW type a1fb231654b1557c
 SPHINCS_PLUS.skg op 86e6e16c7a4efc94
-SPHINCS_PLUS.sseed. type 634f8bcf2ecf5dc9
+SPHINCS_PLUS.sseed type 634f8bcf2ecf5dc9
 SPHINCS_PLUS.t op 2537628f2e627786
 SPHINCS_PLUS.thfc op 3f5cef45b213a502
 SPHINCS_PLUS.trco op d4ceac7322d2bdab
@@ -16515,10 +16513,10 @@ SPHINCS_PLUS.w op 28b26598b17714d2
 SPHINCS_Refinement.NBytes.* nested 011748875df030b3 2
 SPHINCS_Refinement.NBytes.insub op 7f7191ce1fc1eb77
 SPHINCS_Refinement.NBytes.insubd op a5f8b65fc2db7b10
-SPHINCS_Refinement.NBytes.sT. type 59dfe1d2454002df
+SPHINCS_Refinement.NBytes.sT type 59dfe1d2454002df
 SPHINCS_Refinement.NBytes.val op 4dbbfab86f352b21
 SPHINCS_Refinement.P op 976dc50b99408a34
-SPHINCS_Refinement.SP.* nested cc1d2b0803cfcff6 1812
+SPHINCS_Refinement.SP.* nested 3726e32d3050a5f0 1812
 SPHINCS_Refinement.SP.O_CMA module b083c9d050a3c646
 SPHINCS_Refinement.SP.O_CMA module b813f0157f019f9b
 SPHINCS_Refinement.SP.O_CMA module b813f0157f019f9b
@@ -16612,7 +16610,7 @@ SPHINCS_Refinement.wpk_elem op 0250c86be8dfe727
 SPHINCS_Refinement.wpkv_elem op b0f284c795578c25
 SPHINCS_Refinement.wsig_elem op 1d2381efe6728d39
 SPHINCS_Refinement.wsk op 29585573832108fe
-SPHINCS_Sets.SLH_DSA_SHA2_128F.* nested 06d3ecfdc993ba45 2100
+SPHINCS_Sets.SLH_DSA_SHA2_128F.* nested e156182b90c946a4 2100
 SPHINCS_Sets.SLH_DSA_SHA2_128F.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHA2_128F.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHA2_128F.O' module 21ddb1d289d38ac6
@@ -16667,7 +16665,7 @@ SPHINCS_Sets.SLH_DSA_SHA2_128F.wpk_elem op 5a0dbdd54e384d9a
 SPHINCS_Sets.SLH_DSA_SHA2_128F.wpkv_elem op 3da93609c5262a45
 SPHINCS_Sets.SLH_DSA_SHA2_128F.wsig_elem op 79cfcd3a19d81e71
 SPHINCS_Sets.SLH_DSA_SHA2_128F.wsk op 698e64280a7d6799
-SPHINCS_Sets.SLH_DSA_SHA2_128S.* nested 4d7e64a1c5a76d7c 2100
+SPHINCS_Sets.SLH_DSA_SHA2_128S.* nested 1d5348d9189bcef0 2100
 SPHINCS_Sets.SLH_DSA_SHA2_128S.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHA2_128S.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHA2_128S.O' module 21ddb1d289d38ac6
@@ -16722,7 +16720,7 @@ SPHINCS_Sets.SLH_DSA_SHA2_128S.wpk_elem op 328d9c4bb6384354
 SPHINCS_Sets.SLH_DSA_SHA2_128S.wpkv_elem op 8d9ff1ffd9253362
 SPHINCS_Sets.SLH_DSA_SHA2_128S.wsig_elem op 9db46f29037bd860
 SPHINCS_Sets.SLH_DSA_SHA2_128S.wsk op ca02f72b25b6b23b
-SPHINCS_Sets.SLH_DSA_SHA2_192F.* nested 2e482a9fe7df7975 2100
+SPHINCS_Sets.SLH_DSA_SHA2_192F.* nested f7ba66e347096035 2100
 SPHINCS_Sets.SLH_DSA_SHA2_192F.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHA2_192F.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHA2_192F.O' module 21ddb1d289d38ac6
@@ -16777,7 +16775,7 @@ SPHINCS_Sets.SLH_DSA_SHA2_192F.wpk_elem op abb17c4541dea01d
 SPHINCS_Sets.SLH_DSA_SHA2_192F.wpkv_elem op e7530c55f6762996
 SPHINCS_Sets.SLH_DSA_SHA2_192F.wsig_elem op e14237385e878b2a
 SPHINCS_Sets.SLH_DSA_SHA2_192F.wsk op aa94a17f22940f4d
-SPHINCS_Sets.SLH_DSA_SHA2_192S.* nested da09f08b531cbeba 2100
+SPHINCS_Sets.SLH_DSA_SHA2_192S.* nested 3f1f24eddd6cca23 2100
 SPHINCS_Sets.SLH_DSA_SHA2_192S.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHA2_192S.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHA2_192S.O' module 21ddb1d289d38ac6
@@ -16832,7 +16830,7 @@ SPHINCS_Sets.SLH_DSA_SHA2_192S.wpk_elem op dfd239b64be0e110
 SPHINCS_Sets.SLH_DSA_SHA2_192S.wpkv_elem op 3f7479cc44ebe45b
 SPHINCS_Sets.SLH_DSA_SHA2_192S.wsig_elem op 37870affe3ebd850
 SPHINCS_Sets.SLH_DSA_SHA2_192S.wsk op dd2529203847d437
-SPHINCS_Sets.SLH_DSA_SHA2_256F.* nested c5d186c209582fdc 2100
+SPHINCS_Sets.SLH_DSA_SHA2_256F.* nested 0a0c05c22cb68a96 2100
 SPHINCS_Sets.SLH_DSA_SHA2_256F.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHA2_256F.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHA2_256F.O' module 21ddb1d289d38ac6
@@ -16887,7 +16885,7 @@ SPHINCS_Sets.SLH_DSA_SHA2_256F.wpk_elem op dabfa95e732189e5
 SPHINCS_Sets.SLH_DSA_SHA2_256F.wpkv_elem op 21bfb0bbfac4b2e8
 SPHINCS_Sets.SLH_DSA_SHA2_256F.wsig_elem op d7e861961d3b365f
 SPHINCS_Sets.SLH_DSA_SHA2_256F.wsk op 004a6dbd4c8ff5bd
-SPHINCS_Sets.SLH_DSA_SHA2_256S.* nested 42b343d0f756dd05 2100
+SPHINCS_Sets.SLH_DSA_SHA2_256S.* nested 1157e69832298c22 2100
 SPHINCS_Sets.SLH_DSA_SHA2_256S.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHA2_256S.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHA2_256S.O' module 21ddb1d289d38ac6
@@ -16942,7 +16940,7 @@ SPHINCS_Sets.SLH_DSA_SHA2_256S.wpk_elem op 30e9f14839aff006
 SPHINCS_Sets.SLH_DSA_SHA2_256S.wpkv_elem op 377faae9666c08ab
 SPHINCS_Sets.SLH_DSA_SHA2_256S.wsig_elem op 3216e9d8285801b5
 SPHINCS_Sets.SLH_DSA_SHA2_256S.wsk op ace036dd0d484d75
-SPHINCS_Sets.SLH_DSA_SHAKE_128F.* nested c0ffb7dab61e195a 2100
+SPHINCS_Sets.SLH_DSA_SHAKE_128F.* nested 6bc1100e6245cb2a 2100
 SPHINCS_Sets.SLH_DSA_SHAKE_128F.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHAKE_128F.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHAKE_128F.O' module 21ddb1d289d38ac6
@@ -16997,7 +16995,7 @@ SPHINCS_Sets.SLH_DSA_SHAKE_128F.wpk_elem op a383b72782235889
 SPHINCS_Sets.SLH_DSA_SHAKE_128F.wpkv_elem op 2d9ee7b12685b4a2
 SPHINCS_Sets.SLH_DSA_SHAKE_128F.wsig_elem op 430d5cd41c1844e5
 SPHINCS_Sets.SLH_DSA_SHAKE_128F.wsk op 6731dc4170862ad3
-SPHINCS_Sets.SLH_DSA_SHAKE_128S.* nested 3b2d9c74601df605 2100
+SPHINCS_Sets.SLH_DSA_SHAKE_128S.* nested f9ee54267a0e9ee2 2100
 SPHINCS_Sets.SLH_DSA_SHAKE_128S.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHAKE_128S.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHAKE_128S.O' module 21ddb1d289d38ac6
@@ -17052,7 +17050,7 @@ SPHINCS_Sets.SLH_DSA_SHAKE_128S.wpk_elem op e70679e4747ab314
 SPHINCS_Sets.SLH_DSA_SHAKE_128S.wpkv_elem op 17cfafbc56c1290f
 SPHINCS_Sets.SLH_DSA_SHAKE_128S.wsig_elem op d0d3d6804f92f10e
 SPHINCS_Sets.SLH_DSA_SHAKE_128S.wsk op 47f4b29501b7c397
-SPHINCS_Sets.SLH_DSA_SHAKE_192F.* nested a01212668761c04c 2100
+SPHINCS_Sets.SLH_DSA_SHAKE_192F.* nested bac93bd6235bdc59 2100
 SPHINCS_Sets.SLH_DSA_SHAKE_192F.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHAKE_192F.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHAKE_192F.O' module 21ddb1d289d38ac6
@@ -17107,7 +17105,7 @@ SPHINCS_Sets.SLH_DSA_SHAKE_192F.wpk_elem op 499d961d4b9ee653
 SPHINCS_Sets.SLH_DSA_SHAKE_192F.wpkv_elem op 4273cb156ce1b848
 SPHINCS_Sets.SLH_DSA_SHAKE_192F.wsig_elem op dd3a6d63a7e38554
 SPHINCS_Sets.SLH_DSA_SHAKE_192F.wsk op 5fe011097932f513
-SPHINCS_Sets.SLH_DSA_SHAKE_192S.* nested 1b7af817b45d6a2d 2100
+SPHINCS_Sets.SLH_DSA_SHAKE_192S.* nested d4c9aea52e9a09db 2100
 SPHINCS_Sets.SLH_DSA_SHAKE_192S.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHAKE_192S.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHAKE_192S.O' module 21ddb1d289d38ac6
@@ -17162,7 +17160,7 @@ SPHINCS_Sets.SLH_DSA_SHAKE_192S.wpk_elem op cddb2d43b437bf10
 SPHINCS_Sets.SLH_DSA_SHAKE_192S.wpkv_elem op a98e5cea2b43fe4f
 SPHINCS_Sets.SLH_DSA_SHAKE_192S.wsig_elem op 5cceefc2a05dfbac
 SPHINCS_Sets.SLH_DSA_SHAKE_192S.wsk op a2aede1356e9a174
-SPHINCS_Sets.SLH_DSA_SHAKE_256F.* nested bd5d852fea4f6d96 2100
+SPHINCS_Sets.SLH_DSA_SHAKE_256F.* nested 9ae585e7cd13fff7 2100
 SPHINCS_Sets.SLH_DSA_SHAKE_256F.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHAKE_256F.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHAKE_256F.O' module 21ddb1d289d38ac6
@@ -17217,7 +17215,7 @@ SPHINCS_Sets.SLH_DSA_SHAKE_256F.wpk_elem op 48735f1e2496c371
 SPHINCS_Sets.SLH_DSA_SHAKE_256F.wpkv_elem op ccc5d05b5618859d
 SPHINCS_Sets.SLH_DSA_SHAKE_256F.wsig_elem op 3361660d8083e30a
 SPHINCS_Sets.SLH_DSA_SHAKE_256F.wsk op 29fd08f1ecf394ae
-SPHINCS_Sets.SLH_DSA_SHAKE_256S.* nested 7731821c9a18bc63 2100
+SPHINCS_Sets.SLH_DSA_SHAKE_256S.* nested a1d6166415fd5943 2100
 SPHINCS_Sets.SLH_DSA_SHAKE_256S.O' module 0c2f42783a266be9
 SPHINCS_Sets.SLH_DSA_SHAKE_256S.O' module 1cf729495bc41455
 SPHINCS_Sets.SLH_DSA_SHAKE_256S.O' module 21ddb1d289d38ac6
@@ -17283,7 +17281,7 @@ SpongeSqueeze.squeezing op d83ec824fe338f6f
 TweakableHashFunctions.Collection.* nested fa220a5456de1006 54
 TweakableHashFunctions.Collection.O_THFC_Default module e1bb9b1cb3ca501e
 TweakableHashFunctions.Collection.Oracle_THFC module-type 139c5b0a5046e17b
-TweakableHashFunctions.Collection.diff_t. type 8172d16d3a8b090b
+TweakableHashFunctions.Collection.diff_t type 8172d16d3a8b090b
 TweakableHashFunctions.Collection.disj_lists abbrev a19c9dd234720475
 TweakableHashFunctions.Collection.fc op de909d26ca6de8e8
 TweakableHashFunctions.Collection.get_diff op 65eca185f335fd50
@@ -17326,17 +17324,17 @@ TweakableHashFunctions.SMDTUD.dout op 6059dfa28db431af
 TweakableHashFunctions.SMDTUD.t_smdtud op c7122d959e35c124
 TweakableHashFunctions.dpp op 01e07febef65b9fd
 TweakableHashFunctions.f op ce3471132a5d4e33
-TweakableHashFunctions.in_t. type e16006776bea2bc2
-TweakableHashFunctions.out_t. type 6d69a92c8265345d
-TweakableHashFunctions.pp_t. type 1b13ad5358f3bdd8
-TweakableHashFunctions.tw_t. type 5aaf82e3885ef25d
+TweakableHashFunctions.in_t type e16006776bea2bc2
+TweakableHashFunctions.out_t type 6d69a92c8265345d
+TweakableHashFunctions.pp_t type 1b13ad5358f3bdd8
+TweakableHashFunctions.tw_t type 5aaf82e3885ef25d
 Validate_Address.example op b020dabf861018c8
 Validate_Framing.oid_prefix op b2eee540d4eb9f30
 Validate_Framing.ph_arc op ab252eff43059e71
 Validate_Params.table2_consistent op 20c70071b5e68c5d
 WArray200.WArray200."_.[_<-_]" op 1cd70dc792ef4875
 WArray200.WArray200."_.[_]" op 4ec940c2cecd0dd3
-WArray200.WArray200.* nested d9ef74f7257ec88b 14
+WArray200.WArray200.* nested 32ccea43c0d207a7 14
 WArray200.WArray200.all_eq op 1428c0830a7bd814
 WArray200.WArray200.create op 643c3ec9f88badc0
 WArray200.WArray200.darray op 17753acd6d6f1010
@@ -17377,7 +17375,7 @@ WArray200.WArray200.set64_direct op d539a41e01dd9cbf
 WArray200.WArray200.set8 op 13394ea30400d808
 WArray200.WArray200.set8_direct abbrev e21dfd64791b58ec
 WArray200.WArray200.sub op 0cd4aa14a4120d57
-WArray200.WArray200.t. type df3c4c3ec5784fad
+WArray200.WArray200.t type df3c4c3ec5784fad
 WArray200.WArray200.to_array8 op 6b7731a4e2bf6b55
 WArray200.WArray200.to_list op e9046bcccd894b07
 WOTS_Encoding.csum op dc81a88e2602a82f
@@ -17389,17 +17387,17 @@ WOTS_TW_ES.Adv_MEUFGCMA_WOTSTWESNPRF module-type 6d1b5634efa5e30b
 WOTS_TW_ES.BaseW.* nested 6d6457748fb182bf 2
 WOTS_TW_ES.BaseW.insub op e9a25b19b4bc9590
 WOTS_TW_ES.BaseW.insubd op f8249fa7d3a8f58f
-WOTS_TW_ES.BaseW.sT. type 59dfe1d2454002df
+WOTS_TW_ES.BaseW.sT type 59dfe1d2454002df
 WOTS_TW_ES.BaseW.val op b05a7aee4c4e3c33
 WOTS_TW_ES.DBLL.* nested 78e248cfc9daeb9e 2
 WOTS_TW_ES.DBLL.insub op 20db3c50f366daad
 WOTS_TW_ES.DBLL.insubd op bc5ae539e87e466c
-WOTS_TW_ES.DBLL.sT. type 59dfe1d2454002df
+WOTS_TW_ES.DBLL.sT type 59dfe1d2454002df
 WOTS_TW_ES.DBLL.val op 89382e54aba7b759
 WOTS_TW_ES.DigestBlock.* nested 8ba3512f4a263ecc 2
 WOTS_TW_ES.DigestBlock.insub op 244bb2b558740b51
 WOTS_TW_ES.DigestBlock.insubd op a5f19213f572df4d
-WOTS_TW_ES.DigestBlock.sT. type 59dfe1d2454002df
+WOTS_TW_ES.DigestBlock.sT type 59dfe1d2454002df
 WOTS_TW_ES.DigestBlock.val op abd34b4ba5f046a2
 WOTS_TW_ES.DigestBlockFT.card op d2e0c78d1d6264b5
 WOTS_TW_ES.DigestBlockFT.enum op 7600440b8b3ceaa8
@@ -17409,7 +17407,7 @@ WOTS_TW_ES.EmsgWOTS."_.[_]" op 8a739b0b31b7537c
 WOTS_TW_ES.EmsgWOTS.* nested b67e20ae44189a92 13
 WOTS_TW_ES.EmsgWOTS.card op fd20cef37c72461f
 WOTS_TW_ES.EmsgWOTS.dchar op d474f63bcdc92f68
-WOTS_TW_ES.EmsgWOTS.emsgWOTS. type ca2059ec311c1cbb
+WOTS_TW_ES.EmsgWOTS.emsgWOTS type ca2059ec311c1cbb
 WOTS_TW_ES.EmsgWOTS.emsgWOTSs op 5348564de2a02709
 WOTS_TW_ES.EmsgWOTS.emsgWOTSw op fdbc41458c194443
 WOTS_TW_ES.EmsgWOTS.insub op 627890ca7bbadadd
@@ -17419,7 +17417,7 @@ WOTS_TW_ES.EmsgWOTS.mkemsgWOTS op 15b7eddec20ca7f6
 WOTS_TW_ES.EmsgWOTS.ofemsgWOTS op e3f61941bcd00ade
 WOTS_TW_ES.EmsgWOTS.offun op a29e257cc4b199ce
 WOTS_TW_ES.EmsgWOTS.val op 3bcefd0138d1be76
-WOTS_TW_ES.F.* nested e1563fb661e6d637 97
+WOTS_TW_ES.F.* nested f6e63c1faf589c8c 97
 WOTS_TW_ES.FC.* nested 68a7d440703b6291 54
 WOTS_TW_ES.FC.O_THFC_Default module 2fc87318d2747219
 WOTS_TW_ES.FC.Oracle_THFC module-type 4c09b421c2b7ff2d
@@ -17448,7 +17446,7 @@ WOTS_TW_ES.FC_UD.O_SMDTUD_Default module 64354644f7fbcdd4
 WOTS_TW_ES.FC_UD.Oracle_SMDTUD module-type 8f52951e920df2aa
 WOTS_TW_ES.FC_UD.SM_DT_UD module 93b8c97233ca3105
 WOTS_TW_ES.FC_UD.SM_DT_UD_C module 2e68aa5aadfad1ec
-WOTS_TW_ES.HA.* nested e80cd9d03ed0540f 6
+WOTS_TW_ES.HA.* nested 602ada3f341cfddd 6
 WOTS_TW_ES.HA.adrs type f4d53588130e519d
 WOTS_TW_ES.HA.eq_idx op bee2e5249166e264
 WOTS_TW_ES.HA.get_idx op 0c1ee96375e1c436
@@ -17468,7 +17466,7 @@ WOTS_TW_ES.R_SMDTUDC_Game23WOTSTWES module f8a8ce5b3f50cbd1
 WOTS_TW_ES.WAddress.* nested 55950c5eb32319a7 2
 WOTS_TW_ES.WAddress.insub op f2620809c438abe5
 WOTS_TW_ES.WAddress.insubd op bedbee76ae3db883
-WOTS_TW_ES.WAddress.sT. type 59dfe1d2454002df
+WOTS_TW_ES.WAddress.sT type 59dfe1d2454002df
 WOTS_TW_ES.WAddress.val op aed757a820f621ac
 WOTS_TW_ES.WOTS_TW_ES module bf9039a889c46e5f
 WOTS_TW_ES.WOTS_TW_ES_NPRF module 3c8be501043d05bb
@@ -17512,7 +17510,7 @@ WOTS_TW_ES.msgWOTS type d4bf2a5c60046353
 WOTS_TW_ES.n op 4cb49501698be610
 WOTS_TW_ES.pkWOTS type 3119d5b11821c0d4
 WOTS_TW_ES.pkWOTSTW type da5da309426ae71e
-WOTS_TW_ES.pseed. type 7656bcf498a731bd
+WOTS_TW_ES.pseed type 7656bcf498a731bd
 WOTS_TW_ES.qs_idx op 156605c1c1f0133b
 WOTS_TW_ES.qsadpre_idx op 7eff43f670965cf4
 WOTS_TW_ES.qsadtcr_idx op 4555fb0616e284b5
@@ -17540,7 +17538,7 @@ WOTS_TW_ES.sigWOTS type 9b6f09ea0e7ea1f0
 WOTS_TW_ES.skWOTS type b0de354089db3897
 WOTS_TW_ES.skWOTSTW type 4988444a944c3a06
 WOTS_TW_ES.skg op d867950d97ee0184
-WOTS_TW_ES.sseed. type 634f8bcf2ecf5dc9
+WOTS_TW_ES.sseed type 634f8bcf2ecf5dc9
 WOTS_TW_ES.thfc op 1dfa88949525db8a
 WOTS_TW_ES.uniq_wgpidxs op f35a3aa26914ef5e
 WOTS_TW_ES.valid_adrsidxs op 95ab5373b5eadfcf

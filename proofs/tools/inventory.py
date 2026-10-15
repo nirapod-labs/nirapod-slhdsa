@@ -145,9 +145,13 @@ def decl_name(kind, rest):
     rest = re.sub(r"^(\[[^\]]*\]\s*)+", "", rest)
     if kind == "module-type" and rest.startswith("type "):
         rest = rest[len("type "):]
+    # The type parameters come before the name: `type ('a, 'b) t`, `type 'a t`.
     if kind == "type" and rest.startswith("("):
         rest = rest[rest.index(")") + 1:].lstrip()
-    m = re.match(r"\([^)]*\)|`[^`]*`|\"[^\"]*\"|[^\s:=(\[]+", rest)
+    elif kind == "type":
+        rest = re.sub(r"^'\w+\s+", "", rest)
+    # A declaration without a body ends with the full stop: `type t.`
+    m = re.match(r"\([^)]*\)|`[^`]*`|\"[^\"]*\"|[^\s:=(\[.]+", rest)
     return m.group(0) if m else "?"
 
 
@@ -214,6 +218,8 @@ def parse_theorems(lines):
     out = []
     for line in lines:
         line = line.rstrip()
+        if line.startswith("* In ["):
+            continue  # the category line `print` puts before the next marker
         if line or (out and out[-1]):
             out.append(line)
     while out and not out[-1]:
@@ -256,6 +262,9 @@ def main(argv):
     ap.add_argument("--namespace", action="append", default=[])
     ap.add_argument("--theorems", default="")
     ap.add_argument("--generated", action="append", default=[])
+    # The per-set proofs may define nothing of their own; their definitions
+    # are those of the specification, which the pair inventories pin.
+    ap.add_argument("--allow-no-definitions", action="store_true")
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write")
     mode.add_argument("--check")
@@ -296,7 +305,7 @@ def main(argv):
     if theorems and not thms:
         print("inventory.py: no theorem statements printed")
         return 2
-    if pinned and not defs:
+    if pinned and not defs and not args.allow_no_definitions:
         print("inventory.py: no definitions printed")
         return 2
     text = render(args.pair, axioms, thms, defs)
