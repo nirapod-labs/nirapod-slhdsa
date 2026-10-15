@@ -24,6 +24,8 @@
  * Theorems (total correctness, under kf_h and kf_ll), for the message
  * m = memread mem0 in inlen:
  *     sha3_224_mem_total ... sha3_512_mem_total   out holds SHA3_d m
+ *     shake128_mem_total, shake256_mem_total      memory at out holds
+ *                                                 SHAKEd m outlen
  *)
 
 require import AllCore List IntDiv.
@@ -31,7 +33,7 @@ from Jasmin require import JWord JUtils JMemory.
 from JazzEC require import Array25 WArray200.
 require import BArray200 BArray28 BArray32 BArray48 BArray64 KeccakState.
 require import Keccakf1600_Spec Keccak1600_Spec JWordList Keccak1600_arrays.
-require import HashExtracted ArchWord ShakeSponge Sponge.
+require import HashExtracted ArchWord ShakeSponge Sponge SpongeSqueeze.
 require BitEncoding.
 import BitEncoding.BitChunking.
 
@@ -179,5 +181,35 @@ move=> j; rewrite BArray64.size_to_list /= => hj.
 rewrite /SHA3_512 /KECCAK1600 /c1024_r8 squeeze_one // -hl nth_take 1,2:/#.
 by rewrite state2bytesE stbytes_lanes 1:/#; apply hb; smt().
 qed.
+
+lemma shake_mem_total (r8 : int) (mem0 : global_mem_t) (o0 l0 p0 n0 : W64.t) :
+  phoare [M.__shake_mem :
+    Glob.mem = mem0 /\ to_uint rate = r8 /\ 0 < r8 < 200 /\ out = o0 /\ outlen = l0
+    /\ in_0 = p0 /\ inlen = n0 /\ to_uint p0 + to_uint n0 <= W64.modulus
+    /\ to_uint o0 + to_uint l0 <= W64.modulus
+    ==> Glob.mem = stores mem0 (to_uint o0)
+          (KECCAK1600 r8 (memread mem0 (to_uint p0) (to_uint n0)) SHAKE_DS_BYTE (to_uint l0))] = 1%r.
+proof.
+proc.
+call (keccak_squeeze_mem_total kf_h kf_ll r8 (ABSORB1600 SHAKE_DS_BYTE r8 (memread mem0 (to_uint p0) (to_uint n0))) 0 mem0 o0 l0).
+wp; call (sha3_absorb_all_total r8 SHAKE_DS_BYTE mem0 p0 n0).
+auto => /> &hr hr0 hr1 hpi hpo _ r hl; split.
++ by rewrite /FIPS202_SHA3_Spec.st_i iter1 hl; smt().
+by move=> *; rewrite drop0 /KECCAK1600.
+qed.
+
+lemma shake128_mem_total (mem0 : global_mem_t) (o0 l0 p0 n0 : W64.t) :
+  phoare [M._shake128_mem :
+    Glob.mem = mem0 /\ out = o0 /\ outlen = l0 /\ in_0 = p0 /\ inlen = n0
+    /\ to_uint p0 + to_uint n0 <= W64.modulus /\ to_uint o0 + to_uint l0 <= W64.modulus
+    ==> Glob.mem = stores mem0 (to_uint o0) (SHAKE128 (memread mem0 (to_uint p0) (to_uint n0)) (to_uint l0))] = 1%r.
+proof. by proc; call (shake_mem_total 168 mem0 o0 l0 p0 n0); auto => />. qed.
+
+lemma shake256_mem_total (mem0 : global_mem_t) (o0 l0 p0 n0 : W64.t) :
+  phoare [M._shake256_mem :
+    Glob.mem = mem0 /\ out = o0 /\ outlen = l0 /\ in_0 = p0 /\ inlen = n0
+    /\ to_uint p0 + to_uint n0 <= W64.modulus /\ to_uint o0 + to_uint l0 <= W64.modulus
+    ==> Glob.mem = stores mem0 (to_uint o0) (SHAKE256 (memread mem0 (to_uint p0) (to_uint n0)) (to_uint l0))] = 1%r.
+proof. by proc; call (shake_mem_total 136 mem0 o0 l0 p0 n0); auto => />. qed.
 
 end section.
