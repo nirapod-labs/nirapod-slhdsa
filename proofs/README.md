@@ -16,7 +16,7 @@ theorems of the specification for all twelve parameter sets are written and
 check. The implementation theorems so far cover the entry points of the
 portable SHA-256 and SHA-512 kernels (one block from an array, one block
 and n blocks from memory) and their round functions, the streaming and
-one-shot SHA-2 hashes built on them, the Keccak-f[1600]
+one-shot SHA-2 hashes built on them, the steps of HMAC over them, the Keccak-f[1600]
 permutation of the single-way Keccak kernels of the scalar variants, and
 the hash address (ADRS) setters of the SLH-DSA core (below).
 Nothing in this directory supports a claim that the SLH-DSA implementation
@@ -269,6 +269,20 @@ Theorems so far, each checked on every pair unless it says otherwise:
   5.1.2, 128-byte blocks) and its truncations SHA-384, SHA-512/224 and
   SHA-512/256 (the first 48, 28 and 32 bytes, from their own initial
   values);
+- `hmac_sha256_blocks`, `hmac_sha256_init_total`,
+  `hmac_sha256_finalize_total` (`correctness/hash/HMAC_SHA256.ec`): the
+  HMAC-SHA-256 steps of `src/hash/sha2/hmac.jinc`. `__hmac_sha256_init`
+  turns a 64-byte key block `K` into the chaining values after the blocks
+  `K xor ipad` and `K xor opad`; `__hmac_sha256_finalize`, given the inner
+  stream over `ipad block ++ text` and that outer chaining value, returns
+  `sha256 (opad block ++ sha256 (ipad block ++ text))`; and
+  `hmac_sha256_blocks` says that this value is HMAC-SHA-256 of FIPS 198-1
+  for a key of at most 64 bytes padded with zeros. The procedure that
+  forms the key block from memory (`_hmac_sha256_keyblock_mem`) is not
+  covered;
+- `hmac_sha512_blocks`, `hmac_sha512_init_total`,
+  `hmac_sha512_finalize_total` (`correctness/hash/HMAC_SHA512.ec`): the
+  same for HMAC-SHA-512 and 128-byte key blocks;
 - `keccak_round_correct`, `keccakf1600_correct`, `keccakf1600_total`
   (`correctness/hash/Keccakf1600_Portable.ec`, on the two portable
   pairs): one round of the shared scalar kernel `src/hash/keccak/keccakf1600.jinc`
@@ -309,7 +323,7 @@ The address theorems are about the address procedures themselves. That
 the rest of the core passes them the values FIPS 205 prescribes is part of
 the proofs of the algorithms that call them, which do not exist yet.
 
-Not proven yet: the multi-way functions, HMAC, MGF1, the Keccak sponge (absorb, padding, squeeze), SHA-3 and SHAKE;
+Not proven yet: the multi-way functions, the HMAC key block from memory, MGF1, the Keccak sponge (absorb, padding, squeeze), SHA-3 and SHAKE;
 the four-way Keccak-f[1600] kernels (portable, AVX2 and A64 SHA-3) the
 multi-way code uses; the four-way SHA2 tweakable hashes on the multi-way
 SHA-2 kernels (`src/slhdsa/thash_sha2_x4/multi/`) and the AVX2 8-way SHA-256
