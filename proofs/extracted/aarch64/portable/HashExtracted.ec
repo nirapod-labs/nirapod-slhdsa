@@ -13,7 +13,7 @@
  * Regenerate:
  *     make -C proofs extract     (check: make -C proofs check-extraction)
  *
- * Entry proofs/extracted/hash.jazz SHA-256 af99c0cba280c95d4d6ac9c98b53090de1c2b2b723f74f97b7c95386d9d79e20
+ * Entry proofs/extracted/hash.jazz SHA-256 d5e906772951bcc9172f384dab5acb1047af58af445e422ce3d32728c8e99d8f
  * Sources under src/hash (SHA-256, path):
  *     3f9b879d57975656cbaa3d23520ba044fe9bbfa823a6640e0228eee023193392  ./aarch64/word.jinc
  *     5e10960ea822ac46820eacbfca5ee743235a6c0c8fbc48faeb21b046937f16b1  ./keccak/aarch64/scalar/keccakf1600.jinc
@@ -63,9 +63,9 @@ from Jasmin require import JModel_armv8a.
 import SLH64.
 
 require import
-BArray30 BArray32 BArray34 BArray39 BArray40 BArray42 BArray47 BArray49
-BArray64 BArray112 BArray128 BArray192 BArray200 BArray256 BArray320
-BArray640 SBArray192_64 SBArray320_64 SBArray192_128 SBArray320_128.
+BArray28 BArray30 BArray32 BArray34 BArray39 BArray40 BArray42 BArray47
+BArray48 BArray49 BArray64 BArray112 BArray128 BArray192 BArray200 BArray256
+BArray320 BArray640 SBArray192_64 SBArray320_64 SBArray192_128 SBArray320_128.
 
 abbrev kECCAK_RC =
 (BArray192.of_list64
@@ -1541,6 +1541,141 @@ module M = {
     }
     ms <- (update_msf (! more) ms);
     return (st, pos, ms);
+  }
+  proc __sha3_absorb_all (st:BArray200.t, rate:W64.t, ds:W64.t, in_0:W64.t,
+                          inlen:W64.t, ms:W64.t) : BArray200.t * W64.t = {
+    var pos:W64.t;
+    st <@ __keccak_init (st);
+    pos <- (W64.of_int 0);
+    (* Erased call to spill *)
+    (st, pos, ms) <@ _keccak_absorb_mem (st, pos, rate, in_0, inlen, ms);
+    (* Erased call to unspill *)
+    rate <- (protect_64 rate ms);
+    ds <- (protect_64 ds ms);
+    (st, ms) <@ _keccak_finalize (st, pos, rate, ds, ms);
+    return (st, ms);
+  }
+  proc _sha3_224_mem (out:BArray28.t, in_0:W64.t, inlen:W64.t, ms:W64.t) : 
+  BArray28.t * W64.t = {
+    var rate:W64.t;
+    var ds:W64.t;
+    var st:BArray200.t;
+    var i:int;
+    var t:W64.t;
+    var w:W32.t;
+    st <- witness;
+    rate <- (W64.of_int 144);
+    ds <- (W64.of_int 6);
+    (* Erased call to spill *)
+    (st, ms) <@ __sha3_absorb_all (st, rate, ds, in_0, inlen, ms);
+    (* Erased call to unspill *)
+    out <- (protect_ptr out ms);
+    i <- 0;
+    while ((i < 3)) {
+      t <- (BArray200.get64 st i);
+      out <- (BArray28.set64 out i t);
+      i <- (i + 1);
+    }
+    w <- (BArray200.get32 st 6);
+    out <- (BArray28.set32 out 6 w);
+    return (out, ms);
+  }
+  proc _sha3_256_mem (out:BArray32.t, in_0:W64.t, inlen:W64.t, ms:W64.t) : 
+  BArray32.t * W64.t = {
+    var rate:W64.t;
+    var ds:W64.t;
+    var st:BArray200.t;
+    var i:int;
+    var t:W64.t;
+    st <- witness;
+    rate <- (W64.of_int 136);
+    ds <- (W64.of_int 6);
+    (* Erased call to spill *)
+    (st, ms) <@ __sha3_absorb_all (st, rate, ds, in_0, inlen, ms);
+    (* Erased call to unspill *)
+    out <- (protect_ptr out ms);
+    i <- 0;
+    while ((i < 4)) {
+      t <- (BArray200.get64 st i);
+      out <- (BArray32.set64 out i t);
+      i <- (i + 1);
+    }
+    return (out, ms);
+  }
+  proc _sha3_384_mem (out:BArray48.t, in_0:W64.t, inlen:W64.t, ms:W64.t) : 
+  BArray48.t * W64.t = {
+    var rate:W64.t;
+    var ds:W64.t;
+    var st:BArray200.t;
+    var i:int;
+    var t:W64.t;
+    st <- witness;
+    rate <- (W64.of_int 104);
+    ds <- (W64.of_int 6);
+    (* Erased call to spill *)
+    (st, ms) <@ __sha3_absorb_all (st, rate, ds, in_0, inlen, ms);
+    (* Erased call to unspill *)
+    out <- (protect_ptr out ms);
+    i <- 0;
+    while ((i < 6)) {
+      t <- (BArray200.get64 st i);
+      out <- (BArray48.set64 out i t);
+      i <- (i + 1);
+    }
+    return (out, ms);
+  }
+  proc _sha3_512_mem (out:BArray64.t, in_0:W64.t, inlen:W64.t, ms:W64.t) : 
+  BArray64.t * W64.t = {
+    var rate:W64.t;
+    var ds:W64.t;
+    var st:BArray200.t;
+    var i:int;
+    var t:W64.t;
+    st <- witness;
+    rate <- (W64.of_int 72);
+    ds <- (W64.of_int 6);
+    (* Erased call to spill *)
+    (st, ms) <@ __sha3_absorb_all (st, rate, ds, in_0, inlen, ms);
+    (* Erased call to unspill *)
+    out <- (protect_ptr out ms);
+    i <- 0;
+    while ((i < 8)) {
+      t <- (BArray200.get64 st i);
+      out <- (BArray64.set64 out i t);
+      i <- (i + 1);
+    }
+    return (out, ms);
+  }
+  proc __shake_mem (rate:W64.t, out:W64.t, outlen:W64.t, in_0:W64.t,
+                    inlen:W64.t, ms:W64.t) : W64.t = {
+    var ds:W64.t;
+    var st:BArray200.t;
+    var pos:W64.t;
+    st <- witness;
+    ds <- (W64.of_int 31);
+    (* Erased call to spill *)
+    (st, ms) <@ __sha3_absorb_all (st, rate, ds, in_0, inlen, ms);
+    (* Erased call to unspill *)
+    out <- (protect_64 out ms);
+    outlen <- (protect_64 outlen ms);
+    rate <- (protect_64 rate ms);
+    pos <- (W64.of_int 0);
+    (st, pos, ms) <@ _keccak_squeeze_mem (st, pos, rate, out, outlen, ms);
+    return ms;
+  }
+  proc _shake128_mem (out:W64.t, outlen:W64.t, in_0:W64.t, inlen:W64.t,
+                      ms:W64.t) : W64.t = {
+    var rate:W64.t;
+    rate <- (W64.of_int 168);
+    ms <@ __shake_mem (rate, out, outlen, in_0, inlen, ms);
+    return ms;
+  }
+  proc _shake256_mem (out:W64.t, outlen:W64.t, in_0:W64.t, inlen:W64.t,
+                      ms:W64.t) : W64.t = {
+    var rate:W64.t;
+    rate <- (W64.of_int 136);
+    ms <@ __shake_mem (rate, out, outlen, in_0, inlen, ms);
+    return ms;
   }
   proc mgf64_30____mgf1_layout (m:BArray192.t, seed:BArray64.t, padded:int) : 
   BArray192.t = {

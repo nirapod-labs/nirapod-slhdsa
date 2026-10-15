@@ -6,10 +6,13 @@
  * =========
  *
  * Extraction entry for the hash-function correctness proofs. It contains no
- * code of its own: it requires the production SHA-2, HMAC, MGF1 and sponge
- * sources, so that jasmin2ec extracts their functions from the source
- * files themselves, under the include roots of each (architecture,
- * variant). The FIPS 202 functions and the multi-way code are not
+ * code of its own: it requires the production SHA-2, HMAC, MGF1, sponge and
+ * FIPS 202 sources, so that jasmin2ec extracts their functions from the
+ * source files themselves, under the include roots of each (architecture,
+ * variant). keccak/fips202.jinc holds the one-shot SHA3-224/256/384/512,
+ * SHAKE128 and SHAKE256 functions of the hash layer; the HashSLH-DSA
+ * pre-hash (slhdsa/external.jinc) uses the SHA-2 functions and the sponge
+ * directly, which are extracted here as well. The multi-way code is not
  * extracted. `make extract` runs it; see proofs/README.md.
  *
  * MGF1 has compile-time seed and output lengths (sha2/mgf1.jinc), so it is
@@ -33,6 +36,7 @@ from Hash require "sha2/sha256.jinc"
 from Hash require "sha2/sha512.jinc"
 from Hash require "sha2/hmac.jinc"
 from Hash require "keccak/sponge.jinc"
+from Hash require "keccak/fips202.jinc"
 
 namespace Mgf64_30 {
   param int MGF1_SEED_LEN = 64;
