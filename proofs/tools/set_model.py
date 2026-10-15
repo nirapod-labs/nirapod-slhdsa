@@ -44,6 +44,11 @@ import sys
 BASE = [("SLH_N", "n"), ("SLH_H", "h"), ("SLH_D", "d"), ("SLH_HP", "hp"),
         ("SLH_A", "a"), ("SLH_K", "k"), ("SLH_LGW", "lgw"), ("SLH_M", "m")]
 
+# The treehash fold keeps one node per height of the tallest tree it
+# builds, max(a, hp) + 1 = a + 1 nodes, since a > hp in every set
+# (treehash.jinc, SLH_FOLD_SLOTS); FORS and XMSS trees share the buffer.
+FOLD_BUF = "(SLH_A + 1) * SLH_N"
+
 # Buffer kinds and their size in bytes, as expressions over the Jasmin
 # parameters: one size names the array theory BArray<size>, two sizes the
 # theory SBArray<size>_<slot> of the array's slots of slot bytes. A kind
@@ -65,6 +70,22 @@ ROLES = [
     ("Node4", ("4 * SLH_N",), "four n-byte values, one per lane (u8[4n])"),
     ("TLenIn4", ("4 * SLH_LEN * SLH_N",),
      "four TLenIn, one per lane (u8[4 len n])"),
+    ("Node2Half", ("2 * SLH_N", "SLH_N"), "the two n-byte halves of a Node2"),
+    ("Node4Node", ("4 * SLH_N", "SLH_N"), "the n-byte lanes of a Node4"),
+    ("TKNode", ("SLH_K * SLH_N", "SLH_N"), "the n-byte slots of a TKIn"),
+    ("FoldBuf", (FOLD_BUF,),
+     "the treehash fold stack: one node per height (u8[(a + 1) n])"),
+    ("FoldNode", (FOLD_BUF, "SLH_N"), "the n-byte slots of a FoldBuf"),
+    ("XmssSig", ("SLH_XMSS_SIG_BYTES",),
+     "an XMSS signature: WOTS+ signature, then hp nodes (u8[(len + hp) n])"),
+    ("XmssSigNode", ("SLH_XMSS_SIG_BYTES", "SLH_N"),
+     "the n-byte slots of an XmssSig"),
+    ("XmssSigWots", ("SLH_XMSS_SIG_BYTES", "SLH_WOTS_SIG_BYTES"),
+     "the WOTS+ signature slot of an XmssSig (u8[len n])"),
+    ("ForsSig", ("SLH_FORS_SIG_BYTES",),
+     "a FORS signature: k trees of a secret and a nodes (u8[k (a + 1) n])"),
+    ("ForsSigNode", ("SLH_FORS_SIG_BYTES", "SLH_N"),
+     "the n-byte slots of a ForsSig"),
 ]
 
 # The SHA2 T_l and T_k hash their input in a work buffer of whole SHA-512

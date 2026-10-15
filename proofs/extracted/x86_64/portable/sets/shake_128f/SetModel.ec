@@ -104,7 +104,7 @@
 
 require import AllCore.
 require FIPS205_Params.
-require BArray16 BArray32 BArray34 BArray35 BArray64 BArray132 BArray528 BArray560 BArray2240 SBArray560_16.
+require BArray16 BArray32 BArray34 BArray35 BArray64 BArray112 BArray132 BArray528 BArray560 BArray608 BArray2240 BArray3696 SBArray32_16 SBArray64_16 SBArray112_16 SBArray528_16 SBArray560_16 SBArray608_16 SBArray608_560 SBArray3696_16.
 
 op P : FIPS205_Params.params = FIPS205_Params.slh_dsa_shake_128f.
 
@@ -139,3 +139,23 @@ theory TKIn = BArray528.
 theory Node4 = BArray64.
 (* four TLenIn, one per lane (u8[4 len n]) *)
 theory TLenIn4 = BArray2240.
+(* the two n-byte halves of a Node2 *)
+theory Node2Half = SBArray32_16.SBArray32_16.
+(* the n-byte lanes of a Node4 *)
+theory Node4Node = SBArray64_16.SBArray64_16.
+(* the n-byte slots of a TKIn *)
+theory TKNode = SBArray528_16.SBArray528_16.
+(* the treehash fold stack: one node per height (u8[(a + 1) n]) *)
+theory FoldBuf = BArray112.
+(* the n-byte slots of a FoldBuf *)
+theory FoldNode = SBArray112_16.SBArray112_16.
+(* an XMSS signature: WOTS+ signature, then hp nodes (u8[(len + hp) n]) *)
+theory XmssSig = BArray608.
+(* the n-byte slots of an XmssSig *)
+theory XmssSigNode = SBArray608_16.SBArray608_16.
+(* the WOTS+ signature slot of an XmssSig (u8[len n]) *)
+theory XmssSigWots = SBArray608_560.SBArray608_560.
+(* a FORS signature: k trees of a secret and a nodes (u8[k (a + 1) n]) *)
+theory ForsSig = BArray3696.
+(* the n-byte slots of a ForsSig *)
+theory ForsSigNode = SBArray3696_16.SBArray3696_16.
