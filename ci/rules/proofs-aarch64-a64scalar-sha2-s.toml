@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# ci/rules/proofs-aarch64-a64scalar-sha2-s.toml: the sha2-s sets against the aarch64/a64scalar
+# models: the per-set proofs and inventories
+# (ci/counts.py). A minimum is the count of the complete run on the
+# current tree; lowering one is a reviewed change.
+
+[aarch64-a64scalar-sha2-s]
+[[aarch64-a64scalar-sha2-s.line]]
+what = "files of sha2_128s: the model, SetModel, its array theories and the per-set proofs, every file checked"
+pattern = '^check-set aarch64/a64scalar/sha2_128s: PASS (\d+) files$'
+minimum = 38
+
+[[aarch64-a64scalar-sha2-s.line]]
+what = "theorems in the unchanged inventory of aarch64/a64scalar/sha2_128s (none yet)"
+pattern = '^inventory aarch64/a64scalar/sha2_128s: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
+minimum = 0
+
+[[aarch64-a64scalar-sha2-s.line]]
+what = "files of sha2_192s: the model, SetModel, its array theories and the per-set proofs, every file checked"
+pattern = '^check-set aarch64/a64scalar/sha2_192s: PASS (\d+) files$'
+minimum = 41
+
+[[aarch64-a64scalar-sha2-s.line]]
+what = "theorems in the unchanged inventory of aarch64/a64scalar/sha2_192s (none yet)"
+pattern = '^inventory aarch64/a64scalar/sha2_192s: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
+minimum = 0
+
+[[aarch64-a64scalar-sha2-s.line]]
+what = "files of sha2_256s: the model, SetModel, its array theories and the per-set proofs, every file checked"
+pattern = '^check-set aarch64/a64scalar/sha2_256s: PASS (\d+) files$'
+minimum = 36
+
+[[aarch64-a64scalar-sha2-s.line]]
+what = "theorems in the unchanged inventory of aarch64/a64scalar/sha2_256s (none yet)"
+pattern = '^inventory aarch64/a64scalar/sha2_256s: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
+minimum = 0
+
+[[aarch64-a64scalar-sha2-s.line]]
+what = "sets of the sha2-s group checked against the aarch64/a64scalar models"
+pattern = '^check-sets aarch64-a64scalar-sha2-s: PASS (\d+) sets$'
+minimum = 3

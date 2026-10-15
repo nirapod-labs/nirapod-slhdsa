@@ -20,7 +20,10 @@
 #   shards       proofs/Makefile's shards are the registry's, and every
 #                EasyCrypt file under proofs/ and third_party/ is checked
 #                by exactly one shard, except the shared correctness
-#                proofs, which every pair shard checks once
+#                proofs, which a pair shard of each architecture checks,
+#                the facts of one architecture, which each of its pair
+#                shards checks, and the per-set proofs, which every group
+#                shard of their hash family checks
 #   hash         tests/hash: the constant tables against their definitions,
 #                the generated test sources current
 #   proofs       the proof-hole scan, the FIPS 180-4 constants, the
@@ -90,20 +93,54 @@ def shard_errors(reg, files):
         if shard not in shards:
             errors.append(f"shard-files names an unknown shard '{shard}'")
         where.setdefault(path, []).append(shard)
+    # Shard names (proofs/Makefile): <arch>-<variant> checks one pair,
+    # <arch>-<variant>-<family>-<group> the per-set proofs of one hash
+    # family against one group of that pair's sets.
     archs = sorted({p["arch"] for p in reg["platforms"].values()})
-    pair_shards = [s for s in shards if s in archs]
+    pair_shards, set_shards = {}, {}
+    for s in shards:
+        parts = s.split("-")
+        if parts[0] in archs and len(parts) == 2:
+            pair_shards[s] = parts[0]
+        elif parts[0] in archs and len(parts) == 4:
+            set_shards[s] = parts[2]
+    families = set(set_shards.values())
     proof_files = [f for f in files if f.endswith((".ec", ".eca"))
                    and f.startswith(("proofs/", "third_party/"))]
-    # A pair shard checks a file once for each of its pairs that loads it;
-    # what matters here is which shards check it.
+    # A shared correctness proof is checked against the models of each
+    # architecture (a kernel proof only by the pairs that build its kernel,
+    # so by some pair shard of each architecture, not every one); a per-set
+    # proof by every group shard of its family, or of every family when it
+    # is in no family's directory. A shard checks a file once for each of
+    # its pairs or sets that loads it; what matters here is which shards
+    # check it.
     for f in sorted(proof_files):
         got = sorted(set(where.get(f, [])))
-        shared = f.startswith("proofs/correctness/") and not set(f.split("/")) & set(archs)
-        want = sorted(pair_shards) if shared else None
-        if shared and got != want:
-            errors.append(f"{f}: a shared correctness proof, checked by {got or 'no shard'}, "
-                          f"expected by each of {want}")
-        elif not shared and len(got) != 1:
+        parts = f.split("/")
+        shared = f.startswith("proofs/correctness/") and not set(parts) & set(archs)
+        if shared and parts[2] == "core":
+            family = parts[3] if len(parts) > 4 and parts[3] in families else None
+            want = sorted(s for s, fam in set_shards.items() if family in (None, fam))
+            if got != want:
+                errors.append(f"{f}: a per-set proof, checked by {got or 'no shard'}, "
+                              f"expected by each of {want}")
+        elif shared:
+            seen = sorted({pair_shards[s] for s in got if s in pair_shards})
+            if seen != archs or set(got) - set(pair_shards):
+                errors.append(f"{f}: a shared correctness proof, checked by {got or 'no shard'}, "
+                              f"expected by a pair shard of each of {archs} and no other")
+        elif f.startswith("proofs/correctness/"):
+            # Facts of one architecture: by every pair shard of it; of one
+            # variant: by that pair's shard alone.
+            arch = next(a for a in archs if a in parts)
+            i = parts.index(arch)
+            if i + 2 < len(parts):
+                want = [f"{arch}-{parts[i + 1]}"]
+            else:
+                want = sorted(s for s, a in pair_shards.items() if a == arch)
+            if got != want:
+                errors.append(f"{f}: checked by {got or 'no shard'}, expected by each of {want}")
+        elif len(got) != 1:
             errors.append(f"{f}: checked by {got or 'no shard'}, expected exactly one")
     errors += [f"shard-files lists {p}, which is not a tracked proof file"
                for p in sorted(set(where) - set(proof_files))]

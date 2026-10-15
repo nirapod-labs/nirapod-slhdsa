@@ -119,5 +119,5 @@ With the pinned toolchain, from the repository root:
 ci/toolchain.sh exec make -C proofs check check-inventory check-extraction
 ```
 
-CI runs the same files in six shards on every change that can affect them
+CI runs the same files in 16 shards on every change that can affect them
 ([STATUS](STATUS.md#proofs)).

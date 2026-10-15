@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# ci/rules/proofs-x86_64-portable.toml: the x86_64/portable pair shard: every correctness file
+# (ci/counts.py). A minimum is the count of the complete run on the
+# current tree; lowering one is a reviewed change.
+
+[x86_64-portable]
+[[x86_64-portable.line]]
+what = "correctness proofs against the x86_64 portable model, every file checked"
+pattern = '^check-pair x86_64/portable: PASS (\d+) files$'
+minimum = 44

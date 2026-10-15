@@ -232,6 +232,26 @@ each unit under (`make kernel-roots`), and fails if a variant is in
 neither list or if a pair's kernel roots are not the library's, so the
 models cannot drift from the kernels the library builds.
 
+The SLH-DSA core depends on the parameter set: jasmin2ec writes each
+`param int` as its value and names each array theory after its size, so
+the same procedure has other loop bounds and argument types in each set.
+For each pair of `LIBRARY_PAIRS` (`CORE_PAIRS`) and each of the twelve
+sets, `extracted/<arch>/<variant>/sets/<set>/CoreExtracted.ec` is the
+model of the set's compilation unit `src/slhdsa/sets/<set>.jinc`,
+extracted under the include roots the library compiles it with, beside
+the array theories it requires that the pair's own models do not. Next to
+it, `SetModel.ec` (`tools/set_model.py`) gives the
+names a proof uses instead: `P`, the FIPS 205 parameter record of the set,
+with one lemma per base parameter (`n_val : P.`n = 16`, proved by
+evaluation, so a Jasmin parameter file that disagrees with FIPS 205 does
+not check), and aliases of the array theories by role (`Node` for u8[n],
+`Digest` for u8[m], ...), each checked to be a theory the model requires.
+The per-set proofs in `correctness/core/` refer to the set only through
+these names, so one proof text is checked against all 24 models
+(`make check-sets PAIR=<pair>`); `correctness/core/sha2/` and
+`correctness/core/shake/` hold proofs for one hash family's sets. Each
+(pair, set) has its own inventory, `inventory/sets/<arch>-<variant>-<set>.txt`.
+
 Theorems so far, each checked on every pair unless it says otherwise:
 
 - `sha256_rounds_correct` (`correctness/hash/SHA256_Compress.ec`):
@@ -435,13 +455,18 @@ EasyCrypt process, and prints each file's time and peak memory. Variables:
 
 CI checks the same files in shards, in parallel jobs (`make list-shards`,
 `make check-shard SHARD=<shard>`): the SPHINCS+ proof, the crypto-specs
-theories, this directory's specification and security theories, each
-architecture's correctness proofs with its inventory, and the extraction
+theories, this directory's specification and security theories, the
+correctness proofs of each pair (`<arch>-<variant>`), the inventories of
+all pairs (`inventory`), the per-set proofs and inventories of each group
+of three sets of one hash family for each pair of `CORE_PAIRS`
+(`<arch>-<variant>-<group>`, groups `SET_GROUPS`), and the extraction
 check. Each shard loads only the theories under its own load path, so CI
 can tell from a change which shards it affects; `make shard-files` lists
 every file of every shard, and CI checks that each file belongs to exactly
-one, except the shared correctness proofs, which each architecture's shard
-checks against its own models.
+one, except the shared correctness proofs, which a pair shard of each
+architecture checks against its own models, an architecture's facts,
+which each of its pairs checks, and the per-set proofs, which every group
+of their family checks.
 
 `check-inventory` requires, for each pair, every theory that pair is
 checked with, has EasyCrypt print every axiom then in scope, the statement

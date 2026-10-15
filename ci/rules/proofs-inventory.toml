@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# ci/rules/proofs-inventory.toml: the inventory shard: every pair's inventory
+# (ci/counts.py). A minimum is the count of the complete run on the
+# current tree; lowering one is a reviewed change.
+
+[inventory]
+[[inventory.line]]
+what = "theorems in the unchanged inventory of x86_64/portable (20 SHA-2, 6 HMAC, 6 MGF1, 4 Keccak-f, 11 Keccak sponge, 8 SHA-3 and SHAKE, 11 of those over the Keccak-f kernel, 11 address setters, 72 FIPS 205)"
+pattern = '^inventory x86_64/portable: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
+minimum = 149
+
+[[inventory.line]]
+what = "theorems in the unchanged inventory of aarch64/portable (20 SHA-2, 6 HMAC, 6 MGF1, 4 Keccak-f, 11 Keccak sponge, 8 SHA-3 and SHAKE, 11 of those over the Keccak-f kernel, 11 address setters, 72 FIPS 205)"
+pattern = '^inventory aarch64/portable: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
+minimum = 149
+
+[[inventory.line]]
+what = "theorems in the unchanged inventory of aarch64/a64scalar (20 SHA-2, 6 HMAC, 6 MGF1, 4 Keccak-f, 11 Keccak sponge, 8 SHA-3 and SHAKE, 11 of those over the Keccak-f kernel, 11 address setters, 72 FIPS 205)"
+pattern = '^inventory aarch64/a64scalar: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
+minimum = 149
+
+[[inventory.line]]
+what = "pairs whose inventory is unchanged"
+pattern = '^inventory: PASS (\d+) pairs$'
+minimum = 3

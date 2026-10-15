@@ -20,7 +20,9 @@
 #   - the units of one variant are compiled under the same roots, whatever
 #     the parameter set;
 #   - a bound pair is in EXTRACTIONS, is of the variant's architecture, and
-#     its roots equal the library's for every root extraction sets (ROLES).
+#     its roots equal the library's for every root extraction sets (ROLES);
+#   - the parameter sets with a per-set model (CORE_SETS) are the sets the
+#     library builds in each modelled variant.
 #
 # A failure names the variant and the root that differ. Needs make and the
 # tree only, no toolchain (ci/source.py runs it).
@@ -36,12 +38,15 @@ import registry  # noqa: E402
 # Makefile (its GEN_TARGETS).
 TARGETS = [("x86_64", "Linux"), ("aarch64", "Linux"), ("aarch64", "Darwin")]
 
-# The roots proofs/tools/extract.sh sets for a hash model, with the
-# EXTRACTIONS field each kernel role comes from. Hash and HashWord are not
-# fields: extraction always uses the hash tree and the pair's architecture.
+# The roots proofs/tools/extract.sh sets for a per-set model, with the
+# EXTRACTIONS field each kernel role comes from. The others are not fields:
+# extraction always uses the core and hash trees, the library's fault hook,
+# the pair's architecture and the four-way SHA2 hashes made of one-way
+# calls (thash_sha2_x4/single, which every scalar variant builds).
 KERNEL_FIELDS = {"KeccakKernel": 2, "KeccakKernelX": 3, "Sha2Kernel": 4, "Sha2KernelX": 5}
-ROLES = ["Hash", "HashWord"] + list(KERNEL_FIELDS)
+ROLES = ["Slhdsa", "SlhdsaHook", "Hash", "HashWord", "Sha2ThashX"] + list(KERNEL_FIELDS)
 
+SLHDSA_SRC = "src/slhdsa"
 HASH_SRC = "src/hash"
 
 
@@ -85,13 +90,15 @@ def parse_units(text):
 
 
 def parse_pairs(text):
-    """(extractions {pair: fields}, pairs {arch/variant: pair}, unmodelled [arch/variant])"""
+    """(extractions {pair: fields}, pairs {arch/variant: pair}, unmodelled [arch/variant],
+    sets [set])"""
     got = {}
     for line in text.splitlines():
         name, _, rest = line.partition(" ")
         got[name] = rest.split()
-    if sorted(got) != ["extractions", "pairs", "unmodelled"]:
-        raise ValueError(f"print-library-pairs: expected extractions, pairs, unmodelled; got {sorted(got)}")
+    if sorted(got) != ["extractions", "pairs", "sets", "unmodelled"]:
+        raise ValueError(f"print-library-pairs: expected extractions, pairs, sets, unmodelled; "
+                         f"got {sorted(got)}")
     extractions = {}
     for e in got["extractions"]:
         fields = e.split(":")
@@ -104,20 +111,26 @@ def parse_pairs(text):
         if not eq or variant.count("/") != 1 or variant in pairs:
             raise ValueError(f"LIBRARY_PAIRS entry '{b}' is not a new <arch>/<variant>=<pair>")
         pairs[variant] = pair
-    return extractions, pairs, got["unmodelled"]
+    return extractions, pairs, got["unmodelled"], got["sets"]
 
 
 def pair_roots(fields):
     """The roots extraction compiles a pair's hash model under."""
     arch = fields[0].split("/")[0]
-    roots = {"Hash": HASH_SRC, "HashWord": f"{HASH_SRC}/{arch}"}
+    roots = {"Slhdsa": SLHDSA_SRC, "SlhdsaHook": f"{SLHDSA_SRC}/hook",
+             "Hash": HASH_SRC, "HashWord": f"{HASH_SRC}/{arch}",
+             "Sha2ThashX": f"{SLHDSA_SRC}/thash_sha2_x4/single"}
     for role, i in KERNEL_FIELDS.items():
         roots[role] = f"{HASH_SRC}/{fields[i]}"
     return roots
 
 
-def errors(units, extractions, pairs, unmodelled):
+def errors(units, extractions, pairs, unmodelled, sets):
     errs = []
+    for name, built_sets in sorted(units.items()):
+        if f"{name[0]}/{name[1]}" in pairs and sorted(built_sets) != sorted(sets):
+            errs.append(f"{name[0]}/{name[1]}: the library builds the sets {sorted(built_sets)}, "
+                        f"CORE_SETS is {sorted(sets)}")
     built = {}
     for (arch, variant), sets in sorted(units.items()):
         name = f"{arch}/{variant}"
@@ -164,17 +177,17 @@ def main(argv):
                 if k in units and units[k] != sets:
                     raise ValueError(f"{k[0]}/{k[1]}: the roots differ between systems")
                 units[k] = sets
-        extractions, pairs, unmodelled = parse_pairs(
-            make(["print-library-pairs"], os.path.join(registry.ROOT, "proofs")))
+        library = parse_pairs(make(["print-library-pairs"], os.path.join(registry.ROOT, "proofs")))
     except (RuntimeError, ValueError) as e:
         print(f"kernel-roots: FAIL: {e}")
         return 1
-    errs = errors(units, extractions, pairs, unmodelled)
+    errs = errors(units, *library)
     for e in errs:
         print(f"kernel-roots: FAIL: {e}")
     if errs:
         return 1
-    print(f"kernel-roots: PASS ({len(units)} library variants, {len(pairs)} modelled)")
+    print(f"kernel-roots: PASS ({len(units)} library variants, {len(library[1])} modelled, "
+          f"{len(library[3])} sets)")
     return 0
 
 

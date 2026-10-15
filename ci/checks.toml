@@ -235,7 +235,6 @@ skip = ["capi", "include", "tests/core", "tests/negative", "tests/abi", "tests/a
 # files in parallel (proofs/Makefile, check-shard). A shard can load only
 # the theories under its own load path, which is why the rest of proofs/
 # and third_party/ can be left out of its inputs.
-
 [checks.proofs-sphincs]
 recipe = "proofs"
 shard = "sphincs"
@@ -271,27 +270,173 @@ jobs = 3
 skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "proofs/correctness",
         "proofs/extracted", "proofs/inventory", "ci/hash-sets.toml"]
 
-# A pair shard checks the correctness proofs against one architecture's
-# extracted models, then the inventory, which loads every theory.
-[checks.proofs-x86_64]
+# A pair shard checks the correctness proofs against one pair's extracted
+# models (check-pair). It reads neither the per-set models and proofs nor
+# the inventories, nor the models and instruction facts of other pairs.
+[checks.proofs-x86_64-portable]
 recipe = "proofs"
-shard = "x86_64"
+shard = "x86_64-portable"
 component = "proofs"
 platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml"]
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/inventory", "proofs/correctness/core", "proofs/extracted/x86_64/portable/sets",
+        "proofs/extracted/aarch64", "proofs/correctness/hash/aarch64"]
 
-[checks.proofs-aarch64]
+[checks.proofs-aarch64-portable]
 recipe = "proofs"
-shard = "aarch64"
+shard = "aarch64-portable"
 component = "proofs"
 platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml"]
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/inventory", "proofs/correctness/core", "proofs/extracted/x86_64",
+        "proofs/extracted/aarch64/a64scalar", "proofs/correctness/hash/x86_64",
+        "proofs/correctness/hash/aarch64/a64scalar"]
+
+[checks.proofs-aarch64-a64scalar]
+recipe = "proofs"
+shard = "aarch64-a64scalar"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/inventory", "proofs/correctness/core",
+        "proofs/extracted/aarch64/a64scalar/sets", "proofs/extracted/x86_64",
+        "proofs/extracted/aarch64/portable", "proofs/correctness/hash/x86_64"]
+
+# The inventory of every pair (inventory-pair), which loads every theory
+# the pair is checked with: no per-set model or proof.
+[checks.proofs-inventory]
+recipe = "proofs"
+shard = "inventory"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/correctness/core", "proofs/inventory/sets",
+        "proofs/extracted/x86_64/portable/sets", "proofs/extracted/aarch64/a64scalar/sets"]
+
+# A group shard checks the per-set proofs of its hash family against the
+# models of the sets of its group (check-set), with their inventories. A
+# set's load path holds its pair's directories too, so it reads them; it
+# does not read other pairs, the other family's proofs or the pairs'
+# inventories.
+[checks.proofs-x86_64-portable-sha2-s]
+recipe = "proofs"
+shard = "x86_64-portable-sha2-s"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/extracted/aarch64", "proofs/correctness/hash/aarch64",
+        "proofs/correctness/core/shake", "proofs/inventory/x86_64-portable.txt",
+        "proofs/inventory/aarch64-portable.txt", "proofs/inventory/aarch64-a64scalar.txt"]
+
+[checks.proofs-x86_64-portable-sha2-f]
+recipe = "proofs"
+shard = "x86_64-portable-sha2-f"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/extracted/aarch64", "proofs/correctness/hash/aarch64",
+        "proofs/correctness/core/shake", "proofs/inventory/x86_64-portable.txt",
+        "proofs/inventory/aarch64-portable.txt", "proofs/inventory/aarch64-a64scalar.txt"]
+
+[checks.proofs-x86_64-portable-shake-s]
+recipe = "proofs"
+shard = "x86_64-portable-shake-s"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/extracted/aarch64", "proofs/correctness/hash/aarch64",
+        "proofs/correctness/core/sha2", "proofs/inventory/x86_64-portable.txt",
+        "proofs/inventory/aarch64-portable.txt", "proofs/inventory/aarch64-a64scalar.txt"]
+
+[checks.proofs-x86_64-portable-shake-f]
+recipe = "proofs"
+shard = "x86_64-portable-shake-f"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/extracted/aarch64", "proofs/correctness/hash/aarch64",
+        "proofs/correctness/core/sha2", "proofs/inventory/x86_64-portable.txt",
+        "proofs/inventory/aarch64-portable.txt", "proofs/inventory/aarch64-a64scalar.txt"]
+
+[checks.proofs-aarch64-a64scalar-sha2-s]
+recipe = "proofs"
+shard = "aarch64-a64scalar-sha2-s"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/extracted/x86_64", "proofs/extracted/aarch64/portable",
+        "proofs/correctness/hash/x86_64",
+        "proofs/correctness/core/shake", "proofs/inventory/x86_64-portable.txt",
+        "proofs/inventory/aarch64-portable.txt", "proofs/inventory/aarch64-a64scalar.txt"]
+
+[checks.proofs-aarch64-a64scalar-sha2-f]
+recipe = "proofs"
+shard = "aarch64-a64scalar-sha2-f"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/extracted/x86_64", "proofs/extracted/aarch64/portable",
+        "proofs/correctness/hash/x86_64",
+        "proofs/correctness/core/shake", "proofs/inventory/x86_64-portable.txt",
+        "proofs/inventory/aarch64-portable.txt", "proofs/inventory/aarch64-a64scalar.txt"]
+
+[checks.proofs-aarch64-a64scalar-shake-s]
+recipe = "proofs"
+shard = "aarch64-a64scalar-shake-s"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/extracted/x86_64", "proofs/extracted/aarch64/portable",
+        "proofs/correctness/hash/x86_64",
+        "proofs/correctness/core/sha2", "proofs/inventory/x86_64-portable.txt",
+        "proofs/inventory/aarch64-portable.txt", "proofs/inventory/aarch64-a64scalar.txt"]
+
+[checks.proofs-aarch64-a64scalar-shake-f]
+recipe = "proofs"
+shard = "aarch64-a64scalar-shake-f"
+component = "proofs"
+platforms = ["linux-x86_64"]
+toolchain = "switch"
+opam = true
+jobs = 3
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml",
+        "proofs/extracted/x86_64", "proofs/extracted/aarch64/portable",
+        "proofs/correctness/hash/x86_64",
+        "proofs/correctness/core/sha2", "proofs/inventory/x86_64-portable.txt",
+        "proofs/inventory/aarch64-portable.txt", "proofs/inventory/aarch64-a64scalar.txt"]
 
 # The committed models against a fresh extraction of the Jasmin sources
 # proofs/tools/extract.sh reads: the hash layer and the SLH-DSA core

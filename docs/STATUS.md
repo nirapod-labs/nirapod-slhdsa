@@ -100,8 +100,11 @@ each check and its controls.
 | `proofs-sphincs` | PASS | the imported SPHINCS+ security proof, on this copy |
 | `proofs-crypto-specs` | PASS | the imported FIPS 202 specification |
 | `proofs-spec` | PASS | the FIPS 205 specification, its validation lemmas and its EUF-CMA theorems |
-| `proofs-x86_64` | PASS | the correctness proofs on the x86-64 models, and their inventory |
-| `proofs-aarch64` | PASS | the correctness proofs on the AArch64 models, and their inventory |
+| `proofs-x86_64-portable` | NOT RUN | the set-independent correctness proofs on the x86-64 portable models |
+| `proofs-aarch64-portable` | NOT RUN | the same on the AArch64 portable models |
+| `proofs-aarch64-a64scalar` | NOT RUN | the same on the AArch64 scalar models |
+| `proofs-inventory` | NOT RUN | the axiom inventories of the three models |
+| `proofs-<pair>-<family>-<s|f>` (8 shards) | NOT RUN | the per-set proofs on the models of three parameter sets each, and their inventories |
 | `proofs-extraction` | PASS | the committed models equal a fresh `jasmin2ec` extraction |
 
 From CI run [38680243373](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38680243373) on `main` at `de27e6a`.

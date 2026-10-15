@@ -222,7 +222,12 @@ jobs:
           CI_RUNNER: ubuntu-24.04
         run: >-
           python3 -I ci/check.py try linux-x86_64
-          proofs-sphincs proofs-crypto-specs proofs-spec proofs-x86_64 proofs-aarch64
+          proofs-sphincs proofs-crypto-specs proofs-spec
+          proofs-x86_64-portable proofs-aarch64-portable proofs-aarch64-a64scalar proofs-inventory
+          proofs-x86_64-portable-sha2-s proofs-x86_64-portable-sha2-f
+          proofs-x86_64-portable-shake-s proofs-x86_64-portable-shake-f
+          proofs-aarch64-a64scalar-sha2-s proofs-aarch64-a64scalar-sha2-f
+          proofs-aarch64-a64scalar-shake-s proofs-aarch64-a64scalar-shake-f
           proofs-extraction
 
       - name: Upload the report and the build record

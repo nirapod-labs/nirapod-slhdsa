@@ -125,6 +125,13 @@ class Keys(unittest.TestCase):
     def legs_of(self, *checks):
         return {(c, p) for c, p in self.base if c in checks}
 
+    def reading_proofs(self):
+        """The pair, inventory and group shards: those that load the
+        correctness proofs."""
+        return [c for c, _ in self.base if c.startswith("proofs-")
+                and c not in ("proofs-sphincs", "proofs-crypto-specs", "proofs-spec",
+                              "proofs-extraction")]
+
     def all_legs(self):
         return set(self.base)
 
@@ -134,12 +141,12 @@ class Keys(unittest.TestCase):
         # Every check that reads src/hash, and agree through test-core.
         self.assertTrue(self.legs_of("test-hash", "analysis-hash", "test-core",
                                      "analysis-units", "asm-policy", "proofs-extraction") <= got)
-        self.assertFalse(got & self.legs_of("proofs-sphincs", "proofs-spec", "proofs-x86_64"))
+        self.assertFalse(got & self.legs_of("proofs-sphincs", "proofs-spec", "proofs-x86_64-portable"))
         got = self.changed_by("tests/hash/Makefile")
         self.assertEqual(got, hash_checks)
         got = self.changed_by("third_party/formosa-slhdsa/README.md")
-        self.assertEqual(got, self.legs_of("proofs-sphincs", "proofs-spec", "proofs-x86_64",
-                                           "proofs-aarch64"))
+        # Every shard but crypto-specs and extraction has it on its load path.
+        self.assertEqual(got, self.legs_of("proofs-sphincs", "proofs-spec", *self.reading_proofs()))
         # The extraction reads the SLH-DSA core too (extracted/address.jazz).
         got = self.changed_by("src/slhdsa/address.jinc")
         self.assertIn(("proofs-extraction", "linux-x86_64"), got)

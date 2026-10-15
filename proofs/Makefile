@@ -16,7 +16,10 @@
 #   make check-formosa    the imported SPHINCS+ security proof, re-checked here
 #   make check-correctness the correctness proofs, once per extracted model
 #   make check-pair PAIR=<arch>/<variant>   one model only
-#   make check-shard SHARD=<shard>  one shard of CI (below), J files at once
+#   make check-set PAIR=<pair> SET=<set>    the per-set proofs, one set's model
+#   make check-sets PAIR=<pair>             the same for every set of CORE_SETS
+#   make check-shard SHARD=<shard>  one shard of CI (below), J files (or, for
+#                         the inventory shard, J pairs) at once
 #   make list-shards      the shards
 #   make shard-files      every file each shard checks, "<shard> <path>"
 #   make scan-admits      fail if any checked file contains a proof hole or
@@ -26,6 +29,7 @@
 #   make check-inventory  fail unless EasyCrypt's list of the axioms in scope,
 #                         the claimed theorem statements and the definitions
 #                         equal the committed inventory/<arch>-<variant>.txt
+#                         and inventory/sets/<arch>-<variant>-<set>.txt
 #   make check-inventory-files  fail if an inventory file is not that of a
 #                         pair in EXTRACTIONS (no EasyCrypt needed)
 #   make inventory        rewrite the inventory files
@@ -106,6 +110,15 @@ SPEC_FILES     := $(filter spec/%,$(OWN_FILES))
 #   correctness/<area>/<arch>/<variant>/  proofs of the kernels a variant
 #                                     replaces (theory KernelSpec), for
 #                                     that pair only
+#   extracted/<arch>/<variant>/sets/<set>/  the model of one parameter-set
+#                                     unit (CoreExtracted), the names the
+#                                     per-set proofs use for it (SetModel)
+#                                     and the array theories it requires
+#                                     that the pair's models do not
+#   correctness/core/                 per-set proofs: checked against each
+#                                     set's model of each pair in CORE_PAIRS
+#   correctness/core/<family>/        the same, for the sets of one hash
+#                                     family only (sha2, shake)
 #
 # A pair is checked with its model, its architecture and variant
 # directories and every shared directory on the load path, so a shared
@@ -115,7 +128,8 @@ ARCHS := x86_64 aarch64
 PAIRS = $(foreach e,$(EXTRACTIONS),$(firstword $(subst :, ,$(e))))
 
 archpat := $(foreach a,$(ARCHS),-e '/$(a)/' -e '/$(a)$$')
-SHARED_PROOF_DIRS = $(shell find correctness -type d 2>/dev/null | grep -v $(archpat) | LC_ALL=C sort)
+SHARED_PROOF_DIRS = $(shell find correctness -type d 2>/dev/null | grep -v $(archpat) \
+                      | grep -v -e '^correctness/core$$' -e '^correctness/core/' | LC_ALL=C sort)
 SHARED_PROOFS     = $(shell for d in $(SHARED_PROOF_DIRS); do \
                       find $$d -maxdepth 1 \( -name '*.ec' -o -name '*.eca' \); done | LC_ALL=C sort)
 pair_arch    = $(firstword $(subst /, ,$(1)))
@@ -156,6 +170,36 @@ pair_files   = $(sort $(wildcard extracted/$(1)/*.ec) \
 pair_flags   = -no-eco $(EC_PATH) -I extracted/$(1) \
                $(foreach d,$(SHARED_PROOF_DIRS) $(call pair_dirs,$(1)),-I $(d)) \
                $(EC_PROVERS) -timeout $(EC_TIMEOUT)
+# Per-set proofs. jasmin2ec substitutes the parameters of a set into the
+# code, so a proof about the core is checked once per set, against the
+# model of that set's compilation unit. A per-set proof names the set's
+# parameters and array theories only through SetModel (tools/set_model.py),
+# so one proof text serves every set. The per-set models are extracted for
+# the pairs that model a library variant (CORE_PAIRS: LIBRARY_PAIRS below).
+CORE_SETS  := sha2_128s shake_128s sha2_128f shake_128f sha2_192s shake_192s \
+              sha2_192f shake_192f sha2_256s shake_256s sha2_256f shake_256f
+CORE_PAIRS  = $(foreach b,$(LIBRARY_PAIRS),$(lastword $(subst =, ,$(b))))
+set_family  = $(firstword $(subst _, ,$(1)))
+set_dirs    = correctness/core $(wildcard correctness/core/$(call set_family,$(1)))
+set_proofs  = $(sort $(foreach d,$(call set_dirs,$(1)),$(wildcard $(d)/*.ec $(d)/*.eca)))
+set_dir     = extracted/$(1)/sets/$(2)
+set_files   = $(sort $(wildcard $(call set_dir,$(1),$(2))/*.ec)) $(call set_proofs,$(2))
+set_flags   = $(call pair_flags,$(1)) -I $(call set_dir,$(1),$(2)) \
+              $(foreach d,$(call set_dirs,$(2)),-I $(d))
+
+# CI checks the per-set proofs in groups of sets (shards <pair>-<group>,
+# below), so that no job checks all twelve: a group is a hash family and
+# the s or f sets of FIPS 205 Table 2. Every set is in exactly one group.
+SET_GROUPS := sha2-s:sha2_128s,sha2_192s,sha2_256s sha2-f:sha2_128f,sha2_192f,sha2_256f \
+              shake-s:shake_128s,shake_192s,shake_256s shake-f:shake_128f,shake_192f,shake_256f
+comma      := ,
+group_name  = $(firstword $(subst :, ,$(1)))
+group_sets  = $(subst $(comma), ,$(lastword $(subst :, ,$(1))))
+grouped_sets := $(foreach g,$(SET_GROUPS),$(call group_sets,$(g)))
+ifneq ($(sort $(grouped_sets)) $(words $(grouped_sets)),$(sort $(CORE_SETS)) $(words $(CORE_SETS)))
+$(error SET_GROUPS must hold every set of CORE_SETS exactly once)
+endif
+
 IMPORTED_FILES := $(shell find $(CRYPTO_SPECS) \( -name '*.ec' -o -name '*.eca' \) \
                     2>/dev/null | LC_ALL=C sort)
 FORMOSA_FILES  := $(shell find $(FORMOSA)/proofs \( -name '*.ec' -o -name '*.eca' \) \
@@ -182,12 +226,28 @@ check-correctness:
 	  echo "pair $$p"; \
 	  $(MAKE) --no-print-directory PAIR=$$p check-pair || exit 1; \
 	done
+	@for p in $(CORE_PAIRS); do \
+	  $(MAKE) --no-print-directory PAIR=$$p check-sets || exit 1; \
+	done
 
 .PHONY: check-pair
 check-pair:
 	@test -n "$(PAIR)" || { echo "check-pair: PAIR not set"; exit 1; }
 	@$(MAKE) --no-print-directory LABEL="check-pair $(PAIR)" FILES="$(call pair_files,$(PAIR))" \
 	  FLAGS="$(call pair_flags,$(PAIR))" compile-files
+
+.PHONY: check-set check-sets
+check-set:
+	@test -n "$(PAIR)" -a -n "$(SET)" || { echo "check-set: PAIR or SET not set"; exit 1; }
+	@case " $(CORE_PAIRS) " in *" $(PAIR) "*) ;; *) echo "check-set: $(PAIR) is not in CORE_PAIRS"; exit 1;; esac
+	@case " $(CORE_SETS) " in *" $(SET) "*) ;; *) echo "check-set: $(SET) is not in CORE_SETS"; exit 1;; esac
+	@$(MAKE) --no-print-directory LABEL="check-set $(PAIR)/$(SET)" FILES="$(call set_files,$(PAIR),$(SET))" \
+	  FLAGS="$(call set_flags,$(PAIR),$(SET))" compile-files
+
+check-sets:
+	@n=0; for s in $(CORE_SETS); do \
+	  $(MAKE) --no-print-directory PAIR=$(PAIR) SET=$$s check-set || exit 1; n=$$((n + 1)); \
+	done; echo "check-sets $(PAIR): PASS $$n sets"
 
 # The hole scan reads code only (tools/scan_holes.py strips comments), so a hole
 # that upstream left commented out is not counted, and any hole in code is.
@@ -303,24 +363,38 @@ pair_theorems = $(foreach t,$(THEOREMS),$(if $(filter $(call thm_theory,$(t)),$(
                 $(KERNEL_THEOREMS_$(subst /,_,$(1)))
 
 inventory_file = inventory/$(subst /,-,$(1)).txt
+set_inventory_file = inventory/sets/$(subst /,-,$(1))-$(2).txt
+
+# The theorems of the per-set proofs, pinned once per (pair, set) in
+# inventory/sets/<arch>-<variant>-<set>.txt, whose definitions are those of the
+# per-set proofs (the spec's are pinned by the pair inventories).
+SET_THEOREMS :=
+set_theorems  = $(foreach t,$(SET_THEOREMS),$(if $(filter $(call thm_theory,$(t)),$(basename $(notdir $(call set_proofs,$(1))))),$(t)))
+set_inventories = $(foreach p,$(CORE_PAIRS),$(foreach s,$(CORE_SETS),$(call set_inventory_file,$(p),$(s))))
 
 .PHONY: inventory check-inventory inventory-pair
 inventory:
-	@mkdir -p inventory
+	@mkdir -p inventory/sets
 	@for p in $(PAIRS); do \
 	  $(MAKE) --no-print-directory PAIR=$$p MODE=write inventory-pair || exit 1; \
 	done
+	@for p in $(CORE_PAIRS); do for s in $(CORE_SETS); do \
+	  $(MAKE) --no-print-directory PAIR=$$p SET=$$s MODE=write inventory-set || exit 1; \
+	done; done
 
 check-inventory: check-inventory-files
 	@for p in $(PAIRS); do \
 	  $(MAKE) --no-print-directory PAIR=$$p MODE=check inventory-pair || exit 1; \
 	done
+	@for p in $(CORE_PAIRS); do for s in $(CORE_SETS); do \
+	  $(MAKE) --no-print-directory PAIR=$$p SET=$$s MODE=check inventory-set || exit 1; \
+	done; done
 	@echo "check-inventory: PASS"
 
 .PHONY: check-inventory-files
 check-inventory-files:
-	@expected="$(foreach p,$(PAIRS),$(call inventory_file,$(p)))"; \
-	for f in inventory/*; do \
+	@expected="$(foreach p,$(PAIRS),$(call inventory_file,$(p))) $(set_inventories)"; \
+	for f in $$(find inventory -type f | LC_ALL=C sort); do \
 	  case " $$expected " in *" $$f "*) ;; \
 	    *) echo "check-inventory-files: FAIL ($$f is not the inventory of a pair in EXTRACTIONS)"; exit 1;; \
 	  esac; \
@@ -332,6 +406,13 @@ inventory-pair:
 	  --flags "$(call pair_flags,$(PAIR))" --namespace JazzEC=$(CRYPTO_SPECS)/arrays \
 	  --generated extracted --theorems "$(call pair_theorems,$(PAIR))" --$(MODE) $(call inventory_file,$(PAIR)) \
 	  $(OWN_FILES) $(IMPORTED_FILES) $(FORMOSA_FILES) $(call pair_files,$(PAIR))
+
+inventory-set:
+	@test -n "$(PAIR)" -a -n "$(SET)" || { echo "inventory-set: PAIR or SET not set"; exit 1; }
+	@$(PYTHON) -I tools/inventory.py --pair $(PAIR)/$(SET) --easycrypt "$(EASYCRYPT)" \
+	  --flags "$(call set_flags,$(PAIR),$(SET))" --namespace JazzEC=$(CRYPTO_SPECS)/arrays \
+	  --generated extracted --theorems "$(call set_theorems,$(SET))" --allow-no-definitions \
+	  --$(MODE) $(call set_inventory_file,$(PAIR),$(SET)) $(call set_files,$(PAIR),$(SET))
 
 # ------------------------------------------------------------------
 # Extraction
@@ -373,27 +454,31 @@ print-library-pairs:
 	@echo "extractions $(EXTRACTIONS)"
 	@echo "pairs $(LIBRARY_PAIRS)"
 	@echo "unmodelled $(LIBRARY_UNMODELLED)"
+	@echo "sets $(CORE_SETS)"
 
 .PHONY: extract check-extraction
+# extract_one(entry, outroot): one EXTRACTIONS entry, with the per-set
+# models when its pair is in CORE_PAIRS.
+ent_pair    = $(firstword $(subst :, ,$(1)))
+extract_one = JASMIN2EC="$(JASMIN2EC)" HASH_SRC="$(HASH_SRC)" SLHDSA_SRC="$(SLHDSA_SRC)" \
+  PYTHON="$(PYTHON)" CORE_SETS="$(if $(filter $(call ent_pair,$(1)),$(CORE_PAIRS)),$(CORE_SETS))" \
+  sh tools/extract.sh "$(1)" $(2)
+
 extract:
-	@for e in $(EXTRACTIONS); do \
-	  JASMIN2EC="$(JASMIN2EC)" HASH_SRC="$(HASH_SRC)" SLHDSA_SRC="$(SLHDSA_SRC)" sh tools/extract.sh "$$e" extracted || exit 1; \
-	done
+	@$(foreach e,$(EXTRACTIONS),$(call extract_one,$(e),extracted) || exit 1;)
 
 check-extraction:
 	@tmp=$$(mktemp -d) || exit 1; \
-	for e in $(EXTRACTIONS); do \
-	  JASMIN2EC="$(JASMIN2EC)" HASH_SRC="$(HASH_SRC)" SLHDSA_SRC="$(SLHDSA_SRC)" sh tools/extract.sh "$$e" "$$tmp" || { rm -rf "$$tmp"; exit 1; }; \
-	  d=$${e%%:*}; \
-	  diff -r "$$tmp/$$d" "extracted/$$d" > /dev/null \
-	    || { echo "check-extraction: FAIL ($$d differs from a fresh extraction)"; rm -rf "$$tmp"; exit 1; }; \
-	done; rm -rf "$$tmp"; \
+	$(foreach e,$(EXTRACTIONS),$(call extract_one,$(e),"$$tmp") || { rm -rf "$$tmp"; exit 1; }; \
+	  diff -r "$$tmp/$(call ent_pair,$(e))" "extracted/$(call ent_pair,$(e))" > /dev/null \
+	    || { echo "check-extraction: FAIL ($(call ent_pair,$(e)) differs from a fresh extraction)"; rm -rf "$$tmp"; exit 1; }; ) \
+	rm -rf "$$tmp"; \
 	expected="$(foreach e,$(EXTRACTIONS),extracted/$(firstword $(subst :, ,$(e))))"; \
 	for d in extracted/*/*; do \
 	  case " $$expected " in *" $$d "*) ;; \
 	    *) echo "check-extraction: FAIL ($$d is not a pair in EXTRACTIONS)"; exit 1;; \
 	  esac; \
-	done; echo "check-extraction: PASS ($(words $(EXTRACTIONS)) pairs)"
+	done; echo "check-extraction: PASS ($(words $(EXTRACTIONS)) pairs, $(words $(foreach p,$(CORE_PAIRS),$(CORE_SETS))) per-set models)"
 
 .PHONY: compile-files
 # Each file is checked on its own, from a scratch copy that ends with a
@@ -412,24 +497,38 @@ compile-files:
 #
 # CI checks the development in shards, in parallel jobs, each keyed on the
 # files it can load (ci/checks.toml); together they check what
-# `check` checks, apart from the scans and the constant check, which CI
-# runs without EasyCrypt:
+# `check` and `check-inventory` check, apart from the scans and the
+# constant check, which CI runs without EasyCrypt:
 #
 #   sphincs       the imported SPHINCS+ proof (check-formosa)
 #   crypto-specs  the imported crypto-specs theories (check-imported)
 #   spec          this project's specification and security theories
 #                 (check-own)
-#   x86_64        the correctness proofs against every x86-64 model, then
-#                 the inventory of each such pair
-#   aarch64       the same for AArch64
+#   <arch>-<variant>  the correctness proofs against one pair's models
+#                 (check-pair), for each pair of EXTRACTIONS
+#   inventory     the inventory of every pair (inventory-pair), J pairs at
+#                 once
+#   <arch>-<variant>-<group>  the per-set proofs against the models of
+#                 the sets of one group of SET_GROUPS (check-set), each
+#                 with its inventory, for each pair of CORE_PAIRS
 #   extraction    the committed models against a fresh extraction
 #
 # Every .ec and .eca file under this directory and ../third_party belongs
-# to exactly one shard, except the shared correctness proofs, which every
-# pair shard checks against its own model (`shard-files`; CI checks this).
+# to exactly one shard, except the shared correctness proofs, which a pair
+# shard of each architecture checks, and the per-set proofs, which every
+# group shard of their hash family checks (`shard-files`; CI checks this).
+# The shards of the pairs and of the groups are those names with the `/`
+# of the pair written `-`.
 
-SHARDS := sphincs crypto-specs spec x86_64 aarch64 extraction
-pairs_of = $(filter $(1)/%,$(PAIRS))
+shard_name     = $(subst /,-,$(1))
+PAIR_SHARDS    = $(foreach p,$(PAIRS),$(call shard_name,$(p)))
+SET_SHARDS     = $(foreach p,$(CORE_PAIRS),$(foreach g,$(SET_GROUPS),$(call shard_name,$(p))-$(call group_name,$(g))))
+SHARDS         = sphincs crypto-specs spec $(PAIR_SHARDS) inventory $(SET_SHARDS) extraction
+shard_pair     = $(strip $(foreach p,$(PAIRS),$(if $(filter $(call shard_name,$(p)),$(1)),$(p))))
+set_shard_pair = $(strip $(foreach p,$(CORE_PAIRS),$(foreach g,$(SET_GROUPS),\
+                   $(if $(filter $(call shard_name,$(p))-$(call group_name,$(g)),$(1)),$(p)))))
+set_shard_sets = $(strip $(foreach p,$(CORE_PAIRS),$(foreach g,$(SET_GROUPS),\
+                   $(if $(filter $(call shard_name,$(p))-$(call group_name,$(g)),$(1)),$(call group_sets,$(g))))))
 
 .PHONY: list-shards shard-files check-shard
 list-shards:
@@ -441,7 +540,8 @@ shard-files:
 	@$(foreach f,$(call root_path,$(FORMOSA_FILES)),echo "sphincs $(f)";)
 	@$(foreach f,$(call root_path,$(IMPORTED_FILES)),echo "crypto-specs $(f)";)
 	@$(foreach f,$(call root_path,$(OWN_FILES)),echo "spec $(f)";)
-	@$(foreach a,$(ARCHS),$(foreach p,$(call pairs_of,$(a)),$(foreach f,$(call root_path,$(call pair_files,$(p))),echo "$(a) $(f)";)))
+	@$(foreach p,$(PAIRS),$(foreach f,$(call root_path,$(call pair_files,$(p))),echo "$(call shard_name,$(p)) $(f)";))
+	@$(foreach h,$(SET_SHARDS),$(foreach s,$(call set_shard_sets,$(h)),$(foreach f,$(call root_path,$(call set_files,$(call set_shard_pair,$(h)),$(s))),echo "$(h) $(f)";)))
 
 check-shard:
 	@case " $(SHARDS) " in *" $(SHARD) "*) ;; *) echo "check-shard: unknown shard '$(SHARD)' (one of: $(SHARDS))"; exit 1;; esac
@@ -453,10 +553,19 @@ else ifeq ($(SHARD),spec)
 	@$(MAKE) --no-print-directory LABEL="shard spec" FILES="$(OWN_FILES)" FLAGS="$(OWN_FLAGS)" compile-files
 else ifeq ($(SHARD),extraction)
 	@$(MAKE) --no-print-directory check-extraction
+else ifeq ($(SHARD),inventory)
+	@$(MAKE) --no-print-directory -j$(J) $(addprefix inventory-check/,$(PAIRS))
+	@echo "inventory: PASS $(words $(PAIRS)) pairs"
+else ifneq ($(call shard_pair,$(SHARD)),)
+	@$(MAKE) --no-print-directory PAIR=$(call shard_pair,$(SHARD)) check-pair
 else
-	@test -n "$(call pairs_of,$(SHARD))" || { echo "check-shard: no pair of $(SHARD) in EXTRACTIONS"; exit 1; }
-	@for p in $(call pairs_of,$(SHARD)); do \
-	  $(MAKE) --no-print-directory PAIR=$$p check-pair || exit 1; \
-	  $(MAKE) --no-print-directory PAIR=$$p MODE=check inventory-pair || exit 1; \
-	done
+	@n=0; for s in $(call set_shard_sets,$(SHARD)); do \
+	  $(MAKE) --no-print-directory PAIR=$(call set_shard_pair,$(SHARD)) SET=$$s check-set || exit 1; \
+	  $(MAKE) --no-print-directory PAIR=$(call set_shard_pair,$(SHARD)) SET=$$s MODE=check inventory-set || exit 1; \
+	  n=$$((n + 1)); \
+	done; echo "check-sets $(SHARD): PASS $$n sets"
 endif
+
+# One pair's inventory check, for the inventory shard's parallel make.
+inventory-check/%:
+	@$(MAKE) --no-print-directory PAIR=$* MODE=check inventory-pair

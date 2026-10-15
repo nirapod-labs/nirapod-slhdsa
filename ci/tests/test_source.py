@@ -108,10 +108,30 @@ class Shards(unittest.TestCase):
         extra = "sphincs proofs/spec/Bytes.ec\n"
         self.assertTrue(self.errors(self.real + extra))
 
-    def test_shared_proof_missing_from_a_pair_fails(self):
+    def test_shared_proof_missing_from_an_architecture_fails(self):
         lines = [l for l in self.real.splitlines()
-                 if not (l.startswith("aarch64 ") and l.endswith("WordSpec.ec"))]
+                 if not (l.startswith("aarch64-") and l.endswith("WordSpec.ec"))]
         self.assertTrue(any("WordSpec.ec" in e for e in self.errors("\n".join(lines) + "\n")))
+
+    def test_architecture_fact_missing_from_a_pair_fails(self):
+        lines = [l for l in self.real.splitlines()
+                 if l != "aarch64-portable proofs/correctness/hash/aarch64/ArchWord.ec"]
+        self.assertTrue(any("ArchWord.ec" in e for e in self.errors("\n".join(lines) + "\n")))
+
+    def test_per_set_proof_missing_from_a_group_fails(self):
+        core = [l for l in self.real.splitlines() if " proofs/correctness/core/" in l]
+        if not core:
+            self.skipTest("no per-set proof in the tree")
+        lines = [l for l in self.real.splitlines() if l != core[0]]
+        path = core[0].split(" ", 1)[1]
+        self.assertTrue(any(path in e for e in self.errors("\n".join(lines) + "\n")))
+
+    def test_per_set_proof_in_a_pair_shard_fails(self):
+        core = [l for l in self.real.splitlines() if " proofs/correctness/core/" in l]
+        if not core:
+            self.skipTest("no per-set proof in the tree")
+        path = core[0].split(" ", 1)[1]
+        self.assertTrue(self.errors(self.real + f"x86_64-portable {path}\n"))
 
     def test_unknown_shard_fails(self):
         self.assertTrue(self.errors(self.real + "bogus proofs/spec/Bytes.ec\n"))

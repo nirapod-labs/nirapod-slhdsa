@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# ci/rules/proofs-aarch64-a64scalar.toml: the aarch64/a64scalar pair shard: every correctness
+# file
+# (ci/counts.py). A minimum is the count of the complete run on the
+# current tree; lowering one is a reviewed change.
+
+[aarch64-a64scalar]
+[[aarch64-a64scalar.line]]
+what = "correctness proofs against the aarch64 a64scalar model, every file checked"
+pattern = '^check-pair aarch64/a64scalar: PASS (\d+) files$'
+minimum = 43

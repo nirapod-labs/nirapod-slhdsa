@@ -8,5 +8,10 @@
 [extraction]
 [[extraction.line]]
 what = "pairs whose committed model equals a fresh extraction"
-pattern = '^check-extraction: PASS \((\d+) pairs\)$'
+pattern = '^check-extraction: PASS \((\d+) pairs, \d+ per-set models\)$'
 minimum = 3
+
+[[extraction.line]]
+what = "per-set models (12 sets for each pair in CORE_PAIRS) equal to a fresh extraction"
+pattern = '^check-extraction: PASS \(\d+ pairs, (\d+) per-set models\)$'
+minimum = 24

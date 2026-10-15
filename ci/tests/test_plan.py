@@ -297,7 +297,7 @@ class ProofsGate(unittest.TestCase):
         self.assertEqual(self.problems(), [])
 
     def test_missing_shard_fails(self):
-        leg = next(l for l in self.plan["legs"] if l.get("shard") == "x86_64")
+        leg = next(l for l in self.plan["legs"] if l.get("shard") == "x86_64-portable")
         shutil.rmtree(os.path.join(self.results, leg["key"]))
         self.assertTrue(self.problems())
 

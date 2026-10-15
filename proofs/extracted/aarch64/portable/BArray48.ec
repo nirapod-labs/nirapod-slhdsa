@@ -8,7 +8,7 @@
  *     jasmin2ec --arch=armv8a (array model: the jasmin2ec default)
  *
  * Model:
- *     aarch64/portable, kernels KeccakKernel=keccak KeccakKernelX=keccak Sha2Kernel=sha2 Sha2KernelX=sha2
+ *     aarch64/portable
  *
  * Regenerate:
  *     make -C proofs extract     (check: make -C proofs check-extraction)

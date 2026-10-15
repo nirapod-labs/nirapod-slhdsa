@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# ci/rules/proofs-x86_64-portable-sha2-f.toml: the sha2-f sets against the x86_64/portable
+# models: the per-set proofs and inventories
+# (ci/counts.py). A minimum is the count of the complete run on the
+# current tree; lowering one is a reviewed change.
+
+[x86_64-portable-sha2-f]
+[[x86_64-portable-sha2-f.line]]
+what = "files of sha2_128f: the model, SetModel, its array theories and the per-set proofs, every file checked"
+pattern = '^check-set x86_64/portable/sha2_128f: PASS (\d+) files$'
+minimum = 34
+
+[[x86_64-portable-sha2-f.line]]
+what = "theorems in the unchanged inventory of x86_64/portable/sha2_128f (none yet)"
+pattern = '^inventory x86_64/portable/sha2_128f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
+minimum = 0
+
+[[x86_64-portable-sha2-f.line]]
+what = "files of sha2_192f: the model, SetModel, its array theories and the per-set proofs, every file checked"
+pattern = '^check-set x86_64/portable/sha2_192f: PASS (\d+) files$'
+minimum = 41
+
+[[x86_64-portable-sha2-f.line]]
+what = "theorems in the unchanged inventory of x86_64/portable/sha2_192f (none yet)"
+pattern = '^inventory x86_64/portable/sha2_192f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
+minimum = 0
+
+[[x86_64-portable-sha2-f.line]]
+what = "files of sha2_256f: the model, SetModel, its array theories and the per-set proofs, every file checked"
+pattern = '^check-set x86_64/portable/sha2_256f: PASS (\d+) files$'
+minimum = 35
+
+[[x86_64-portable-sha2-f.line]]
+what = "theorems in the unchanged inventory of x86_64/portable/sha2_256f (none yet)"
+pattern = '^inventory x86_64/portable/sha2_256f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
+minimum = 0
+
+[[x86_64-portable-sha2-f.line]]
+what = "sets of the sha2-f group checked against the x86_64/portable models"
+pattern = '^check-sets x86_64-portable-sha2-f: PASS (\d+) sets$'
+minimum = 3
