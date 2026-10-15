@@ -63,6 +63,7 @@ SITES = {
     "slhdsa/xmss.jinc": 1,      # nodes in _xmss_treehash
     "slhdsa/fors.jinc": 3,      # nodes, auth and selected in _fors_tree,
                                 # roots in _fors_sign and _fors_pk_from_sig
+    "slhdsa/external.jinc": 1,  # prefix in _slh_frame
 }
 
 # A constant-index zero store written without the `fill` register.
@@ -123,6 +124,9 @@ CONTROLS = {
     "sign_roots": [("slhdsa/fors.jinc",
                     "    dst[root_off : SLH_N] = __node_copy(dst[root_off : SLH_N], root);\n",
                     "    dst[root_off : SLH_N] = __node_xor(dst[root_off : SLH_N], root);\n")],
+    "prefix": [("slhdsa/external.jinc",
+                "    prefix[0] = (8u) t;\n",
+                "    end = (64u) prefix[0];\n    t ^= end;\n    prefix[0] = (8u) t;\n")],
 }
 
 

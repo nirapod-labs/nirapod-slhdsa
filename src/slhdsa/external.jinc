@@ -327,7 +327,8 @@ fn _prehash(
  *     pure:      prefix = 0x00 || |ctx| || ctx,  msg_len' = msg_len
  *     pre-hash:  prefix = 0x01 || |ctx| || ctx || OID || PH(M),  msg_len' = 0
  *
- * prefix_len <= 2 + 255 + 11 + 64 = SLH_PREFIX_MAX.
+ * prefix_len <= 2 + 255 + 11 + 64 = SLH_PREFIX_MAX. Bytes of prefix from
+ * prefix_len on are not part of M'.
  */
 #[sct = "{ ptr: public, val: secret } × { ptr: public, val: transient } ×
          public × public × msf →
@@ -342,9 +343,24 @@ fn _slh_frame(
   stack u8[SLH_PH_MAX_BYTES] ph;
   reg ptr u8[SLH_PH_MAX_BYTES] php;
   reg ptr u8[10] oid;
-  reg u64 sel ctx_len i end t pos len status prefix_len;
+  reg u64 sel ctx_len i end t pos o len status prefix_len cap fill;
   reg bool pure valid more;
   inline int k;
+
+  /*
+   * Safety-checker workaround, as for pk in _wots_leaf_x4 (wots.jinc):
+   * below, prefix is written at run-time indices, which the checker does
+   * not count as initialising, so it reports is_init where the message
+   * hashes read prefix[0 : prefix_len]. Every byte of that range is
+   * written below before it is read. SLH_PREFIX_MAX is 4 mod 8: 41 words,
+   * then the last 4 bytes. The fill check covers this site too.
+   */
+
+  fill = 0;
+  for k = 0 to SLH_PREFIX_MAX / 8 {
+    prefix[:u64 k] = fill;
+  }
+  prefix[:u32 SLH_PREFIX_MAX / 4 - 1] = (32u) fill;
 
   sel = (64u) domain[0];
   sel = #protect(sel, ms);
@@ -401,18 +417,26 @@ fn _slh_frame(
       prefix = #protect_ptr(prefix, ms);
       pos = #protect(pos, ms);
 
+      /*
+       * PH(M) goes to prefix[pos + i] for i < len, with pos fixed: each
+       * store address is the base plus the loop counter, which the loop
+       * test bounds (pos <= 2 + 255 + 11 and len <= 64).
+       */
+
       php = ph;
       i = 0;
       while { more = i < len; } (more) {
         ms = #update_msf(more, ms);
         t = (64u) php[i];
-        prefix[pos] = (8u) t;
-        pos += 1;
+        o = pos;
+        o += i;
+        prefix[o] = (8u) t;
         i += 1;
       }
       ms = #update_msf(!more, ms);
 
       prefix_len = pos;
+      prefix_len += len;
       msg_len = 0;
     }
     status = 0;
@@ -422,6 +446,16 @@ fn _slh_frame(
     prefix_len = 0;
     msg_len = 0;
   }
+
+  /*
+   * Safety-checker workaround: prefix_len <= SLH_PREFIX_MAX holds on
+   * every path above, and the clamp, a conditional move on a public
+   * value, never changes it. It states the bound where the checker can
+   * see it, for the callers that read prefix[0 : prefix_len].
+   */
+
+  cap = SLH_PREFIX_MAX;
+  prefix_len = prefix_len >= cap ? cap : prefix_len;
 
   return prefix, prefix_len, msg_len, status, ms;
 }

@@ -18,7 +18,7 @@
  *                               (_wots_leaf_x4 pk, _wots_pk_from_sig tmp,
  *                               _xmss_treehash nodes, _fors_tree nodes,
  *                               auth and selected, _fors_sign and
- *                               _fors_pk_from_sig roots)
+ *                               _fors_pk_from_sig roots, _slh_frame prefix)
  *   slot_plain  / slot_clamp    a slot offset from a counter of trailing one
  *                               bits: in_bound, unless the counter is clamped
  *                               to the last slot (treehash.jinc __fold_slot)
