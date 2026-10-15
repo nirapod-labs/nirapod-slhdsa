@@ -5,8 +5,8 @@
  * GENERATED FILE. DO NOT EDIT.
  *
  * Generator:
- *     tools/set_model.py, from src/slhdsa/params/shake_128f.jinc, src/slhdsa/constants.jinc
- *     and the array theories CoreExtracted.ec requires
+ *     tools/set_model.py, from src/slhdsa/params/shake_128f.jinc, src/slhdsa/constants.jinc,
+ *     src/slhdsa/thash_shake.jinc and the array theories CoreExtracted.ec requires
  *
  * Model:
  *     aarch64/a64scalar, kernels KeccakKernel=keccak/aarch64/scalar KeccakKernelX=keccak Sha2Kernel=sha2 Sha2KernelX=sha2
@@ -104,7 +104,7 @@
 
 require import AllCore.
 require FIPS205_Params.
-require BArray16 BArray32 BArray34 BArray35 BArray132.
+require BArray16 BArray32 BArray34 BArray35 BArray64 BArray132 BArray528 BArray560 BArray2240 SBArray560_16.
 
 op P : FIPS205_Params.params = FIPS205_Params.slh_dsa_shake_128f.
 
@@ -127,3 +127,15 @@ theory Digest = BArray34.
 theory ForsIdx = BArray132.
 (* the len WOTS+ digits (u8[len]) *)
 theory WotsDigits = BArray35.
+(* the tweakable hash context (u64[THASH_CTX_WORDS]) *)
+theory Ctx = BArray16.
+(* len n-byte values, the input of T_len (u8[len n]) *)
+theory TLenIn = BArray560.
+(* the n-byte slots of a TLenIn *)
+theory TLenNode = SBArray560_16.SBArray560_16.
+(* k n-byte values, the input of T_k (u8[k n]) *)
+theory TKIn = BArray528.
+(* four n-byte values, one per lane (u8[4n]) *)
+theory Node4 = BArray64.
+(* four TLenIn, one per lane (u8[4 len n]) *)
+theory TLenIn4 = BArray2240.

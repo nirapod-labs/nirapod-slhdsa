@@ -63,6 +63,16 @@ trap 'rm -rf "$work"' EXIT
 mkdir "$work/hash" "$work/address" "$work/out"
 core_sets=${CORE_SETS:-}
 
+# The tweakable hash file a set's compilation unit requires (thash_sha2.jinc
+# or thash_shake.jinc), whose context size SetModel names.
+set_thash() {
+  t=$(sed -n 's/^from Slhdsa require "\(thash_[a-z0-9]*\.jinc\)".*/\1/p' "$SLHDSA_SRC/sets/$1.jinc")
+  case $t in
+    thash_*.jinc) printf '%s\n' "$t";;
+    *) echo "extract.sh: sets/$1.jinc must require exactly one thash_*.jinc" >&2; exit 1;;
+  esac
+}
+
 "$JASMIN2EC" --arch="$jarch" \
   -I Hash="$HASH_SRC" -I HashWord="$HASH_SRC/$arch" \
   -I KeccakKernel="$HASH_SRC/$kk" -I KeccakKernelX="$HASH_SRC/$kkx" \
@@ -89,7 +99,8 @@ for s in $core_sets; do
   mkdir -p "$work/out/sets/$s"
   mv "$work/core-$s/CoreExtracted.ec" "$work/out/sets/$s/CoreExtracted.ec"
   "${PYTHON:-python3}" -I tools/set_model.py --set "$s" --params "$SLHDSA_SRC/params/$s.jinc" \
-    --constants "$SLHDSA_SRC/constants.jinc" --model "$work/out/sets/$s/CoreExtracted.ec" \
+    --constants "$SLHDSA_SRC/constants.jinc" --thash "$SLHDSA_SRC/$(set_thash "$s")" \
+    --model "$work/out/sets/$s/CoreExtracted.ec" \
     -o "$work/out/sets/$s/SetModel.ec"
 done
 
@@ -165,8 +176,8 @@ for f in "$work"/out/*.ec "$work"/out/sets/*/*.ec; do
     printf ' * Generator:\n'
     case $name in
       sets/*/SetModel.ec)
-        printf ' *     tools/set_model.py, from src/slhdsa/params/%s.jinc, src/slhdsa/constants.jinc\n' "$set"
-        printf ' *     and the array theories CoreExtracted.ec requires\n';;
+        printf ' *     tools/set_model.py, from src/slhdsa/params/%s.jinc, src/slhdsa/constants.jinc,\n' "$set"
+        printf ' *     src/slhdsa/%s and the array theories CoreExtracted.ec requires\n' "$(set_thash "$set")";;
       *)
         printf ' *     jasmin2ec --arch=%s (array model: the jasmin2ec default)\n' "$jarch";;
     esac

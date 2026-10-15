@@ -5,7 +5,8 @@
 # =========================
 #
 # Usage: python3 -I tools/set_model.py --set SET --params FILE --constants FILE
-#                                      --model CoreExtracted.ec -o SetModel.ec
+#                                      --thash FILE --model CoreExtracted.ec
+#                                      -o SetModel.ec
 #
 # Writes SetModel.ec, the theory through which the per-set correctness
 # proofs (correctness/core/) name what differs between parameter sets.
@@ -21,16 +22,20 @@
 #                  by evaluation, so a Jasmin parameter file that disagrees
 #                  with FIPS 205 Table 2 fails to check
 #   <Role>         an alias of the array theory of one buffer kind
-#                  (ROLES), for example Digest = BArray34
+#                  (ROLES), for example Digest = BArray34, or of the
+#                  theory of its fixed-size slots, for example
+#                  TLenNode = SBArray560_16
 #
 # Every role must be an array theory the model itself requires, or the
 # script fails: a role then always names the type of the model's own
-# procedures. The values come from the Jasmin parameter file and the
-# derived constants of constants.jinc, evaluated here; nothing is computed
-# from the set's name.
+# procedures. The values come from the Jasmin parameter file, the derived
+# constants of constants.jinc and the context size of the set's tweakable
+# hash file (--thash, the thash_*.jinc the set's compilation unit
+# requires), evaluated here; nothing is computed from the set's name.
 
 import argparse
 import ast
+import os
 import re
 import sys
 
@@ -39,15 +44,49 @@ import sys
 BASE = [("SLH_N", "n"), ("SLH_H", "h"), ("SLH_D", "d"), ("SLH_HP", "hp"),
         ("SLH_A", "a"), ("SLH_K", "k"), ("SLH_LGW", "lgw"), ("SLH_M", "m")]
 
-# Buffer kinds and their size in bytes, as an expression over the Jasmin
-# parameters. A kind used by no procedure of the set's model is an error.
+# Buffer kinds and their size in bytes, as expressions over the Jasmin
+# parameters: one size names the array theory BArray<size>, two sizes the
+# theory SBArray<size>_<slot> of the array's slots of slot bytes. A kind
+# used by no procedure of the set's model is an error. A kind listed in
+# THASH_ROLES exists only in the sets whose tweakable hash file is the one
+# named there.
 ROLES = [
-    ("Node", "SLH_N", "an n-byte value (u8[n])"),
-    ("Node2", "2 * SLH_N", "two n-byte values (u8[2n])"),
-    ("Digest", "SLH_M", "the message digest (u8[m])"),
-    ("ForsIdx", "4 * SLH_K", "the k FORS indices (u32[k])"),
-    ("WotsDigits", "SLH_LEN", "the len WOTS+ digits (u8[len])"),
+    ("Node", ("SLH_N",), "an n-byte value (u8[n])"),
+    ("Node2", ("2 * SLH_N",), "two n-byte values (u8[2n])"),
+    ("Digest", ("SLH_M",), "the message digest (u8[m])"),
+    ("ForsIdx", ("4 * SLH_K",), "the k FORS indices (u32[k])"),
+    ("WotsDigits", ("SLH_LEN",), "the len WOTS+ digits (u8[len])"),
+    ("Ctx", ("8 * THASH_CTX_WORDS",),
+     "the tweakable hash context (u64[THASH_CTX_WORDS])"),
+    ("TLenIn", ("SLH_LEN * SLH_N",),
+     "len n-byte values, the input of T_len (u8[len n])"),
+    ("TLenNode", ("SLH_LEN * SLH_N", "SLH_N"), "the n-byte slots of a TLenIn"),
+    ("TKIn", ("SLH_K * SLH_N",), "k n-byte values, the input of T_k (u8[k n])"),
+    ("Node4", ("4 * SLH_N",), "four n-byte values, one per lane (u8[4n])"),
+    ("TLenIn4", ("4 * SLH_LEN * SLH_N",),
+     "four TLenIn, one per lane (u8[4 len n])"),
 ]
+
+# The SHA2 T_l and T_k hash their input in a work buffer of whole SHA-512
+# blocks (thash_sha2_t.jinc: 22 bytes of compressed address, the l n-byte
+# values, then at least 17 bytes of padding), read in 64-byte SHA-256 or
+# 128-byte SHA-512 blocks.
+TLEN_BUF = "128 * ((22 + SLH_LEN * SLH_N + 144) / 128)"
+TK_BUF = "128 * ((22 + SLH_K * SLH_N + 144) / 128)"
+THASH_ROLES = {
+    "thash_sha2.jinc": [
+        ("TLenBuf", (TLEN_BUF,), "the T_len work buffer"),
+        ("TLenBlk256", (TLEN_BUF, "64"), "its 64-byte SHA-256 blocks"),
+        ("TLenBlk512", (TLEN_BUF, "128"), "its 128-byte SHA-512 blocks"),
+        ("TKBuf", (TK_BUF,), "the T_k work buffer"),
+        ("TKBlk256", (TK_BUF, "64"), "its 64-byte SHA-256 blocks"),
+        ("TKBlk512", (TK_BUF, "128"), "its 128-byte SHA-512 blocks"),
+    ],
+}
+
+# The tweakable hash file defines its context size; only that parameter
+# is read from it.
+CTX_WORDS = re.compile(r"^param\s+int\s+THASH_CTX_WORDS\s*=\s*([^;]+);", re.M)
 
 PARAM = re.compile(r"^\s*param\s+int\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;]+);", re.M)
 
@@ -81,6 +120,21 @@ def parameters(*paths):
     return env
 
 
+def ctx_words(path, env):
+    """THASH_CTX_WORDS of a tweakable hash file, over the set's parameters."""
+    with open(path, encoding="utf-8") as f:
+        text = re.sub(r"/\*.*?\*/", "", f.read(), flags=re.S)
+    found = CTX_WORDS.findall(text)
+    if len(found) != 1:
+        raise ValueError(f"{path}: THASH_CTX_WORDS must be defined exactly once")
+    return evaluate(found[0], env)
+
+
+def theory_key(name):
+    """Sort key of an array theory name: BArray before SBArray, by size."""
+    return (name.startswith("S"), [int(x) for x in re.findall(r"[0-9]+", name)])
+
+
 def model_arrays(path):
     with open(path, encoding="utf-8") as f:
         text = f.read()
@@ -93,7 +147,7 @@ def model_arrays(path):
     return arrays
 
 
-def render(pset, env, arrays):
+def render(pset, env, arrays, thash):
     family, strength = pset.split("_")
     lines = [
         f"(* The names the per-set proofs use for SLH-DSA-{family.upper()}-{strength}. *)",
@@ -102,14 +156,13 @@ def render(pset, env, arrays):
         "require FIPS205_Params.",
     ]
     roles = []
-    for role, expr, what in ROLES:
-        size = evaluate(expr, env)
-        theory = f"BArray{size}"
+    for role, exprs, what in ROLES + THASH_ROLES.get(thash, []):
+        sizes = [evaluate(e, env) for e in exprs]
+        theory = ("S" if len(sizes) == 2 else "") + "BArray" + "_".join(map(str, sizes))
         if theory not in arrays:
             raise ValueError(f"role {role} ({what}) is {theory}, which the model does not require")
         roles.append((role, theory, what))
-    lines.append("require " + " ".join(sorted({t for _, t, _ in roles},
-                                              key=lambda t: int(t[6:]))) + ".")
+    lines.append("require " + " ".join(sorted({t for _, t, _ in roles}, key=theory_key)) + ".")
     lines += ["", f"op P : FIPS205_Params.params = FIPS205_Params.slh_dsa_{pset}.", ""]
     for jname, field in BASE:
         if jname not in env:
@@ -117,8 +170,11 @@ def render(pset, env, arrays):
         lines.append(f"lemma {field}_val : P.`{field} = {env[jname]} by rewrite /P.")
     lines.append("")
     for role, theory, what in roles:
+        # jasmin2ec puts the operators of a slot theory in an inner clone
+        # of the same name; the role names that clone.
+        target = f"{theory}.{theory}" if theory.startswith("S") else theory
         lines.append(f"(* {what} *)")
-        lines.append(f"theory {role} = {theory}.")
+        lines.append(f"theory {role} = {target}.")
     return "\n".join(lines) + "\n"
 
 
@@ -127,6 +183,7 @@ def main(argv):
     ap.add_argument("--set", required=True)
     ap.add_argument("--params", required=True)
     ap.add_argument("--constants", required=True)
+    ap.add_argument("--thash", required=True)
     ap.add_argument("--model", required=True)
     ap.add_argument("-o", dest="out", required=True)
     args = ap.parse_args(argv[1:])
@@ -134,7 +191,9 @@ def main(argv):
         print(f"set_model.py: '{args.set}' is not a parameter set name", file=sys.stderr)
         return 1
     try:
-        text = render(args.set, parameters(args.params, args.constants), model_arrays(args.model))
+        env = parameters(args.params, args.constants)
+        env["THASH_CTX_WORDS"] = ctx_words(args.thash, env)
+        text = render(args.set, env, model_arrays(args.model), os.path.basename(args.thash))
     except (OSError, ValueError) as e:
         print(f"set_model.py: {e}", file=sys.stderr)
         return 1
