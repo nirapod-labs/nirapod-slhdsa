@@ -13,5 +13,8 @@
 - Proofs of the HMAC-SHA-256 and HMAC-SHA-512 steps: the keyed initial
   states and the outer hash give HMAC of FIPS 198-1 for keys of at most one
   block (`proofs/correctness/hash/HMAC_SHA256.ec`, `HMAC_SHA512.ec`). The
-  key block read from memory, MGF1 and the Keccak sponge are not proven
-  yet.
+  key block read from memory is not proven yet.
+- Proof of MGF1-SHA-256 (RFC 8017) for the 64-byte seed and the 30- and
+  34-byte outputs of H_msg in the SHA2 sets with n = 16
+  (`proofs/correctness/hash/MGF1_SHA256.ec`). MGF1-SHA-512 and the Keccak
+  sponge are not proven yet.

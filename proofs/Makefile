@@ -134,7 +134,8 @@ KERNEL_PROOFS := \
   correctness/hash/SHA256_Stream.ec:Sha2Kernel=sha2 \
   correctness/hash/SHA512_Stream.ec:Sha2Kernel=sha2 \
   correctness/hash/HMAC_SHA256.ec:Sha2Kernel=sha2 \
-  correctness/hash/HMAC_SHA512.ec:Sha2Kernel=sha2
+  correctness/hash/HMAC_SHA512.ec:Sha2Kernel=sha2 \
+  correctness/hash/MGF1_SHA256.ec:Sha2Kernel=sha2
 role_field_KeccakKernel  := 3
 role_field_KeccakKernelX := 4
 role_field_Sha2Kernel    := 5
@@ -232,6 +233,9 @@ THEOREMS += HMAC_SHA256.hmac_sha256_blocks HMAC_SHA256.hmac_sha256_init_total \
             HMAC_SHA256.hmac_sha256_finalize_total \
             HMAC_SHA512.hmac_sha512_blocks HMAC_SHA512.hmac_sha512_init_total \
             HMAC_SHA512.hmac_sha512_finalize_total
+
+# MGF1 over SHA-256 for the two (seed, output) lengths of the n = 16 SHA2 sets.
+THEOREMS += MGF1_SHA256.mgf64_30_sha256_total MGF1_SHA256.mgf64_34_sha256_total
 
 # Keccak-f[1600] of the shared scalar kernel; the AArch64 kernel that keeps
 # the state in registers has its own (KERNEL_THEOREMS_aarch64_a64scalar).
