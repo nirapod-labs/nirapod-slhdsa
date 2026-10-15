@@ -13,8 +13,9 @@
 # skip-all leave out (by path: a name and everything under it), so a file
 # added at a path nobody listed is an input of every check. Three
 # exceptions are fixed in ci/key.py, not here: every *.mk file one or
-# two directories down outside ci/ stays an input, because the top-level
-# Makefile includes them; a check reads its own recipe ci/checks/<recipe>.mk
+# two directories down outside ci/ stays an input of each check that reads
+# the top-level Makefile (does not skip it), because that Makefile
+# includes them; a check reads its own recipe ci/checks/<recipe>.mk
 # and its own rules ci/rules/<check>.toml, and not those of other
 # checks; and the files under toolchain/ enter through the toolchain
 # identity instead.
@@ -132,6 +133,12 @@ skip-all = [
 #   opam        run inside the switch's environment (toolchain.sh exec)
 #   keep        files of the run a later job reads, as recorded
 #   skip        paths the check provably does not read
+#
+# The top-level Makefile (and with it the fragments it includes) is
+# skipped by the checks whose recipe runs make only with -C in a directory
+# whose own Makefile includes nothing and calls make only on itself:
+# tests/hash for the hash checks, proofs for the shards. Every other recipe
+# runs the top-level Makefile. ci/tests/test_key.py checks both halves.
 
 [checks.test-hash]
 recipe = "test-hash"
@@ -139,7 +146,7 @@ component = "hash"
 platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
 # The hash tests build src/hash with tests/hash and read nothing else.
-skip = ["src/slhdsa", "capi", "include", "tests/core", "tests/negative", "tests/abi",
+skip = ["Makefile", "src/slhdsa", "capi", "include", "tests/core", "tests/negative", "tests/abi",
         "tests/acvp", "tests/diff", "tests/vectors", "bench", "analysis", "proofs", "third_party"]
 
 [checks.analysis-hash]
@@ -148,7 +155,7 @@ component = "hash"
 platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
 # jasmin-ct and --sct on the hash test exports: src/hash and tests/hash.
-skip = ["src/slhdsa", "capi", "include", "tests/core", "tests/negative", "tests/abi",
+skip = ["Makefile", "src/slhdsa", "capi", "include", "tests/core", "tests/negative", "tests/abi",
         "tests/acvp", "tests/diff", "tests/vectors", "bench", "analysis", "proofs", "third_party"]
 
 [checks.test-core]
@@ -233,9 +240,9 @@ platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["src", "capi", "include", "tests", "bench", "analysis", "third_party/crypto-specs",
-        "proofs/spec", "proofs/security", "proofs/correctness", "proofs/extracted",
-        "proofs/inventory", "ci/hash-sets.toml"]
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis",
+        "third_party/crypto-specs", "proofs/spec", "proofs/security", "proofs/correctness",
+        "proofs/extracted", "proofs/inventory", "ci/hash-sets.toml"]
 
 [checks.proofs-crypto-specs]
 recipe = "proofs"
@@ -245,9 +252,9 @@ platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["src", "capi", "include", "tests", "bench", "analysis", "third_party/formosa-slhdsa",
-        "proofs/spec", "proofs/security", "proofs/correctness", "proofs/extracted",
-        "proofs/inventory", "ci/hash-sets.toml"]
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis",
+        "third_party/formosa-slhdsa", "proofs/spec", "proofs/security", "proofs/correctness",
+        "proofs/extracted", "proofs/inventory", "ci/hash-sets.toml"]
 
 [checks.proofs-spec]
 recipe = "proofs"
@@ -257,7 +264,7 @@ platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["src", "capi", "include", "tests", "bench", "analysis", "proofs/correctness",
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "proofs/correctness",
         "proofs/extracted", "proofs/inventory", "ci/hash-sets.toml"]
 
 # A pair shard checks the correctness proofs against one architecture's
@@ -270,7 +277,7 @@ platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml"]
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml"]
 
 [checks.proofs-aarch64]
 recipe = "proofs"
@@ -280,7 +287,7 @@ platforms = ["linux-x86_64"]
 toolchain = "switch"
 opam = true
 jobs = 3
-skip = ["src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml"]
+skip = ["Makefile", "src", "capi", "include", "tests", "bench", "analysis", "ci/hash-sets.toml"]
 
 # The committed models against a fresh extraction of the Jasmin sources
 # proofs/tools/extract.sh reads: the hash layer and the SLH-DSA core
@@ -291,7 +298,7 @@ shard = "extraction"
 component = "proofs"
 platforms = ["linux-x86_64"]
 toolchain = "compiler"
-skip = ["capi", "include", "tests", "bench", "analysis", "third_party",
+skip = ["Makefile", "capi", "include", "tests", "bench", "analysis", "third_party",
         "proofs/spec", "proofs/security", "proofs/correctness", "proofs/inventory",
         "ci/hash-sets.toml"]
 

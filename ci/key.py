@@ -45,9 +45,11 @@
 #   - the recipes ci/checks/*.mk other than C's own, and the rules
 #     ci/rules/*.toml other than C's own,
 #
-# except that every *.mk file one or two directories below the root, outside
-# ci/, stays an input whatever the lists say: the top-level Makefile
-# includes them all.
+# except that, while C reads the top-level Makefile (its skip list does not
+# name it), every *.mk file one or two directories below the root, outside
+# ci/, stays an input whatever the lists say: that Makefile includes them
+# all. A check that skips the Makefile skips them through it, and keeps
+# those its lists leave in like any other file.
 # So a path nobody listed is an input of every check.
 #
 # The registry line ends the input digest: "registry <SHA-256 of the
@@ -101,6 +103,7 @@ RECIPES = "ci/checks/"
 RULES = "ci/rules/"
 TOOLCHAIN = "toolchain/"
 REGISTRY = registry.REGISTRY
+TOP_MAKEFILE = "Makefile"
 
 # Every table and field registry.load() accepts, as it accepts them. A
 # change on either side without the other fails every key (header).
@@ -184,9 +187,10 @@ def input_set(tree, reg, check):
     own_recipe = f"{RECIPES}{c['recipe']}.mk"
     own_rules = f"{RULES}{check}.toml"
     skip = reg["inputs"]["skip-all"] + c.get("skip", [])
+    reads_top = not under(TOP_MAKEFILE, skip)
     kept = []
     for p in tree.files:
-        if included_by_top_makefile(p):
+        if reads_top and included_by_top_makefile(p):
             kept.append(p)
             continue
         if p.startswith(TOOLCHAIN) or p == REGISTRY or under(p, skip):

@@ -15,8 +15,10 @@
 #   (c) a new file at the root changes every key;
 #   a check's own recipe or rules file changes its key alone (a proof
 #   shard's recipe is shared by the shards);
-#   a *.mk file the top-level Makefile includes changes every key, skip
-#   lists notwithstanding;
+#   a *.mk file the top-level Makefile includes changes the key of every
+#   check that reads that Makefile, skip lists notwithstanding;
+#   the checks that skip the top-level Makefile provably never run it, and
+#   every other check's recipe does;
 #   a toolchain file changes every key; a toolchain option only its
 #   platform's;
 #   ci/checks.toml enters each key through that check's own entry: a
@@ -26,6 +28,7 @@
 #   the work tree plays no part: only the commit does.
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -166,9 +169,51 @@ class Keys(unittest.TestCase):
         shards = {c for c in self.reg["checks"] if self.reg["checks"][c]["recipe"] == "proofs"}
         self.assertEqual(self.changed_by("ci/checks/proofs.mk"), self.legs_of(*shards))
 
-    def test_included_makefile_fragments_change_every_key(self):
-        self.assertEqual(self.changed_by("analysis/ct/ct.mk"), self.all_legs())
-        self.assertEqual(self.changed_by("proofs/x.mk", "x"), self.all_legs())
+    def top_readers(self):
+        return {l for l in self.base
+                if l[0] == "agree" or "Makefile" not in self.reg["checks"][l[0]].get("skip", [])}
+
+    def test_top_makefile_changes_its_readers_only(self):
+        readers = self.top_readers()
+        self.assertEqual(self.changed_by("Makefile"), readers)
+        self.assertFalse(readers & self.legs_of("test-hash", "proofs-spec", "proofs-extraction"))
+        self.assertTrue(self.legs_of("test-core", "analysis-units", "safety") <= readers)
+
+    def test_included_makefile_fragments_change_their_readers(self):
+        self.assertEqual(self.changed_by("analysis/ct/ct.mk"), self.top_readers())
+        # A fragment under proofs/ is an input of the shards anyway.
+        self.assertEqual(self.changed_by("proofs/x.mk", "x"),
+                         self.all_legs() - self.legs_of("test-hash", "analysis-hash"))
+
+    def test_skipping_the_top_makefile_is_sound(self):
+        # A check may skip the top-level Makefile only if its recipe runs
+        # make with -C alone, into directories whose makefile includes no
+        # file and runs make only on itself (no -C, no -f); make -f, as
+        # ci/check.py runs a recipe, reads no other makefile. Every other
+        # recipe runs the top-level Makefile, so must not skip it.
+        make = re.compile(r"\$\(MAKE\)(\s+-C\s+(\S+))?")
+        for cid, c in self.reg["checks"].items():
+            with open(os.path.join(ROOT, "ci/checks", c["recipe"] + ".mk")) as f:
+                recipe = [l for l in f if not l.lstrip().startswith("#")]
+            calls = [m for l in recipe for m in make.finditer(l)]
+            self.assertTrue(calls, cid)
+            if "Makefile" not in c.get("skip", []):
+                self.assertTrue(any(m.group(2) is None for m in calls), cid)
+                continue
+            self.assertTrue(all(m.group(2) for m in calls), cid)
+            for d in {m.group(2) for m in calls}:
+                # By listing: a case-insensitive file system finds
+                # "makefile" for "Makefile".
+                names = [n for n in os.listdir(os.path.join(ROOT, d))
+                         if n in ("GNUmakefile", "makefile", "Makefile")]
+                self.assertEqual(names, ["Makefile"], (cid, d))
+                with open(os.path.join(ROOT, d, "Makefile")) as f:
+                    lines = [l for l in f if not l.lstrip().startswith("#")]
+                for l in lines:
+                    self.assertNotRegex(l, r"^\s*-?s?include\s", (cid, d))
+                    self.assertNotRegex(l, r"\$\(MAKE\)[^;|&]*\s-[Cf]\s?", (cid, d))
+                    self.assertNotRegex(l, r"\bmake\s+-[Cf]", (cid, d))
+                    self.assertNotIn("../Makefile", l, (cid, d))
 
     def test_top_makefile_leaves_ci_out(self):
         # key.py keeps every *.mk the top-level Makefile includes; the CI
