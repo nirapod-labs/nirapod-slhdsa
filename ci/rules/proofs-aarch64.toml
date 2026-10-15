@@ -9,19 +9,19 @@
 [[aarch64.line]]
 what = "correctness proofs against the aarch64 portable model, every file checked"
 pattern = '^check-pair aarch64/portable: PASS (\d+) files$'
-minimum = 17
+minimum = 44
 
 [[aarch64.line]]
-what = "theorems in the unchanged inventory of aarch64/portable (6 SHA-2, 3 Keccak-f, 11 address setters, 72 FIPS 205)"
+what = "theorems in the unchanged inventory of aarch64/portable (20 SHA-2, 6 HMAC, 6 MGF1, 4 Keccak-f, 11 Keccak sponge, 8 SHA-3 and SHAKE, 11 of those over the Keccak-f kernel, 11 address setters, 72 FIPS 205)"
 pattern = '^inventory aarch64/portable: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 92
+minimum = 149
 
 [[aarch64.line]]
 what = "correctness proofs against the aarch64 a64scalar model, every file checked"
 pattern = '^check-pair aarch64/a64scalar: PASS (\d+) files$'
-minimum = 16
+minimum = 43
 
 [[aarch64.line]]
-what = "theorems in the unchanged inventory of aarch64/a64scalar (6 SHA-2, 3 Keccak-f, 11 address setters, 72 FIPS 205)"
+what = "theorems in the unchanged inventory of aarch64/a64scalar (20 SHA-2, 6 HMAC, 6 MGF1, 4 Keccak-f, 11 Keccak sponge, 8 SHA-3 and SHAKE, 11 of those over the Keccak-f kernel, 11 address setters, 72 FIPS 205)"
 pattern = '^inventory aarch64/a64scalar: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 92
+minimum = 149
