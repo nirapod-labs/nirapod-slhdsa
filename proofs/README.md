@@ -413,6 +413,11 @@ Per-set theorems, each checked against the 24 per-set models:
   `src/slhdsa/thash_sha2.jinc` write ADRS^c, the 22-byte compressed
   address of FIPS 205 section 11.2, into the first 22 bytes of a hash
   block and leave its other bytes unchanged.
+- `thash_f_correct`, `thash_prf_correct` and `thash_h_correct`
+  (`correctness/core/shake/Thash.ec`, on the 12 SHAKE models): `_thash_f`,
+  `_thash_prf` and `_thash_h` of `src/slhdsa/thash_shake.jinc` return F,
+  PRF and H of FIPS 205 section 11.1, given the premise that the model's
+  `_keccakf1600` computes Keccak-f[1600] on the lanes of its state.
 
 The per-set theorems are total-correctness statements about one
 procedure each, for every input.

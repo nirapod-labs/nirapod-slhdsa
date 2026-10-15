@@ -66,6 +66,11 @@ Proven, on the x86-64 and AArch64 models, total correctness:
   permutation) and squeeze to memory, and the one-shot SHA3-224, SHA3-256,
   SHA3-384, SHA3-512, SHAKE128 and SHAKE256 of a message in memory, against
   FIPS 202.
+- **SHAKE tweakable hashes.** For the six SHAKE sets, `_thash_f`, `_thash_prf`
+  and `_thash_h` of `src/slhdsa/thash_shake.jinc` compute F, PRF and H of
+  section 11.1, on the condition that the Keccak-f[1600] procedure of the set's
+  model is correct. The Keccak proofs above are about the kernel's own model;
+  joining the two is open.
 
 - **Core encodings.** For each of the 12 parameter sets, on the models of that
   set (the core's code depends on the set, so it is extracted once per set and
@@ -92,6 +97,7 @@ Not proven:
 - the single-way and four-way kernels on the A64 SHA-3 instructions (AArch64 `sha3`
   variant), and the portable and AVX2 four-way kernels;
 - the sponge forms over fixed-length arrays and the four-way sponge;
+- the SHAKE T_l, PRF_msg and H_msg, and the SHA2 tweakable hashes;
 - every FIPS 205 algorithm; the rest is open.
 
 `capi/dispatch.c` selects a set's `shani`, `avx2`, `sha2` or `sha3` variant

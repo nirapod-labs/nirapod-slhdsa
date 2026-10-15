@@ -7,4 +7,6 @@
   index and FORS indices (FIPS 205 Algorithms 4 and 19), the WOTS+ digits
   and checksum (Algorithm 7, lines 1 to 7) and, for the SHA2 sets, the
   compressed address of section 11.2 compute what the specification says,
-  with termination. Inventory type names are printed in full.
+  with termination. Inventory type names are printed in full. For the
+  SHAKE sets, proofs that the one-block tweakable hashes F, PRF and H
+  compute section 11.1, given that the model's Keccak-f[1600] is correct.

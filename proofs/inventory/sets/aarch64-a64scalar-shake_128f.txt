@@ -1127,6 +1127,51 @@ lemma wots_digits_correct:
              FIPS205_WOTS.wots_digits SetModel.P (BArray16.to_list m0)] = (
     Real.(%r) 1).
 
+(* Thash.thash_f_correct *)
+lemma thash_f_correct:
+  (forall (s0 : BArray200.t),
+     phoare[ CoreExtracted.M._keccakf1600 :
+              st = s0 ==>
+              KeccakState.lanes res.`1 =
+              Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0)] = (
+     Real.(%r) 1)) =>
+  forall (x0 c0 : BArray16.t) (a0 : BArray32.t),
+    phoare[ CoreExtracted.M._thash_f :
+             x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+             BArray16.to_list res.`1 =
+             FIPS205_Hash.F SetModel.P (BArray16.to_list c0)
+               (BArray32.to_list a0) (BArray16.to_list x0)] = (Real.(%r) 1).
+
+(* Thash.thash_prf_correct *)
+lemma thash_prf_correct:
+  (forall (s0 : BArray200.t),
+     phoare[ CoreExtracted.M._keccakf1600 :
+              st = s0 ==>
+              KeccakState.lanes res.`1 =
+              Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0)] = (
+     Real.(%r) 1)) =>
+  forall (k0 c0 : BArray16.t) (a0 : BArray32.t),
+    phoare[ CoreExtracted.M._thash_prf :
+             sk_seed = k0 /\ ctx = c0 /\ adrs = a0 ==>
+             BArray16.to_list res.`1 =
+             FIPS205_Hash.PRF SetModel.P (BArray16.to_list c0)
+               (BArray16.to_list k0) (BArray32.to_list a0)] = (Real.(%r) 1).
+
+(* Thash.thash_h_correct *)
+lemma thash_h_correct:
+  (forall (s0 : BArray200.t),
+     phoare[ CoreExtracted.M._keccakf1600 :
+              st = s0 ==>
+              KeccakState.lanes res.`1 =
+              Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0)] = (
+     Real.(%r) 1)) =>
+  forall (x0 : BArray32.t) (c0 : BArray16.t) (a0 : BArray32.t),
+    phoare[ CoreExtracted.M._thash_h :
+             in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+             BArray16.to_list res.`1 =
+             FIPS205_Hash.H SetModel.P (BArray16.to_list c0)
+               (BArray32.to_list a0) (BArray32.to_list x0)] = (Real.(%r) 1).
+
 definitions 1
 
 Wots.csum op fcda3065d6f37011
