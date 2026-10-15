@@ -26,7 +26,8 @@
 #              status is PASS, its key text equals the one this run
 #              computed, and it names the run it came from
 #   bundles    artifacts tc-<part>-<platform>-<key>: the toolchain built
-#              by a run on main (ci/toolchain.py)
+#              by a run on main, and the host identity it was built on
+#              (ci/toolchain.py)
 #
 # A key is answered by the newest trusted run that planned to run it (its
 # artifact `plan`): its PASS record if it left one, and otherwise nothing,
@@ -135,7 +136,11 @@ class Store:
         """The keys the run's plan ran, or None without a readable plan."""
         arts = [a for a in self.artifacts(run) if a["name"] == "plan"]
         if len(arts) != 1:
-            notes.append(f"run {run['id']}: no plan artifact; its records are not used")
+            # A warm run (ci.yml) plans nothing and leaves at most toolchain
+            # bundles: passed over without a note, as the daily run would
+            # otherwise add one to every pull request's plan.
+            if arts or not all(a["name"].startswith("tc-") for a in self.artifacts(run)):
+                notes.append(f"run {run['id']}: no plan artifact; its records are not used")
             return None
         try:
             z = self.api.artifact_zip(arts[0]["id"])

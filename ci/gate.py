@@ -73,8 +73,9 @@ def planned(plan, job):
     j = plan["jobs"]
     if job.startswith("native-"):
         return j["native"].get(job[len("native-"):], {}).get("run")
+    # warm runs only in warm mode, in which this gate does not run.
     return {"toolchain-x86": j["x86"] != "none", "proof-shards": bool(j["shards"]),
-            "agree": j["agree"]}.get(job)
+            "agree": j["agree"], "warm": False}.get(job)
 
 
 def leg_status(leg, plan_dir, results):

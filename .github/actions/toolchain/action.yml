@@ -12,12 +12,15 @@
 #   - the bundles of those keys, looked up among the runs of ci.yml on
 #     main; with the compiler bundle found, it is downloaded, unpacked and
 #     its binaries checked against its build record, with the switch bundle
-#     as well when the caller needs the switch;
+#     as well when the caller needs the switch; when a bundle is missing,
+#     the log names the lines of the host identity that differ from the
+#     newest one recorded on main;
 #   - otherwise, and always in cold mode, the toolchain is built by
 #     toolchain/build.sh (the switch only when its bundle is missing, or in
 #     cold mode), packed and uploaded to this run: for 90 days from a run on
 #     main, which is where later runs take it from, for 7 days from any
-#     other run, whose bundles no other run takes;
+#     other run, whose bundles no other run takes; the host identity is
+#     uploaded with the compiler bundle (tc-identity-<platform>-<key>);
 #   - in cold mode, the build from scratch is compared with the stored
 #     build (toolchain.py cold-compare) before anything is uploaded: a build
 #     that differs is never stored, and the job fails; one with nothing to
@@ -74,7 +77,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         PLATFORM: ${{ inputs.platform }}
-      run: python3 -I ci/toolchain.py find "$PLATFORM"
+      run: python3 -I ci/toolchain.py find "$PLATFORM" "$RUNNER_TEMP/host-identity.txt"
 
     - name: Download the switch bundle
       if: inputs.cold != 'true' && steps.find.outputs.switch-run != '' && (inputs.need == 'switch' || steps.find.outputs.compiler-run == '')
@@ -162,6 +165,16 @@ runs:
         path: ${{ runner.temp }}/compiler.tar.gz
         if-no-files-found: error
         compression-level: 0
+        overwrite: true
+        retention-days: ${{ inputs.main == 'true' && 90 || 7 }}
+
+    - name: Upload the host identity of the compiler bundle
+      if: ${{ !cancelled() && steps.build-compiler.outcome == 'success' && (inputs.cold != 'true' || steps.cold.outputs.store == 'true') }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.find.outputs.identity-artifact }}
+        path: ${{ runner.temp }}/host-identity.txt
+        if-no-files-found: error
         overwrite: true
         retention-days: ${{ inputs.main == 'true' && 90 || 7 }}
 

@@ -6,8 +6,9 @@
 #
 # ci/toolchain.py: what changes the build keys, the check of packed
 # binaries against their build record, the comparison of two build
-# records, the agreement of the platforms, and the weekly cold comparison
-# against a stored bundle, with a stand-in API.
+# records, the agreement of the platforms, the weekly cold comparison
+# against a stored bundle, and, with a stand-in API, the daily warm run
+# and the report of how a host identity differs from main's.
 
 import io
 import os
@@ -16,6 +17,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import types
 import unittest
 import zipfile
 from contextlib import redirect_stdout
@@ -24,6 +26,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 import fakeapi  # noqa: E402
 import key  # noqa: E402
+import plan  # noqa: E402
 import registry  # noqa: E402
 import toolchain  # noqa: E402
 
@@ -212,7 +215,9 @@ class Prune(unittest.TestCase):
         self.assertEqual(toolchain.PRUNE, f"root: {root}; switch: {switch}")
 
 
-class ColdCompare(unittest.TestCase):
+class WithApi(unittest.TestCase):
+    """A stand-in API, runs of ci.yml on main, and a stand-in host identity."""
+
     def setUp(self):
         self.api = fakeapi.Server()
         self.addCleanup(self.api.close)
@@ -244,19 +249,42 @@ class ColdCompare(unittest.TestCase):
             else:
                 os.environ[k] = v
 
-    def bundle(self, rid, name, rec):
+    def run_with(self, rid, artifacts, event="push"):
+        """A run RID of ci.yml on main with ARTIFACTS, [(name, {member: bytes})]."""
         sha = f"{rid:040x}"
-        self.runs.append({"id": rid, "event": "push", "head_branch": "main", "head_sha": sha,
+        self.runs.append({"id": rid, "event": event, "head_branch": "main", "head_sha": sha,
                           "path": ".github/workflows/ci.yml", "created_at": "2026-10-13T00:00:00Z",
                           "repository": {"id": 1}, "head_repository": {"id": 1}})
         self.api.routes[f"/repos/o/r/compare/{sha}...main"] = {"status": "ahead"}
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as z:
-            z.writestr("compiler.tar.gz", archive(rec))
-        self.api.routes[f"/repos/o/r/actions/runs/{rid}/artifacts"] = {"artifacts": [
-            {"id": rid * 10, "name": name, "expired": False, "workflow_run": {"id": rid}}]}
-        self.api.routes[f"/repos/o/r/actions/artifacts/{rid * 10}/zip"] = buf.getvalue()
+        listing = []
+        for i, (name, members) in enumerate(artifacts):
+            aid = rid * 10 + i
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as z:
+                for m, data in members.items():
+                    z.writestr(m, data)
+            listing.append({"id": aid, "name": name, "expired": False, "workflow_run": {"id": rid}})
+            self.api.routes[f"/repos/o/r/actions/artifacts/{aid}/zip"] = buf.getvalue()
+        self.api.routes[f"/repos/o/r/actions/runs/{rid}/artifacts"] = {"artifacts": listing}
 
+    def bundle(self, rid, name, rec):
+        self.run_with(rid, [(name, {"compiler.tar.gz": archive(rec)})])
+
+    def outputs(self):
+        """Collect $GITHUB_OUTPUT into a file; returns a reader of its lines."""
+        out = tempfile.NamedTemporaryFile(delete=False)
+        out.close()
+        self.addCleanup(os.remove, out.name)
+        os.environ["GITHUB_OUTPUT"] = out.name
+        self.addCleanup(os.environ.pop, "GITHUB_OUTPUT", None)
+
+        def read():
+            with open(out.name) as f:
+                return dict(l.rstrip("\n").split("=", 1) for l in f)
+        return read
+
+
+class ColdCompare(WithApi):
     def cold_compare(self):
         out = io.StringIO()
         with redirect_stdout(out):
@@ -310,6 +338,159 @@ class ColdCompare(unittest.TestCase):
         self.bundle(999, self.name, record())
         rc, out = self.cold_compare()
         self.assertEqual(rc, 1)
+
+
+class IdentityChanges(unittest.TestCase):
+    def test_fields_that_differ(self):
+        old = ["platform Darwin-arm64", "cc Apple clang 21.0.0", "os macOS 26.6.2 25G83",
+               "package gmp 6.3.0", "package mpfr 4.2.2", "package ppl 1.2_1"]
+        new = ["platform Darwin-arm64", "cc Apple clang 21.0.1", "os macOS 26.6.2 25G83",
+               "package gmp 6.3.1", "package mpfr 4.2.2", "package pcre2 10.48"]
+        self.assertEqual(toolchain.identity_changes(old, new), [
+            "cc: Apple clang 21.0.0 -> Apple clang 21.0.1",
+            "package gmp: 6.3.0 -> 6.3.1",
+            "package pcre2: (absent) -> 10.48",
+            "package ppl: 1.2_1 -> (absent)"])
+        self.assertEqual(toolchain.identity_changes(old, list(reversed(old))), [])
+
+
+class Warm(WithApi):
+    """toolchain.py warm and find on linux-x86_64, with the host check and the
+    host identity stood in."""
+
+    PLAT = "linux-x86_64"
+    IDENTITY = ["platform test", "cc 13", "package libgmp-dev 6.3.0"]
+
+    def setUp(self):
+        super().setUp()
+        toolchain.host_identity = lambda: list(self.IDENTITY)
+        p = self.reg["platforms"][self.PLAT]
+        saved = toolchain.host_platform
+        toolchain.host_platform = types.SimpleNamespace(system=lambda: p["system"],
+                                                        machine=lambda: p["machine"])
+        self.addCleanup(setattr, toolchain, "host_platform", saved)
+        sw, comp = toolchain.build_keys(self.tree, p["toolchain-options"], self.IDENTITY)
+        self.sname, self.cname = toolchain.names(self.PLAT, sw, comp)
+        self.read = self.outputs()
+
+    def need(self, need):
+        saved = toolchain.main_need
+        toolchain.main_need = lambda reg, tree, plat: need
+        self.addCleanup(setattr, toolchain, "main_need", saved)
+
+    def warm(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = toolchain.cmd_warm(self.PLAT, self.reg, self.tree)
+        return rc, self.read(), out.getvalue()
+
+    def test_need_is_what_a_push_to_main_resolves(self):
+        jobs = plan.make_plan({"GITHUB_EVENT_NAME": "push"}, self.reg, self.tree, None,
+                              tempfile.mkdtemp(dir=self.tmp))["jobs"]
+        self.assertEqual(toolchain.main_need(self.reg, self.tree, "linux-x86_64"), jobs["x86"])
+        for p in ("linux-aarch64", "macos-aarch64"):
+            want = jobs["native"][p]["need"] if jobs["native"][p]["run"] else "none"
+            self.assertEqual(toolchain.main_need(self.reg, self.tree, p), want)
+
+    def test_warm_legs_are_the_runners_of_the_registry(self):
+        # The key does not name the runner, so a warm leg on another runner
+        # than the platform's would store bundles no pull request asks for.
+        import re
+        with open(os.path.join(registry.ROOT, ".github/workflows/ci.yml")) as f:
+            legs = re.findall(r"^\s+- \{platform: (\S+), runner: (\S+), jobs: \d+, "
+                              r"native: (true|false)\}$", f.read(), re.M)
+        self.assertEqual({p: r for p, r, _ in legs},
+                         {p: v["runner"] for p, v in self.reg["platforms"].items()})
+        # Only the linux-x86_64 toolchain job resolves without the test
+        # dependencies installed first.
+        self.assertEqual({p for p, _, n in legs if n == "false"}, {plan.X86})
+
+    def test_modes_name_the_cron_lines(self):
+        # A mode is chosen by comparing github.event.schedule with its cron
+        # line: a retimed line that the conditions miss would run the cold
+        # or warm schedule as a plain run of every check.
+        import re
+        with open(os.path.join(registry.ROOT, ".github/workflows/ci.yml")) as f:
+            text = f.read()
+        crons = re.findall(r'^    - cron: "([^"]+)"$', text, re.M)
+        modes = re.findall(r"github\.event\.schedule == '([^']+)' \|\| inputs\.(\w+) == true",
+                           text)
+        self.assertEqual(len(crons), 2)
+        self.assertEqual({c for c, _ in modes}, set(crons))
+        self.assertEqual({m: {c for c, n in modes if n == m} for _, m in modes},
+                         {"cold": {crons[0]}, "warm": {crons[1]}})
+
+    def test_stored_bundles_stop_it(self):
+        self.need("switch")
+        self.run_with(1, [(self.sname, {}), (self.cname, {})])
+        rc, out, log = self.warm()
+        self.assertEqual((rc, out["build"], out["need"]), (0, "false", "switch"))
+        self.assertIn("nothing to build", log)
+
+    def test_missing_switch_is_built_only_when_needed(self):
+        self.run_with(1, [(self.cname, {})])
+        self.need("compiler")
+        self.assertEqual(self.warm()[1]["build"], "false")
+        self.need("switch")
+        self.assertEqual(self.warm()[1]["build"], "true")
+
+    def test_new_host_identity_is_built_and_named(self):
+        self.need("compiler")
+        old = ["platform test", "cc 12", "package libgmp-dev 6.3.0"]
+        sw, comp = toolchain.build_keys(self.tree, "", old)
+        self.run_with(1, [(toolchain.names(self.PLAT, sw, comp)[1], {}),
+                          (toolchain.identity_name(self.PLAT, comp),
+                           {toolchain.IDENTITY_FILE: "\n".join(old) + "\n"})])
+        rc, out, log = self.warm()
+        self.assertEqual((rc, out["build"]), (0, "true"))
+        self.assertIn("differs from run 1's", log)
+        self.assertIn("cc: 12 -> 13", log)
+
+    def test_no_toolchain_needed(self):
+        self.need("none")
+        rc, out, log = self.warm()
+        self.assertEqual((rc, out["build"], out["need"]), (0, "false", "none"))
+        self.assertEqual(self.api.requests, [])
+
+    def test_api_error_fails(self):
+        self.need("compiler")
+        del self.api.routes["/repos/o/r/actions/workflows/ci.yml/runs"]
+        with redirect_stdout(io.StringIO()), self.assertRaises(toolchain.ghapi.ApiError):
+            toolchain.cmd_warm(self.PLAT, self.reg, self.tree)
+
+    def find(self, path=None):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            toolchain.cmd_find(self.PLAT, self.reg, self.tree, path)
+        return self.read(), out.getvalue()
+
+    def test_find_writes_the_identity_and_names_the_change(self):
+        self.run_with(1, [(toolchain.identity_name(self.PLAT, "0" * 64),
+                           {toolchain.IDENTITY_FILE: "platform test\ncc 13\n"
+                                                     "package libgmp-dev 6.2.1\n"})])
+        path = os.path.join(self.tmp, "identity.txt")
+        out, log = self.find(path)
+        self.assertEqual((out["compiler-run"], out["identity-artifact"]),
+                         ("", toolchain.identity_name(self.PLAT, self.cname.rsplit("-", 1)[1])))
+        self.assertIn("package libgmp-dev: 6.2.1 -> 6.3.0", log)
+        with open(path) as f:
+            self.assertEqual(f.read().splitlines(), self.IDENTITY)
+
+    def test_find_same_identity_points_at_the_sources(self):
+        self.run_with(1, [(toolchain.identity_name(self.PLAT, "0" * 64),
+                           {toolchain.IDENTITY_FILE: "\n".join(self.IDENTITY) + "\n"})])
+        self.assertIn("toolchain files or the build options differ", self.find()[1])
+
+    def test_find_ignores_an_identity_from_a_pull_request(self):
+        self.run_with(1, [(toolchain.identity_name(self.PLAT, "0" * 64),
+                           {toolchain.IDENTITY_FILE: "cc 1\n"})], event="pull_request")
+        self.assertIn("no run on main has recorded one", self.find()[1])
+
+    def test_find_survives_a_damaged_identity(self):
+        self.run_with(1, [(toolchain.identity_name(self.PLAT, "0" * 64), {"other": b"x"})])
+        out, log = self.find()
+        self.assertIn("could not be read", log)
+        self.assertEqual(out["compiler-run"], "")
 
 
 if __name__ == "__main__":

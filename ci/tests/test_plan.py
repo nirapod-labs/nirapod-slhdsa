@@ -180,6 +180,8 @@ class AllChecks(unittest.TestCase):
                 self.result(l)
         jobs = gate.workflow_jobs(os.path.join(registry.ROOT, ".github/workflows/ci.yml"))
         self.needs = {j: {"result": "success"} for j in jobs if j != "all-checks"}
+        # Only warm mode runs it, and all-checks does not run then.
+        self.needs["warm"] = {"result": "skipped"}
 
     def write_plan(self):
         with open(os.path.join(self.plan_dir, "plan.json"), "w") as f:
@@ -207,6 +209,10 @@ class AllChecks(unittest.TestCase):
         for r in ("cancelled", "failure"):
             self.needs["proofs"] = {"result": r}
             self.assertTrue(self.problems())
+
+    def test_warm_job_in_a_gated_run_fails(self):
+        self.needs["warm"] = {"result": "success"}
+        self.assertTrue(any("warm" in p for p in self.problems()))
 
     def test_job_missing_from_needs_fails(self):
         del self.needs["agree"]

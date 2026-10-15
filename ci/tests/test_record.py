@@ -192,6 +192,20 @@ class Lookup(unittest.TestCase):
         self.artifact(13, 130, "records-native-linux-x86_64", self.rec(13))
         self.assertEqual(self.lookup()[0], {})
 
+    def test_warm_run_is_passed_over_quietly(self):
+        self.run_(10, created="2026-10-12T00:00:00Z")
+        self.artifact(10, 100, "records-native-linux-x86_64", self.rec(10))
+        self.run_(11, event="schedule", created="2026-10-13T00:00:00Z", planned=None)
+        self.artifact(11, 110, "tc-compiler-macos-aarch64-" + "0" * 64, {"compiler.tar.gz": "x"})
+        self.run_(12, event="schedule", created="2026-10-13T01:00:00Z", planned=None)
+        found, notes = self.lookup()
+        self.assertEqual((found[NAME][0]["id"], notes), (10, []))
+        # Records without a plan are still turned down, with a note.
+        self.artifact(12, 120, "records-native-linux-x86_64", self.rec(12))
+        found, notes = self.lookup()
+        self.assertEqual(found[NAME][0]["id"], 10)
+        self.assertTrue(any("run 12: no plan artifact" in n for n in notes))
+
     def test_damaged_artifact_is_skipped(self):
         self.run_(14)
         self.artifact(14, 140, "records-native-linux-x86_64", self.rec(14))

@@ -32,19 +32,38 @@
 # record, tar.gz). Any run takes them only from runs of ci.yml on main
 # (ci/store.py), and the binaries are checked against the build
 # record of the same archive (`verify`). A pull request that changes the
-# toolchain builds its own in the run, which no later run can take.
+# toolchain builds its own in the run, which no later run can take. Next
+# to the compiler bundle, a run uploads tc-identity-<platform>-<compiler
+# key>, the host identity it was built on: when a later run finds no
+# bundle for its keys, it compares its own host identity with the newest
+# one recorded on main and names the lines that differ.
+#
+# Warm runs. A runner image update changes the host identity, so the keys
+# change and no bundle on main matches until a run on main builds one. The
+# daily warm run of ci.yml on main (`warm`) resolves each platform's
+# toolchain as a push to main would, and builds and stores only what is
+# missing, so that pull requests find it.
 #
 # Usage, from the repository root:
 #
 #   toolchain.py keys PLATFORM
 #       the host identity and both keys; to $GITHUB_OUTPUT switch-key=,
-#       compiler-key=, switch-artifact=, compiler-artifact=
-#   toolchain.py find PLATFORM
+#       compiler-key=, switch-artifact=, compiler-artifact=,
+#       identity-artifact=
+#   toolchain.py find PLATFORM [IDENTITY]
 #       the keys, then the newest runs on main with each bundle; to
 #       $GITHUB_OUTPUT switch-run= and compiler-run= (empty when there is
 #       none, or when the API cannot be read, which leads to a build), and
 #       options=, the platform's options of toolchain/build.sh, which are in
-#       the keys: the build uses the same value
+#       the keys: the build uses the same value. With a bundle missing, the
+#       lines of the host identity that differ from the newest one recorded
+#       on main. Writes the host identity to the file IDENTITY, if given
+#   toolchain.py warm PLATFORM
+#       what a push to main would resolve on this platform (the toolchain
+#       its checks need, from the registry and the tree), and whether runs
+#       on main hold it for this host identity; to $GITHUB_OUTPUT need=
+#       (none, compiler or switch) and build=true when a part is missing.
+#       An API error fails, rather than building what may well be stored
 #   toolchain.py verify compiler|switch
 #       the binaries under toolchain/work are those the build record
 #       (toolchain/work/logs/binaries.sha256) names, and jasminc, jasmin-ct
@@ -94,6 +113,7 @@ RECORD = ("provenance.txt", "assumptions.log", "admit-scan.log", "cil.sha256",
 RECORD_OPTIONAL = ("eclib-axioms.log",)
 HOST_INDEPENDENT = ("cil.sha256", "assumptions.log", "admit-scan.log", "test-suites.txt")
 CANDIDATES = 3
+IDENTITY_FILE = "host-identity.txt"
 
 
 class Failure(Exception):
@@ -158,6 +178,68 @@ def names(plat, switch, compiler):
     return f"tc-switch-{plat}-{switch}", f"tc-compiler-{plat}-{compiler}"
 
 
+def identity_name(plat, compiler):
+    return f"tc-identity-{plat}-{compiler}"
+
+
+def identity_field(line):
+    """The field a host identity line sets: its first word, and for a
+    package also its name."""
+    words = line.split()
+    return " ".join(words[:2]) if words[:1] == ["package"] else (words[0] if words else "")
+
+
+def identity_changes(stored, current):
+    """The fields of two host identities (lists of lines) that differ, as
+    lines of text; empty when they are the same."""
+    def fields(lines):
+        return {identity_field(l): l[len(identity_field(l)):].strip() for l in lines if l.strip()}
+    a, b = fields(stored), fields(current)
+    out = []
+    for f in sorted(set(a) | set(b)):
+        if f not in b:
+            out.append(f"{f}: {a[f]} -> (absent)")
+        elif f not in a:
+            out.append(f"{f}: (absent) -> {b[f]}")
+        elif a[f] != b[f]:
+            out.append(f"{f}: {a[f]} -> {b[f]}")
+    return out
+
+
+def stored_identity(s, plat):
+    """(run, lines) of the newest host identity recorded on main for PLAT,
+    or None."""
+    prefix = f"tc-identity-{plat}-"
+    for run in s.runs():
+        for a in s.artifacts(run):
+            if a["name"].startswith(prefix):
+                z = s.api.artifact_zip(a["id"])
+                return run, z.read(IDENTITY_FILE).decode("utf-8").splitlines()
+    return None
+
+
+def explain_miss(s, plat, identity):
+    """Print how this host identity differs from the newest one recorded on
+    main. Diagnostic only: an error here is printed, never raised."""
+    try:
+        hit = stored_identity(s, plat)
+    except (ghapi.ApiError, *store.DAMAGED) as e:
+        print(f"host identity: the newest one on main could not be read ({e})")
+        return
+    if hit is None:
+        print(f"host identity: no run on main has recorded one for {plat}")
+        return
+    run, stored = hit
+    changes = identity_changes(stored, identity)
+    if not changes:
+        print(f"host identity: the same as run {run['id']}'s; the toolchain files or the "
+              "build options differ")
+        return
+    print(f"host identity: differs from run {run['id']}'s ({run['created_at']}) in")
+    for c in changes:
+        print("  " + c)
+
+
 def cmd_keys(plat, reg, tree):
     if plat not in reg["platforms"]:
         raise Failure(f"unknown platform {plat}")
@@ -174,27 +256,73 @@ def cmd_keys(plat, reg, tree):
     output(f"compiler-key={compiler}")
     output(f"switch-artifact={sname}")
     output(f"compiler-artifact={cname}")
-    return sname, cname
+    output(f"identity-artifact={identity_name(plat, compiler)}")
+    return sname, cname, identity
 
 
-def cmd_find(plat, reg, tree):
-    sname, cname = cmd_keys(plat, reg, tree)
+def lookup(s, sname, cname):
+    """{part: run id or ''} of the newest runs on main with each bundle."""
     runs = {"switch": "", "compiler": ""}
+    for part, n in (("switch", sname), ("compiler", cname)):
+        hit = s.find_artifact(n)
+        if hit:
+            runs[part] = str(hit[0]["id"])
+            print(f"{part}: {n} in run {hit[0]['id']} ({hit[0]['event']}, {hit[0]['created_at']})")
+        else:
+            print(f"{part}: no run on main has {n}")
+    return runs
+
+
+def cmd_find(plat, reg, tree, identity_out=None):
+    sname, cname, identity = cmd_keys(plat, reg, tree)
+    if identity_out:
+        with open(identity_out, "w", encoding="utf-8") as f:
+            f.write("\n".join(identity) + "\n")
     try:
         s = store.Store(store.api_from_env())
-        for part, n in (("switch", sname), ("compiler", cname)):
-            hit = s.find_artifact(n)
-            if hit:
-                runs[part] = str(hit[0]["id"])
-                print(f"{part}: {n} in run {hit[0]['id']} ({hit[0]['event']}, {hit[0]['created_at']})")
-            else:
-                print(f"{part}: no run on main has {n}; it is built")
+        runs = lookup(s, sname, cname)
+        if not runs["switch"] or not runs["compiler"]:
+            explain_miss(s, plat, identity)
     except ghapi.ApiError as e:
         print(f"::warning::the toolchain bundles could not be looked up ({e}); they are built")
         runs = {"switch": "", "compiler": ""}
     output(f"switch-run={runs['switch']}")
     output(f"compiler-run={runs['compiler']}")
     output(f"options={reg['platforms'][plat]['toolchain-options']}")
+    return 0
+
+
+def main_need(reg, tree, plat):
+    """The toolchain a push to main resolves on PLAT: the linux-x86_64
+    toolchain job's (its checks and the proof shards), or the native job's."""
+    import plan
+    jobs = plan.jobs(reg, plan.compute(reg, tree))
+    if plat == plan.X86:
+        return jobs["x86"]
+    native = jobs["native"][plat]
+    return native["need"] if native["run"] else "none"
+
+
+def cmd_warm(plat, reg, tree):
+    need = main_need(reg, tree, plat)
+    output(f"need={need}")
+    if need == "none":
+        print(f"warm: a run on main resolves no toolchain on {plat}")
+        output("build=false")
+        return 0
+    sname, cname, identity = cmd_keys(plat, reg, tree)
+    s = store.Store(store.api_from_env())
+    runs = lookup(s, sname, cname)
+    missing = [p for p in ("compiler", "switch")
+               if not runs[p] and (p == "compiler" or need == "switch")]
+    if not missing:
+        print(f"warm: runs on main hold the {need} toolchain of this host identity; "
+              "nothing to build")
+        output("build=false")
+        return 0
+    explain_miss(s, plat, identity)
+    print(f"warm: {' and '.join(missing)} missing on main; built and stored by this run")
+    output("build=true")
     return 0
 
 
@@ -383,12 +511,14 @@ def cmd_agree(dirs, reg):
 
 def main(argv):
     try:
-        if len(argv) == 3 and argv[1] in ("keys", "find"):
+        if len(argv) == 3 and argv[1] in ("keys", "warm"):
             reg, tree = registry.load(), key.Tree()
             if argv[1] == "keys":
                 cmd_keys(argv[2], reg, tree)
                 return 0
-            return cmd_find(argv[2], reg, tree)
+            return cmd_warm(argv[2], reg, tree)
+        if len(argv) in (3, 4) and argv[1] == "find":
+            return cmd_find(argv[2], registry.load(), key.Tree(), argv[3] if len(argv) == 4 else None)
         if len(argv) == 3 and argv[1] == "verify":
             return cmd_verify(argv[2])
         if len(argv) == 4 and argv[1] == "compare":
@@ -401,7 +531,8 @@ def main(argv):
             registry.RegistryError, json.JSONDecodeError) as e:
         print(f"toolchain.py: {e}", file=sys.stderr)
         return 1
-    print("usage: toolchain.py keys|find PLATFORM | verify compiler|switch | compare A B | "
+    print("usage: toolchain.py keys|warm PLATFORM | find PLATFORM [IDENTITY] | "
+          "verify compiler|switch | compare A B | "
           "cold-compare PLATFORM ARCHIVE | agree DIR...", file=sys.stderr)
     return 2
 

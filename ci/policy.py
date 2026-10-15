@@ -39,7 +39,7 @@ PERMISSIONS = {
         "toolchain-x86": ACTIONS_READ, "native-linux-x86_64": ACTIONS_READ,
         "native-linux-aarch64": ACTIONS_READ, "native-macos-aarch64": ACTIONS_READ,
         "proof-shards": ACTIONS_READ, "proofs": ACTIONS_READ, "agree": ACTIONS_READ,
-        "all-checks": ACTIONS_READ,
+        "all-checks": ACTIONS_READ, "warm": ACTIONS_READ,
     },
     "native.yml": {"native": ACTIONS_READ},
     "changelog.yml": {"changelog": {"contents": "read", "pull-requests": "read"}},

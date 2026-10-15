@@ -47,7 +47,7 @@ until someone shows that a check does not read it.
 On a pull request, a check whose key has a passing record from the newest
 run of `ci.yml` on `main` that ran it is reported with that record (its
 run, commit and runner image) and not run again. Pushes to `main`, the
-weekly run and manual runs reuse no check: they run every one, and record
+weekly run and manual runs (other than warm runs, below) reuse no check: they run every one, and record
 each pass. Records are artifacts of those runs, found through the API;
 nothing is taken from the Actions cache, and nothing a pull request's run
 uploads is ever read by another run. Built toolchains are taken from runs
@@ -67,6 +67,17 @@ a path a recipe assembles from variables, so recipes name files literally.
 
 The weekly run also builds the toolchain from scratch on every platform
 and compares it with the stored build.
+
+A built toolchain's key includes the runner's host identity (operating
+system release, C compiler, library versions), so a runner image update
+changes it, and no stored build matches until a run on `main` builds one.
+A daily warm run of `ci.yml` on `main` fills that gap: on each runner that
+resolves a toolchain in a run on `main`, it computes the keys and builds
+and stores only what no run on `main` holds yet, so that pull requests
+take it instead of building it (`toolchain.py warm`). It runs no check and
+uploads nothing else. A manual run with the input `warm` does the same.
+When a run finds no stored build for its keys, its log names the lines of
+its host identity that differ from the newest one recorded on `main`.
 
 ## Scripting
 

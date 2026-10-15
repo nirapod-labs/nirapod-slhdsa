@@ -28,8 +28,9 @@
 # documentation starts no platform job at all. A check whose component is not in the tree is NOT
 # APPLICABLE, and the safety check NOT RUN while the tree has Jasmin code
 # but no safety component; the plan decides both from the tree on every
-# run. Pushes to main, the schedule and manual runs reuse no check: they
-# run every one, and record each pass for pull requests to reuse.
+# run. Pushes to main, the cold schedule and manual runs other than warm
+# ones reuse no check: they run every one, and record each pass for pull
+# requests to reuse.
 #
 # Then, as the plan says: the linux-x86_64 toolchain, taken from a run on
 # main or built (.github/actions/toolchain); one job per platform with that
@@ -48,6 +49,15 @@
 # toolchain from scratch, ignoring the stored builds, and compares the
 # result with the stored build (ci/toolchain.py cold-compare).
 #
+# Daily, it runs in warm mode, and only the job `warm` runs: on each runner
+# that resolves a toolchain in a run on main (the linux-x86_64 toolchain
+# job and the native jobs of the other platforms), it computes the build
+# keys, whose host identity changes with every runner image update, and
+# stops if runs on main hold the bundles of those keys. Otherwise it builds
+# and stores them as a push to main does, so that pull requests find them
+# instead of building the toolchain themselves (ci/toolchain.py warm). No
+# check runs in warm mode, and nothing but the bundles is uploaded.
+#
 # No secrets are used and no job writes outside its own run: the token can
 # read the repository and its Actions runs and artifacts, and checkouts do
 # not keep it. Nothing is taken from the Actions cache.
@@ -60,11 +70,18 @@ on:
   push:
     branches: [main]
   schedule:
+    # Cold, Mondays.
     - cron: "17 3 * * 1"
+    # Warm, daily.
+    - cron: "43 4 * * *"
   workflow_dispatch:
     inputs:
       cold:
         description: "Build the toolchain from scratch and compare it with the stored build"
+        type: boolean
+        default: false
+      warm:
+        description: "Only build and store the toolchain bundles main lacks for the current runner images"
         type: boolean
         default: false
 
@@ -82,13 +99,17 @@ defaults:
   run:
     shell: bash
 
+# The cron lines tell the modes apart. Job conditions and the inputs of
+# called workflows, where `env` is not available, repeat the expressions
+# of the cold mode here and of the warm mode (the job `warm`).
 env:
-  COLD: ${{ github.event_name == 'schedule' || inputs.cold == true }}
+  COLD: ${{ github.event.schedule == '17 3 * * 1' || inputs.cold == true }}
   MAIN: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
 
 jobs:
   lint:
     name: lint
+    if: ${{ !(github.event.schedule == '43 4 * * *' || inputs.warm == true) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -113,6 +134,7 @@ jobs:
 
   reuse:
     name: reuse
+    if: ${{ !(github.event.schedule == '43 4 * * *' || inputs.warm == true) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -131,6 +153,7 @@ jobs:
 
   source:
     name: source
+    if: ${{ !(github.event.schedule == '43 4 * * *' || inputs.warm == true) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -269,7 +292,7 @@ jobs:
       runner: ubuntu-24.04-arm
       jobs: 4
       need: ${{ needs.plan.outputs.need-linux-aarch64 }}
-      cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
+      cold: ${{ github.event.schedule == '17 3 * * 1' || inputs.cold == true }}
       main: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
       agree: ${{ needs.plan.outputs.agree == 'true' }}
 
@@ -287,7 +310,7 @@ jobs:
       # Three cores and 7 GB of memory: two parallel jobs leave a margin.
       jobs: 2
       need: ${{ needs.plan.outputs.need-macos-aarch64 }}
-      cold: ${{ github.event_name == 'schedule' || inputs.cold == true }}
+      cold: ${{ github.event.schedule == '17 3 * * 1' || inputs.cold == true }}
       main: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
       agree: ${{ needs.plan.outputs.agree == 'true' }}
 
@@ -465,11 +488,74 @@ jobs:
           overwrite: true
           retention-days: 90
 
+  # Warm mode: the toolchain of every platform for the current runner
+  # images, built and stored only when no run on main holds it.
+  warm:
+    name: warm ${{ matrix.leg.platform }}
+    if: github.event.schedule == '43 4 * * *' || inputs.warm == true
+    runs-on: ${{ matrix.leg.runner }}
+    # A build from scratch, as in toolchain-x86.
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      # The runners and parallel jobs of the jobs that resolve a toolchain
+      # in a run on main; the native ones install the test dependencies
+      # first, which can change the host identity.
+      matrix:
+        leg:
+          - {platform: linux-x86_64, runner: ubuntu-24.04, jobs: 4, native: false}
+          - {platform: linux-aarch64, runner: ubuntu-24.04-arm, jobs: 4, native: true}
+          - {platform: macos-aarch64, runner: macos-26, jobs: 2, native: true}
+    env:
+      PLATFORM: ${{ matrix.leg.platform }}
+    steps:
+      - name: One mode per run
+        if: inputs.cold == true
+        run: |
+          echo "::error::cold and warm were both requested; run them separately"
+          exit 1
+
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python
+        uses: ./.github/actions/python
+
+      - name: Install test dependencies
+        if: matrix.leg.native
+        run: ci/toolchain.sh deps run
+
+      - name: Install build dependencies
+        run: ci/toolchain.sh deps build
+
+      - name: The toolchain a run on main resolves here, and whether main holds it
+        id: warm
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I ci/toolchain.py warm "$PLATFORM"
+
+      - name: Build and store what main lacks
+        if: steps.warm.outputs.build == 'true'
+        uses: ./.github/actions/toolchain
+        with:
+          platform: ${{ matrix.leg.platform }}
+          jobs: ${{ matrix.leg.jobs }}
+          need: ${{ steps.warm.outputs.need }}
+          cold: false
+          main: ${{ env.MAIN }}
+          token: ${{ github.token }}
+
+  # Skipped in warm mode, which runs no check.
   all-checks:
     name: all-checks
-    if: always()
+    if: ${{ always() && !(github.event.schedule == '43 4 * * *' || inputs.warm == true) }}
     needs: [lint, reuse, source, plan, toolchain-x86, native-linux-x86_64, native-linux-aarch64,
-            native-macos-aarch64, proof-shards, proofs, agree]
+            native-macos-aarch64, proof-shards, proofs, agree, warm]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
