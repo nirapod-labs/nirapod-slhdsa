@@ -290,6 +290,11 @@ Theorems so far, each checked on every pair unless it says otherwise:
   MGF1-SHA-256 of RFC 8017 appendix B.2.1 of the seed. The proof shows
   that the buffer the code lays out once is the FIPS 180-4 padding of
   `seed || I2OSP(c, 4)` for every counter c;
+- `mgf112_39_sha512_total`, `mgf112_42_sha512_total`,
+  `mgf128_47_sha512_total`, `mgf128_49_sha512_total`
+  (`correctness/hash/MGF1_SHA512.ec`): the same for `_mgf1_sha512` and
+  MGF1-SHA-512, with a 112-byte seed and 39 or 42 bytes of output (n = 24)
+  and a 128-byte seed and 47 or 49 bytes (n = 32);
 - `keccak_round_correct`, `keccakf1600_correct`, `keccakf1600_total`
   (`correctness/hash/Keccakf1600_Portable.ec`, on the two portable
   pairs): one round of the shared scalar kernel `src/hash/keccak/keccakf1600.jinc`
@@ -330,7 +335,7 @@ The address theorems are about the address procedures themselves. That
 the rest of the core passes them the values FIPS 205 prescribes is part of
 the proofs of the algorithms that call them, which do not exist yet.
 
-Not proven yet: the multi-way functions, the HMAC key block from memory, MGF1-SHA-512, the Keccak sponge (absorb, padding, squeeze), SHA-3 and SHAKE;
+Not proven yet: the multi-way functions, the HMAC key block from memory, the Keccak sponge (absorb, padding, squeeze), SHA-3 and SHAKE;
 the four-way Keccak-f[1600] kernels (portable, AVX2 and A64 SHA-3) the
 multi-way code uses; the four-way SHA2 tweakable hashes on the multi-way
 SHA-2 kernels (`src/slhdsa/thash_sha2_x4/multi/`) and the AVX2 8-way SHA-256

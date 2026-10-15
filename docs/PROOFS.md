@@ -55,16 +55,17 @@ Proven, on the x86-64 and AArch64 models, total correctness:
   SHA-256, SHA-384, SHA-512, SHA-512/224 and SHA-512/256 (absorb from memory,
   padding, finalize) and their one-shot functions over memory; the HMAC-SHA-256 and
   HMAC-SHA-512 steps (keyed initial states and the outer hash) against FIPS 198-1,
-  for keys up to one block; MGF1-SHA-256 against RFC 8017 for the 64-byte seed and
-  30- and 34-byte outputs of H_msg in the SHA2 sets with n = 16.
+  for keys up to one block; and MGF1 against RFC 8017 for the seed and output
+  lengths of H_msg in the SHA2 sets: MGF1-SHA-256 for n = 16 (64-byte seed, 30 or
+  34 bytes), MGF1-SHA-512 for n = 24 (112-byte seed, 39 or 42 bytes) and n = 32
+  (128-byte seed, 47 or 49 bytes).
 - **Keccak.** The Keccak-f[1600] permutation of the single-way kernels the scalar
   variants build (the portable kernel on x86-64, the kernel that keeps the state in
   registers on AArch64), against FIPS 202.
 
 Not proven:
 
-- MGF1-SHA-512 (the SHA2 sets with n = 24 and 32), and the HMAC step that forms the
-  key block from memory;
+- the HMAC step that forms the key block from memory;
 - the kernels that replace the portable ones: SHA-NI in the x86-64 `shani` variant
   and the SHA-2 instruction kernels in the AArch64 `sha2` variant (the scalar
   variant runs the portable SHA-2 kernels on both architectures);
