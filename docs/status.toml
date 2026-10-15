@@ -1,0 +1,191 @@
+# docs/status.toml
+# ================
+#
+# The single record of what has been checked and proven. ci/status.py
+# renders it into the marked sections of README.md and docs/STATUS.md, and
+# `python3 -I ci/status.py check` (run by ci/source.py) fails when a
+# rendered section differs from this file. Edit this file, then run
+# `python3 -I ci/status.py write`; never edit a rendered section by hand.
+#
+# Words: an evidence label (PROVEN, VERIFIED, MEASURED, STRONGLY SUPPORTED,
+# INFERRED, UNKNOWN) says what kind of evidence supports a claim; a check
+# status (PASS, FAIL, INCONCLUSIVE, NOT RUN, NOT APPLICABLE) says how a
+# check ended. They are kept apart, and the script rejects any other word in
+# those fields. Links are written from the repository root.
+
+format = 1
+
+# The parameter sets of FIPS 205 Table 2, in the order the tables list them.
+sets = [
+  "SLH-DSA-SHA2-128s", "SLH-DSA-SHA2-128f",
+  "SLH-DSA-SHA2-192s", "SLH-DSA-SHA2-192f",
+  "SLH-DSA-SHA2-256s", "SLH-DSA-SHA2-256f",
+  "SLH-DSA-SHAKE-128s", "SLH-DSA-SHAKE-128f",
+  "SLH-DSA-SHAKE-192s", "SLH-DSA-SHAKE-192f",
+  "SLH-DSA-SHAKE-256s", "SLH-DSA-SHAKE-256f",
+]
+
+# The CI run on main that every PASS below comes from, unless a row names
+# another one (a [[table]] may carry its own revision and run).
+[evidence]
+revision = "de27e6a"
+run = "38680243373"
+date = "2026-10-15"
+
+
+# ---------------------------------------------------------------------------
+# The summary in README.md: one row per claim, short scope, one link to the
+# page that states the claim in full. A row whose result comes from another
+# run names it with revision and run.
+
+[[summary]]
+claim = "Conformance to FIPS 205"
+link = "docs/VALIDATION.md"
+evidence = "VERIFIED"
+check = "PASS"
+scope = "ACVP vectors and a differential test, 12 sets, every interface, 3 platforms"
+
+[[summary]]
+claim = "Constant time and speculative constant time"
+link = "docs/SECURITY-MODEL.md"
+evidence = "VERIFIED"
+check = "PASS"
+scope = "every Jasmin unit, both architectures; conditional on memory safety"
+
+[[summary]]
+claim = "Memory safety of the Jasmin code"
+link = "docs/SECURITY-MODEL.md#memory-safety"
+evidence = "UNKNOWN"
+check = "NOT RUN"
+scope = "the checker reaches no verdict on these exports yet"
+
+[[summary]]
+claim = "EUF-CMA security of the specification"
+link = "docs/PROOFS.md#security-of-the-specification"
+evidence = "PROVEN"
+check = "PASS"
+scope = "the EasyCrypt specification, 12 sets; not the Jasmin code"
+
+[[summary]]
+claim = "The code implements the specification"
+link = "docs/PROOFS.md#the-code-against-the-specification"
+evidence = "UNKNOWN"
+scope = "open; proven: SHA-2 compression, scalar Keccak-f[1600], address setters"
+
+[[summary]]
+claim = "The compiler preserves program semantics"
+link = "docs/TOOLCHAIN.md#assurance-boundary-of-the-toolchain"
+evidence = "PROVEN"
+check = "PASS"
+# The toolchain build that re-checked the compiler proofs; toolchain/ is
+# unchanged since, and later runs reuse that build by key.
+revision = "8646299"
+run = "38554446843"
+scope = "source to assembly syntax, in Rocq; printer, assembler, linker trusted"
+
+# ---------------------------------------------------------------------------
+# docs/STATUS.md, per parameter set. Every column holds for every set unless
+# `overrides` names a set; `link` is the page that defines the column.
+
+[[per_set]]
+title = "x86-64 Linux"
+link = "docs/VALIDATION.md"
+value = "PASS"
+
+[[per_set]]
+title = "AArch64 Linux"
+link = "docs/VALIDATION.md"
+value = "PASS"
+
+[[per_set]]
+title = "AArch64 macOS"
+link = "docs/VALIDATION.md"
+value = "PASS"
+
+[[per_set]]
+title = "CT"
+link = "docs/SECURITY-MODEL.md#constant-time"
+value = "PASS"
+
+[[per_set]]
+title = "SCT"
+link = "docs/SECURITY-MODEL.md#speculative-constant-time"
+value = "PASS"
+
+[[per_set]]
+title = "Memory safety"
+link = "docs/SECURITY-MODEL.md#memory-safety"
+value = "NOT RUN"
+
+[[per_set]]
+title = "Spec security"
+link = "docs/PROOFS.md#security-of-the-specification"
+value = "PROVEN"
+
+[[per_set]]
+title = "Code = spec"
+link = "docs/PROOFS.md#the-code-against-the-specification"
+value = "UNKNOWN"
+
+# ---------------------------------------------------------------------------
+# docs/STATUS.md, the other tables. Cells are Markdown as it appears in
+# docs/STATUS.md.
+
+[[table]]
+id = "interfaces"
+columns = ["Interface (FIPS 205)", "Linux x86-64", "Linux AArch64", "macOS AArch64"]
+rows = [
+  ["`slh_keygen` (Algorithm 21)", "PASS", "PASS", "PASS"],
+  ["`slh_sign`, hedged and deterministic (Algorithm 22)", "PASS", "PASS", "PASS"],
+  ["`slh_verify` (Algorithm 24)", "PASS", "PASS", "PASS"],
+  ["`hash_slh_sign`, 12 pre-hash functions (Algorithm 23)", "PASS", "PASS", "PASS"],
+  ["`hash_slh_verify`, 12 pre-hash functions (Algorithm 25)", "PASS", "PASS", "PASS"],
+  ["`slh_keygen_internal` (Algorithm 18), testing build", "PASS", "PASS", "PASS"],
+  ["`slh_sign_internal` (Algorithm 19), testing build", "PASS", "PASS", "PASS"],
+  ["`slh_verify_internal` (Algorithm 20), testing build", "PASS", "PASS", "PASS"],
+]
+
+[[table]]
+id = "checks"
+columns = ["Check", "Linux x86-64", "Linux AArch64", "macOS AArch64", "What a PASS covers"]
+rows = [
+  ["`test-core`", "PASS", "PASS", "PASS", "`make check`: round trips of every set, ACVP subset, negative, fault, stack, register and export tests"],
+  ["`test-acvp`", "PASS", "PASS", "PASS", "1248 of 1248 NIST ACVP cases, and the runner's negative controls"],
+  ["`differential`", "PASS", "PASS", "PASS", "336 of 336 cases against slhdsa-c `174c02e`, and the comparison controls"],
+  ["`test-hash`", "PASS", "PASS", "PASS", "CAVP, differential and negative tests of the hash layer"],
+  ["`analysis-units`", "PASS", "PASS", "PASS", "`jasmin-ct` and `jasmin-ct --sct` on all 24 units of the architecture"],
+  ["`analysis-hash`", "PASS", "PASS", "PASS", "the same on the hash test exports"],
+  ["`asm-policy`", "PASS", "PASS", "PASS", "exported symbols, no division, reserved AArch64 registers, with controls"],
+  ["`safety`", "NOT RUN", "NOT RUN", "NOT RUN", "`jasmin-checksafety`; there is no safety target yet"],
+]
+
+[[table]]
+id = "proofs"
+columns = ["Proof shard", "Status", "What a PASS covers"]
+rows = [
+  ["`proofs-sphincs`", "PASS", "the imported SPHINCS+ security proof, on this copy"],
+  ["`proofs-crypto-specs`", "PASS", "the imported FIPS 202 specification"],
+  ["`proofs-spec`", "PASS", "the FIPS 205 specification, its validation lemmas and its EUF-CMA theorems"],
+  ["`proofs-x86_64`", "PASS", "the correctness proofs on the x86-64 models, and their inventory"],
+  ["`proofs-aarch64`", "PASS", "the correctness proofs on the AArch64 models, and their inventory"],
+  ["`proofs-extraction`", "PASS", "the committed models equal a fresh `jasmin2ec` extraction"],
+]
+
+# The toolchain was built from scratch in the run on main at 8646299;
+# toolchain/ has not changed since, so later runs reuse those builds by key.
+[[table]]
+id = "toolchain"
+revision = "8646299"
+run = "38554446843"
+columns = ["Check", "Linux x86-64", "Linux AArch64", "macOS AArch64"]
+rows = [
+  ["Rocq proofs of the compiler, extraction, assumption and admit checks, compiler tests", "PASS", "PASS", "PASS"],
+  ["Jasmin EasyCrypt library and pinned provers", "PASS", "NOT APPLICABLE", "PASS"],
+]
+
+[[table]]
+id = "agree"
+columns = ["Check", "Status", "What a PASS covers"]
+rows = [
+  ["`agree`", "PASS", "the three platforms used the same extracted compiler and assumptions, and wrote the same core transcripts"],
+]

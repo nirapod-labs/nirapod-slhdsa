@@ -27,6 +27,8 @@
 #                inventory files against the extracted pairs
 #   kernels      the kernel roots of the proof models against those the
 #                library builds (ci/kernel_roots.py)
+#   status       the status sections of README.md and docs/STATUS.md
+#                against their record, docs/status.toml (ci/status.py)
 #
 # Every check runs; the script fails at the end if any failed.
 
@@ -137,7 +139,7 @@ def main(argv):
         print(f"source {name}: {'FAIL' if errors else 'PASS'}")
         if errors:
             failed.append(name)
-    steps = []
+    steps = [("status", [sys.executable, "-I", "ci/status.py", "check"])]
     if found["hash"]:
         steps.append(("hash", ["make", "-C", "tests/hash", "constants", "generated"]))
     if found["proofs"]:

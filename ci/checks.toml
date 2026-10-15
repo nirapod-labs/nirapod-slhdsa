@@ -90,9 +90,9 @@ bench = ["bench"]
 # Inputs. skip-all: what no check reads. Documentation, change entries,
 # licensing and repository metadata, the workflows and scripts that run no
 # check of ci.yml (changelog, retry, drift, lint, the source checks, the
-# gates, which judge results but produce none) and the tests of the CI
-# scripts. Files are named one by one, never by extension: Jasmin
-# `require`, C `#include` and make `include` read a file of any name.
+# status record, the gates, which judge results but produce none) and the
+# tests of the CI scripts. Files are named one by one, never by extension:
+# Jasmin `require`, C `#include` and make `include` read a file of any name.
 
 [inputs]
 skip-all = [
@@ -107,6 +107,7 @@ skip-all = [
   "ci/changes.sh",
   "ci/README.md", "ci/changelog.py", "ci/drift.py", "ci/lint.py",
   "ci/policy.py", "ci/retry.py", "ci/source.py", "ci/kernel_roots.py", "ci/gate.py",
+  "ci/status.py",
   "ci/tests",
 ]
 

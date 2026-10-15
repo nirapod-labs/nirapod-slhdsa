@@ -30,7 +30,8 @@ interfaces, pure and pre-hash with the twelve pre-hash functions, deterministic
 and with a given `opt_rand`. That is 1248 cases in 120 groups; the check passes
 only if every case runs and passes, so a case the runner cannot run counts against
 it. The runner uses the testing library, which accepts given seeds and `opt_rand`,
-and the hash variant the CPU selects.
+and the hash variant the CPU selects. Passing the ACVP vectors in CI is a test
+result, not a CAVP validation or certification.
 
 Controls (`tests/acvp/controls.py`): runs that flip the computed result, or the
 expected one, must fail every case, so a runner that accepts everything cannot

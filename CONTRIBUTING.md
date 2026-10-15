@@ -21,6 +21,9 @@ welcome.
   editing `CHANGELOG.md`. CI asks for one when such a change has none.
 - Regenerate checked-in generated files with the documented command rather
   than editing them by hand.
+- A change that alters a published result edits `docs/status.toml` and runs
+  `python3 -I ci/status.py write`, which renders the status tables of the
+  README and `docs/STATUS.md`; CI fails when they and the record disagree.
 - New files start with the SPDX header used throughout the repository.
 - In the CI tooling, shell is glue only: it installs packages, sets up the
   environment and runs steps in order. Anything that parses, computes keys
