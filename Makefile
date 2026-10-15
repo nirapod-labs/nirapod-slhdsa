@@ -354,15 +354,17 @@ $(EXPORTS_CONTROL): $(LIB_OBJ)
 # every set, and on x86-64 test_stack_avx2 with the choice of a CPU that
 # has AVX2 and not the SHA extensions, see tests/abi/dispatch_base.c; it
 # fails on an x86-64 host without AVX2, whose figures it cannot measure),
-# test_entropy (the operating system's random source made to fail) and
-# test_buffers (threads on distinct buffers, unaligned buffers).
+# test_entropy (the operating system's random source made to fail),
+# test_buffers (threads on distinct buffers, unaligned buffers) and the
+# README example.
 
 CORE_TESTS := $(OUT)/tests/test_core $(OUT)/tests/test_negative \
               $(OUT)/tests/test_stack $(OUT)/tests/test_registers \
               $(OUT)/tests/test_acvp $(OUT)/tests/test_acvp_production \
               $(OUT)/tests/test_production $(OUT)/tests/test_stack_production \
               $(OUT)/tests/test_stack_base \
-              $(OUT)/tests/test_entropy $(OUT)/tests/test_buffers
+              $(OUT)/tests/test_entropy $(OUT)/tests/test_buffers \
+              $(OUT)/readme/example $(OUT)/readme/tampered
 ifeq ($(ARCH),x86_64)
 CORE_TESTS += $(OUT)/tests/test_stack_avx2
 endif
@@ -435,6 +437,21 @@ $(OUT)/tests/test_entropy: $(TESTS_DIR)/negative/test_entropy.c $(LIB)
 $(OUT)/tests/test_buffers: $(TESTS_DIR)/negative/test_buffers.c $(LIB)
 	@mkdir -p $(@D)
 	$(PRODUCTION_TEST_CC) -pthread -o $@ $< $(LIB)
+
+# The quick-start program of README.md as it stands, and a copy with one
+# signature bit flipped (tests/core/readme-example.py), built as the README
+# says: the header and the application library.
+README_EXAMPLE := $(TESTS_DIR)/core/readme-example.py
+
+$(OUT)/readme/extracted: README.md $(README_EXAMPLE)
+	$(PYTHON) -I $(README_EXAMPLE) extract README.md $(@D)
+	@touch $@
+
+$(OUT)/readme/example: $(OUT)/readme/extracted $(LIB)
+	$(PRODUCTION_TEST_CC) -o $@ $(@D)/example.c $(LIB)
+
+$(OUT)/readme/tampered: $(OUT)/readme/extracted $(LIB)
+	$(PRODUCTION_TEST_CC) -o $@ $(@D)/tampered.c $(LIB)
 
 # Stack depth and residue of the exports (tests/abi/test_stack.c), and its
 # negative control: two units compiled without stack zeroization, which
@@ -567,6 +584,7 @@ check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
 	$(OUT)/tests/test_registers
 	$(OUT)/tests/test_entropy
 	$(OUT)/tests/test_buffers
+	$(PYTHON) -I $(README_EXAMPLE) run $(OUT)/readme/example $(OUT)/readme/tampered
 ifeq ($(strip $(JASMINC)),)
 	@echo "test_stack (negative control): NOT RUN (needs JASMINC)"
 	@echo "test_fault: NOT RUN (needs JASMINC)"

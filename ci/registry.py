@@ -18,7 +18,7 @@ HASH_SETS = "ci/hash-sets.toml"
 
 PLATFORM_FIELDS = {"runner", "system", "machine", "arch", "target", "toolchain-options", "jobs"}
 CHECK_FIELDS = {"recipe", "shard", "component", "needs", "absent", "not-run-when", "platforms",
-                "toolchain", "opam", "jobs", "keep", "skip"}
+                "toolchain", "opam", "jobs", "keep", "skip", "reads"}
 TOOLCHAINS = ("none", "compiler", "switch")
 
 
@@ -38,6 +38,10 @@ def _strings(value, what):
     if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
         raise RegistryError(f"{what}: expected a list of non-empty strings")
     return value
+
+
+def _under(path, entries):
+    return any(path == e or path.startswith(e.rstrip("/") + "/") for e in entries)
 
 
 def load(root=ROOT):
@@ -82,6 +86,12 @@ def load(root=ROOT):
             raise RegistryError(f"check {cid}: toolchain must be one of {TOOLCHAINS}")
         _strings(c.get("skip", []), f"check {cid} skip")
         _strings(c.get("keep", []), f"check {cid} keep")
+        for r in _strings(c.get("reads", []), f"check {cid} reads"):
+            # reads takes a path back out of skip-all; anywhere else it
+            # would say nothing, or contradict the check's own skip list.
+            if not _under(r, reg["inputs"]["skip-all"]) or _under(r, c.get("skip", [])):
+                raise RegistryError(f"check {cid}: reads {r} must lie under skip-all "
+                                    "and outside its skip list")
     agree = reg["agree"]
     if set(agree) != {"component", "over"} or agree["over"] not in reg["checks"]:
         raise RegistryError("[agree]: fields component and over (a check)")

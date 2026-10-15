@@ -39,7 +39,9 @@
 # The input set of C: every tracked file of the commit, minus
 #
 #   - the paths of [inputs] skip-all and of C's skip list (a path and
-#     everything under it; ci/checks.toml),
+#     everything under it; ci/checks.toml), save those of C's reads list,
+#     the paths of skip-all that C reads all the same (test-core builds
+#     the example of README.md),
 #   - the files under toolchain/ (they are the toolchain identity),
 #   - ci/checks.toml itself (it enters through the registry line),
 #   - the recipes ci/checks/*.mk other than C's own, and the rules
@@ -187,13 +189,14 @@ def input_set(tree, reg, check):
     own_recipe = f"{RECIPES}{c['recipe']}.mk"
     own_rules = f"{RULES}{check}.toml"
     skip = reg["inputs"]["skip-all"] + c.get("skip", [])
+    reads = c.get("reads", [])
     reads_top = not under(TOP_MAKEFILE, skip)
     kept = []
     for p in tree.files:
         if reads_top and included_by_top_makefile(p):
             kept.append(p)
             continue
-        if p.startswith(TOOLCHAIN) or p == REGISTRY or under(p, skip):
+        if p.startswith(TOOLCHAIN) or p == REGISTRY or (under(p, skip) and not under(p, reads)):
             continue
         if p.startswith(RECIPES) and p.endswith(".mk") and p != own_recipe \
                 and "/" not in p[len(RECIPES):]:

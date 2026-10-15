@@ -150,10 +150,30 @@ class Keys(unittest.TestCase):
         self.assertFalse(got & self.legs_of("test-hash", "proofs-spec", "analysis-units"))
 
     def test_b_skipped_paths_change_nothing(self):
-        for path in ("docs/API.md", "README.md", "changes/README.md", "ci/retry.py",
+        for path in ("docs/API.md", "changes/README.md", "ci/retry.py",
                      "ci/tests/test_key.py", ".github/workflows/drift.yml",
                      "proofs/README.md"):
             self.assertEqual(self.changed_by(path), set(), path)
+
+    def test_reads_takes_a_path_back_for_its_check_alone(self):
+        # README.md is in skip-all, and in test-core's reads list: it runs
+        # the README's example. agree changes through test-core's keys.
+        self.assertEqual(self.changed_by("README.md"),
+                         self.legs_of("test-core") | {("agree", "any")})
+
+    def test_reads_lies_under_skip_all_only(self):
+        p = os.path.join(self.repo, "ci/checks.toml")
+        with open(p) as f:
+            before = f.read()
+        try:
+            for bad in ('reads = ["src"]', 'reads = ["README.md", "proofs"]'):
+                with open(p, "w") as f:
+                    f.write(before.replace('reads = ["README.md"]', bad, 1))
+                with self.assertRaises(registry.RegistryError, msg=bad):
+                    registry.load(self.repo)
+        finally:
+            with open(p, "w") as f:
+                f.write(before)
 
     def test_c_new_root_file_changes_every_key(self):
         self.assertEqual(self.changed_by("NEWFILE", "x"), self.all_legs())

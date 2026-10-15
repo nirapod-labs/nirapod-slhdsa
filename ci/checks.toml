@@ -133,6 +133,8 @@ skip-all = [
 #   opam        run inside the switch's environment (toolchain.sh exec)
 #   keep        files of the run a later job reads, as recorded
 #   skip        paths the check provably does not read
+#   reads       paths of skip-all the check reads all the same: inputs of
+#               this check alone
 #
 # The top-level Makefile (and with it the fragments it includes) is
 # skipped by the checks whose recipe runs make only with -C in a directory
@@ -164,7 +166,9 @@ component = "core"
 platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
 keep = ["build/ci/transcript-{target}.txt"]
-# make check: the library (src, capi, include) and tests/{core,negative,abi}.
+# make check: the library (src, capi, include) and tests/{core,negative,abi},
+# and the C example of README.md, which it builds and runs.
+reads = ["README.md"]
 skip = ["tests/hash", "tests/acvp", "tests/diff", "tests/vectors", "bench", "analysis",
         "proofs", "third_party", "ci/hash-sets.toml"]
 
