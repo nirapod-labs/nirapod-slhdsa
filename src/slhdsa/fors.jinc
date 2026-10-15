@@ -243,7 +243,7 @@ fn _fors_sign(
   reg ptr u8[SLH_K * SLH_N] dst;
   reg ptr u8[(SLH_A + 1) * SLH_N] src;
   reg u32 t target tree;
-  reg u64 off k w root_off ti fill;
+  reg u64 off o k w root_off ti fill;
   reg bool more copy;
   inline int j;
 
@@ -292,6 +292,13 @@ fn _fors_sign(
     sig = #protect_ptr(sig, ms);
     t = #protect_32(t, ms);
 
+    /*
+     * The tree's signature goes to sig[off + k] for k < (a + 1) n, with
+     * off fixed for the tree: each store address is the tree's base plus
+     * the loop counter, which the loop test bounds. An offset advanced
+     * beside k is bounded only through its relation to k, which the
+     * safety checker's non-relational analysis does not keep.
+     */
     off = __offset(t, (SLH_A + 1) * SLH_N);
     off += SLH_SIG_FORS_OFFSET;
     /* tree_sig through src: stack slots at run-time offsets (see wots.jinc). */
@@ -300,8 +307,9 @@ fn _fors_sign(
     while { copy = k < (SLH_A + 1) * SLH_N; } (copy) {
       ms = #update_msf(copy, ms);
       w = src.[:u64 k];
-      sig.[:u64 off] = w;
-      off += 8;
+      o = off;
+      o += k;
+      sig.[:u64 o] = w;
       k += 8;
     }
     ms = #update_msf(!copy, ms);
