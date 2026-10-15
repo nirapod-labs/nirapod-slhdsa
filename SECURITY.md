@@ -12,14 +12,15 @@ In scope:
 
 - the Jasmin implementation of SLH-DSA and its hash primitives
 - the C API and wrapper in `include/` and `capi/`
-- the generated assembly shipped in this repository
+- the assembly the build generates from the Jasmin sources
 - the toolchain patch series under `toolchain/`, where a defect could change
   generated code or weaken an analysis result
 - proofs and analysis results whose stated scope is wrong
 
 Timing side channels observable from software, including cache and
 speculative-execution channels, are in scope. Fault injection and physical
-side channels are covered only to the extent stated in the documentation.
+side channels are covered only to the extent stated in
+[`docs/SECURITY-MODEL.md`](docs/SECURITY-MODEL.md).
 
 ## Reporting a vulnerability
 

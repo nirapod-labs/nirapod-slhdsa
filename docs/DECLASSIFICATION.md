@@ -17,14 +17,14 @@ There are two kinds:
 This list covers the FIPS 205 modules in `src/slhdsa`. The hash
 functions in `src/hash` contain no declassification.
 
-| # | Site | Value | Kind | Argument |
-|---|---|---|---|---|
-| 1 | `internal.jinc`, `_slh_sign` | the k FORS indices, `idx_tree`, `idx_leaf` | release | They are computed from H_msg(R, PK.seed, PK.root, M). R is the first n bytes of the signature and the other inputs are public, so every verifier recomputes them (FIPS 205 Algorithm 20, line 8): they disclose nothing beyond the signature. SK.seed, SK.prf, opt_rand and every FORS secret and chain value not in the signature stay secret. After the release the indices choose leaves, auth nodes and ADRS fields. |
-| 2 | `hypertree.jinc`, `_ht_sign` | the len WOTS+ digits of each layer's message | release | The message is the FORS public key (layer 0) or the root of the tree signed one layer below. The verifier recomputes both from the signature (Algorithms 17 and 11), so the digits are a function of the signature. They fix the chain positions at which signature values are taken. |
-| 3 | `internal.jinc`, `_slh_verify` | FORS indices, `idx_tree`, `idx_leaf` | type lift; release on the fault check | On the verification API every input is public and the digest is a hash output. On the fault check (see "Withheld signatures") R is read from the withheld signature, where the signer wrote it, so unless a fault changed R these are the indices of release 1. |
-| 4 | `wots.jinc`, `_wots_pk_from_sig` | the len WOTS+ digits of the node being verified: the FORS public key (layer 0) or the XMSS root (above) recomputed from the signature; the 2n message digits give the node whole | type lift; release on the fault check | On the verification API the node is a function of public inputs. On the fault check it is a function of the withheld signature: either the correct value at its position, or after a fault a fresh hash output over withheld values. Argued under "Withheld signatures". |
-| 5 | `hypertree.jinc`, `_ht_verify` | the verdict, 0 or all ones; not the recomputed root nor its difference from PK.root | type lift; release on the fault check | The verdict is the result of verification. The verification API returns it; the fault check reports it as the status of the failed call. |
-| 6 | `internal.jinc`, `_slh_keygen` | `no_steps`, an all-zero digit vector | type lift | Constant zeros; the treehash of key generation never reads it. |
+| # | Site | Value | Kind |
+| --: | :-- | :-- | :-- |
+| [1](#1-fors-and-hypertree-indices-signing) | `internal.jinc`, `_slh_sign` | the k FORS indices, `idx_tree`, `idx_leaf` | release |
+| [2](#2-wots-digits-signing) | `hypertree.jinc`, `_ht_sign` | the len WOTS+ digits of each layer's message | release |
+| [3](#3-indices-verification) | `internal.jinc`, `_slh_verify` | FORS indices, `idx_tree`, `idx_leaf` | type lift; release on the fault check |
+| [4](#4-wots-digits-verification) | `wots.jinc`, `_wots_pk_from_sig` | the len WOTS+ digits of the node being verified | type lift; release on the fault check |
+| [5](#5-the-verdict) | `hypertree.jinc`, `_ht_verify` | the verdict, 0 or all ones; not the recomputed root nor its difference from PK.root | type lift; release on the fault check |
+| [6](#6-the-zero-digit-vector-of-key-generation) | `internal.jinc`, `_slh_keygen` | `no_steps`, an all-zero digit vector | type lift |
 
 Every release is followed by `#protect` of the released scalar (or of each
 element where it is read) before it is used: the speculative model treats a
@@ -35,6 +35,49 @@ Repeated signatures: releases 1 and 2 are made once per signature and depend
 only on that signature's R and message. Many signatures under one key release
 many index sets; this is the normal operation of SLH-DSA, whose security
 analysis treats every signature, and so these values, as public.
+
+## The releases
+
+### 1. FORS and hypertree indices, signing
+
+They are computed from H_msg(R, PK.seed, PK.root, M). R is the first n bytes
+of the signature and the other inputs are public, so every verifier recomputes
+them (FIPS 205 Algorithm 20, line 8): they disclose nothing beyond the
+signature. SK.seed, SK.prf, opt_rand and every FORS secret and chain value not
+in the signature stay secret. After the release the indices choose leaves,
+auth nodes and ADRS fields.
+
+### 2. WOTS+ digits, signing
+
+The message is the FORS public key (layer 0) or the root of the tree signed
+one layer below. The verifier recomputes both from the signature (Algorithms
+17 and 11), so the digits are a function of the signature. They fix the chain
+positions at which signature values are taken.
+
+### 3. Indices, verification
+
+On the verification API every input is public and the digest is a hash output.
+On the fault check (see "Withheld signatures") R is read from the withheld
+signature, where the signer wrote it, so unless a fault changed R these are
+the indices of release 1.
+
+### 4. WOTS+ digits, verification
+
+The node is the FORS public key (layer 0) or the XMSS root (above), recomputed
+from the signature; the 2n message digits give the node whole. On the
+verification API the node is a function of public inputs. On the fault check
+it is a function of the withheld signature: either the correct value at its
+position, or after a fault a fresh hash output over withheld values. Argued
+under "Withheld signatures".
+
+### 5. The verdict
+
+The verdict is the result of verification. The verification API returns it;
+the fault check reports it as the status of the failed call.
+
+### 6. The zero digit vector of key generation
+
+Constant zeros; the treehash of key generation never reads it.
 
 ## Withheld signatures
 

@@ -1,7 +1,9 @@
 # Toolchain
 
 The implementation is compiled, analysed and proved with one pinned
-toolchain, rebuilt from its pinned inputs by `toolchain/build.sh`:
+toolchain, rebuilt from its pinned inputs by `toolchain/build.sh`. This page
+lists the pins, how to build them, what a build records, and what the
+compiler's proofs do and do not cover.
 
 | Component | Pin | Where |
 |---|---|---|
@@ -62,9 +64,8 @@ This leaves out EasyCrypt, Why3 and the provers, and with them the
 library. The Rocq proofs, the extraction, the assumption and admit checks
 and the compiler tests run as in a full build; `provenance.txt` and
 `switch.txt` record the reduced set of components. On a platform without
-pinned provers, the build stops unless `--no-easycrypt` is given. The mode
-has been run on Linux on x86-64; on Linux on AArch64 it has not been run
-yet.
+pinned provers, the build stops unless `--no-easycrypt` is given. CI builds
+the Linux AArch64 compiler in this mode ([STATUS](STATUS.md#toolchain)).
 
 ## What the build establishes
 
