@@ -288,7 +288,10 @@ Not proven yet: the memory entry points `_sha256_compress_one`,
 `_sha512_compress_blocks`; padding, the one-shot and multi-way functions,
 HMAC, MGF1, the Keccak sponge (absorb, padding, squeeze), SHA-3 and SHAKE;
 the four-way Keccak-f[1600] kernels (portable, AVX2 and A64 SHA-3) the
-multi-way code uses; and the kernels that replace the portable ones: SHA-NI
+multi-way code uses; the four-way SHA2 tweakable hashes on the multi-way
+SHA-2 kernels (`src/slhdsa/thash_sha2_x4/multi/`) and the AVX2 8-way SHA-256
+and 4-way SHA-512 kernels under them, in the x86-64 `avx2` variant of the
+SHA2 sets; and the kernels that replace the portable ones: SHA-NI
 for SHA-256 in the x86-64 `shani` variant, the SHA-2 instruction kernels
 for SHA-256 and SHA-512 and the single-way Keccak-f[1600] kernel on the
 SHA-3 instructions in the AArch64 `sha2` and `sha3` variants, and the A64

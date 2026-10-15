@@ -113,7 +113,11 @@ SETS := sha2_128s shake_128s sha2_128f shake_128f \
 # extensions it needs (capi/dispatch.c):
 #
 #     x86-64   avx2    SHAKE sets: the four-way Keccak kernel in AVX2
-#              shani   SHA2 sets: the SHA-256 kernel on the SHA extensions
+#                      SHA2 sets: the 8-way SHA-256 and 4-way SHA-512
+#                      kernels in AVX2 for the four-way hashes, the
+#                      portable kernels for the rest
+#              shani   SHA2 sets: the SHA-256 kernel on the SHA extensions;
+#                      selected over avx2 where both run (capi/sets.c)
 #     AArch64  sha3    SHAKE sets: single-way and four-way Keccak on the
 #                      SHA-3 instructions (FEAT_SHA3)
 #              sha2    SHA2 sets: SHA-256 and SHA-512 on the SHA-2
@@ -123,7 +127,7 @@ SHA2_SETS  := $(filter sha2_%,$(SETS))
 
 UNITS := $(addsuffix -scalar,$(SETS))
 ifeq ($(ARCH),x86_64)
-UNITS += $(addsuffix -avx2,$(SHAKE_SETS)) $(addsuffix -shani,$(SHA2_SETS))
+UNITS += $(addsuffix -avx2,$(SETS)) $(addsuffix -shani,$(SHA2_SETS))
 else
 UNITS += $(addsuffix -sha3,$(SHAKE_SETS)) $(addsuffix -sha2,$(SHA2_SETS))
 endif
@@ -145,6 +149,7 @@ else
 SCALAR_K1 = $(HASH_SRC)/keccak
 endif
 KX_avx2  = $(HASH_SRC)/keccak/x86_64/avx2
+SX_avx2  = $(HASH_SRC)/sha2/x86_64/avx2
 S1_shani = $(HASH_SRC)/sha2/x86_64/shani
 # The sha3 variant takes both kernels of keccak/aarch64/sha3, single-way
 # and four-way.
@@ -158,9 +163,16 @@ VARIANT_S1 = $(or $(S1_$(UNIT_VARIANT)),$(HASH_SRC)/sha2)
 VARIANT_SX = $(or $(SX_$(UNIT_VARIANT)),$(HASH_SRC)/sha2)
 
 # The four-way SHA2 tweakable hashes (src/slhdsa/thash_sha2.jinc,
-# "Four-way forms"): four calls of the one-way functions unless the
-# variant names another version as TX_<variant>.
+# "Four-way forms"): four calls of the one-way functions, unless the
+# variant names the version on the multi-way SHA-2 kernels as
+# TX_<variant>. Only a variant whose SX_ root is a vector kernel names it:
+# over the portable multi-way kernels it would compress the idle lanes of
+# the 8-way SHA-256 kernel one by one. shani keeps the one-way forms: the
+# tree code hands over four instances at a time, which would fill four of
+# the 8-way kernel's eight lanes in place of four SHA-NI compressions.
 SINGLE_TX  = $(JASMIN_SRC)/slhdsa/thash_sha2_x4/single
+MULTI_TX   = $(JASMIN_SRC)/slhdsa/thash_sha2_x4/multi
+TX_avx2    = $(MULTI_TX)
 VARIANT_TX = $(or $(TX_$(UNIT_VARIANT)),$(SINGLE_TX))
 
 # Fault hooks (src/slhdsa/hook/hook.jinc): the identity for every
@@ -339,7 +351,10 @@ $(EXPORTS_CONTROL): $(LIB_OBJ)
 # test_acvp_production (the known answers below run once on each library),
 # test_stack_production (the secret scan and the stack depth of the public
 # functions; test_stack_base the same with the scalar variant selected for
-# every set, see tests/abi/dispatch_base.c) and test_entropy (the operating system's random source made to
+# every set, and on x86-64 test_stack_avx2 with the choice of a CPU that
+# has AVX2 and not the SHA extensions, see tests/abi/dispatch_base.c; it
+# fails on an x86-64 host without AVX2, whose figures it cannot measure) and
+# test_entropy (the operating system's random source made to
 # fail).
 
 CORE_TESTS := $(OUT)/tests/test_core $(OUT)/tests/test_negative \
@@ -348,6 +363,9 @@ CORE_TESTS := $(OUT)/tests/test_core $(OUT)/tests/test_negative \
               $(OUT)/tests/test_production $(OUT)/tests/test_stack_production \
               $(OUT)/tests/test_stack_base \
               $(OUT)/tests/test_entropy
+ifeq ($(ARCH),x86_64)
+CORE_TESTS += $(OUT)/tests/test_stack_avx2
+endif
 
 PRODUCTION_TEST_CC = $(CC) -I$(INCLUDE_DIR) $(CWARN) $(CFLAGS)
 
@@ -392,6 +410,17 @@ $(OUT)/tests/test_stack_base: $(TESTS_DIR)/abi/test_stack.c $(BASE_COBJ) $(JOBJ)
 	@mkdir -p $(@D)
 	$(PRODUCTION_TEST_CC) -DNIRAPOD_SLHDSA_STACK_PRODUCTION -DNIRAPOD_SLHDSA_STACK_BASE \
 	  -o $@ $< $(BASE_COBJ) $(JOBJ)
+
+AVX2_COBJ := $(filter-out $(OUT)/obj/c/dispatch.o,$(COBJ)) $(OUT)/obj/c-avx2/dispatch_base.o
+
+$(OUT)/obj/c-avx2/dispatch_base.o: $(TESTS_DIR)/abi/dispatch_base.c $(CAPI_SRC)/dispatch.c $(CAPI_DEPS)
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CWARN) $(CFLAGS) -DNIRAPOD_SLHDSA_BASE_FEATURES=NIRAPOD_SLHDSA_CPU_AVX2 -c -o $@ $<
+
+$(OUT)/tests/test_stack_avx2: $(TESTS_DIR)/abi/test_stack.c $(AVX2_COBJ) $(JOBJ)
+	@mkdir -p $(@D)
+	$(PRODUCTION_TEST_CC) -DNIRAPOD_SLHDSA_STACK_PRODUCTION -DNIRAPOD_SLHDSA_STACK_AVX2 \
+	  -o $@ $< $(AVX2_COBJ) $(JOBJ)
 
 $(OUT)/tests/test_stack_production: $(TESTS_DIR)/abi/test_stack.c $(LIB)
 	@mkdir -p $(@D)
@@ -530,6 +559,7 @@ check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
 	$(OUT)/tests/test_stack
 	$(OUT)/tests/test_stack_production
 	$(OUT)/tests/test_stack_base
+	$(if $(filter x86_64,$(ARCH)),$(OUT)/tests/test_stack_avx2)
 	$(OUT)/tests/test_registers
 	$(OUT)/tests/test_entropy
 ifeq ($(strip $(JASMINC)),)

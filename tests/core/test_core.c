@@ -340,8 +340,8 @@ static void test_public_api(size_t index)
  * Dispatch: the variant nirapod_slhdsa_select_for chooses for every
  * combination of the features variants require on this architecture.
  * The expected choice is written out per family: on x86-64 the SHA2 sets
- * take "shani" exactly when the SHA extensions are present, the SHAKE
- * sets "avx2" exactly when AVX2 is; on AArch64 the SHA2 sets take "sha2"
+ * take "shani" exactly when the SHA extensions are present, else "avx2"
+ * when AVX2 is, the SHAKE sets "avx2" exactly when AVX2 is; on AArch64 the SHA2 sets take "sha2"
  * exactly when Advanced SIMD, FEAT_SHA256 and FEAT_SHA512 are all present,
  * the SHAKE sets "sha3" exactly when Advanced SIMD and FEAT_SHA3 are.
  */
@@ -380,10 +380,10 @@ static void test_dispatch(void)
             const char *expect = "scalar";
 
 #if defined(__x86_64__)
-            if (shake && (MASKS[m] & NIRAPOD_SLHDSA_CPU_AVX2) != 0) {
-                expect = "avx2";
-            } else if (!shake && (MASKS[m] & NIRAPOD_SLHDSA_CPU_SHANI) != 0) {
+            if (!shake && (MASKS[m] & NIRAPOD_SLHDSA_CPU_SHANI) != 0) {
                 expect = "shani";
+            } else if ((MASKS[m] & NIRAPOD_SLHDSA_CPU_AVX2) != 0) {
+                expect = "avx2";
             }
 #elif defined(__aarch64__)
             if (shake && (MASKS[m] & (ASIMD | SHA3)) == (ASIMD | SHA3)) {

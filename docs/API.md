@@ -60,15 +60,20 @@ the running CPU's features and caches nothing.
 | Target | Variant | Sets | Requires |
 |---|---|---|---|
 | AArch64, x86-64 | `scalar` | all | nothing beyond the base architecture |
-| x86-64 | `avx2` | SHAKE | AVX2, with the YMM state enabled by the operating system |
+| x86-64 | `avx2` | all | AVX2, with the YMM state enabled by the operating system |
 | x86-64 | `shani` | SHA2 | the SHA extensions and AVX |
 | AArch64 | `sha3` | SHAKE | Advanced SIMD and FEAT_SHA3 |
 | AArch64 | `sha2` | SHA2 | Advanced SIMD, FEAT_SHA256 and FEAT_SHA512 |
 
-A set runs its accelerated variant when the CPU has every feature it
-needs, as the operating system reports them (`capi/dispatch.c`), and the
-scalar variant otherwise. `make check` runs every variant the host
-supports, and requires the accelerated variants to produce the scalar
+`avx2` runs the four-way hashes of the hypertree and FORS on AVX2 kernels:
+four-way Keccak for the SHAKE sets; for the SHA2 sets, the 8-way SHA-256
+kernel on four of its lanes and the 4-way SHA-512 kernel. `shani` runs
+SHA-256 on the SHA extensions. A set runs the last variant, in the order of
+the table, whose features the CPU has, as the operating system reports them
+(`capi/dispatch.c`), and the scalar variant if there is none: an x86-64 SHA2
+set takes `shani` where the SHA extensions are present, with or without
+AVX2, and `avx2` where only AVX2 is. `make check` runs every variant the
+host supports, and requires the accelerated variants to produce the scalar
 variant's keys and deterministic signatures byte for byte.
 
 ## Parameter sets and sizes
@@ -206,9 +211,14 @@ in bytes, over all parameter sets and variants of the architecture:
 
 | Export | AArch64 (macOS) | x86-64 (Linux) | Deepest set |
 |---|---:|---:|---|
-| key generation | 17984 | 18024 | SLH-DSA-SHA2-256s |
-| signing | 18704 | 18648 | SLH-DSA-SHA2-256s |
+| key generation | 17984 | 25904 | SLH-DSA-SHA2-256s |
+| signing | 18704 | 26544 | SLH-DSA-SHA2-256s |
 | verification | 6096 | 6056 | SLH-DSA-SHA2-256f |
+
+On x86-64 the deepest key generation and signing are those of the `avx2`
+variant of the SHA2 sets, whose four-way T_len stages the padded messages
+of its four instances (`src/slhdsa/thash_sha2_x4/multi/`); the other
+x86-64 variants reach 18024 and 18648 bytes.
 
 Measured on these Jasmin sources with the pinned Jasmin toolchain, on an
 Apple M4 (macOS) and an AMD EPYC 7763 (Linux, KVM guest). The figures
@@ -218,23 +228,29 @@ per export in the output of `test_stack`.
 
 For the public functions, C frames included, the same test built against the
 application library runs every function on the painted stack, once as the
-host dispatches it (`test_stack_production`) and once with the scalar
-variant selected for every set (`test_stack_base`). The deepest stack, in
-bytes, over all parameter sets and both runs, so over every variant a CPU of
-the architecture can select:
+host dispatches it (`test_stack_production`), once with the scalar
+variant selected for every set (`test_stack_base`) and, on x86-64, once
+with the choice of a CPU that has AVX2 and not the SHA extensions
+(`test_stack_avx2`). The deepest stack, in bytes, over all parameter sets
+and these runs, so over every variant a CPU of the architecture can select:
 
 | Function | AArch64 (macOS) | x86-64 (Linux) | Deepest set |
 |---|---:|---:|---|
-| `keygen` | 18160 | 18216 | SLH-DSA-SHA2-256s |
-| `sign`, `sign_deterministic` | 19248 | 19224 | SLH-DSA-SHA2-256s |
-| `hash_sign`, `hash_sign_deterministic` | 19264 | 19240 | SLH-DSA-SHA2-256s |
+| `keygen` | 18160 | 26112 | SLH-DSA-SHA2-256s |
+| `sign`, `sign_deterministic` | 19248 | 27136 | SLH-DSA-SHA2-256s |
+| `hash_sign`, `hash_sign_deterministic` | 19264 | 27152 | SLH-DSA-SHA2-256s |
 | `verify` | 6448 | 6520 | SLH-DSA-SHA2-256f |
 | `hash_verify` | 6464 | 6520 | SLH-DSA-SHA2-256f |
 
 Measured on the same hosts. The deepest path is the scalar variant on
-AArch64 and the `shani` variant on x86-64; `make check` prints the figures
-of the build at hand in the lines starting with `public-depth`, those of
-`test_stack_base` after the line naming the scalar variant.
+AArch64; on x86-64 it is the `avx2` variant for key generation and
+signing (`test_stack_avx2`) and `shani` for verification. `make check`
+prints the figures of the build at hand in the lines starting with
+`public-depth`, those of `test_stack_base` just before the line naming
+the scalar variant and those of `test_stack_avx2` just before the line
+naming the selection without the SHA extensions. One binary can report
+figures 16 bytes apart from run to run, depending on where its stack
+starts; the table gives the larger.
 
 ## What is cleared
 

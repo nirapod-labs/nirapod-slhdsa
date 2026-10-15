@@ -9,7 +9,9 @@
  * compiled variant (the Makefile says which units are built):
  *
  *     scalar   every set, both architectures; no CPU feature required
- *     avx2     x86-64, SHAKE sets: the four-way Keccak kernel in AVX2
+ *     avx2     x86-64, SHAKE sets: the four-way Keccak kernel in AVX2;
+ *              SHA2 sets: the 8-way SHA-256 and 4-way SHA-512 kernels in
+ *              AVX2 for the four-way hashes
  *     shani    x86-64, SHA2 sets: the SHA-256 kernel on the SHA extensions
  *     sha3     AArch64, SHAKE sets: Keccak on the SHA-3 instructions
  *     sha2     AArch64, SHA2 sets: SHA-256 and SHA-512 on the SHA-2
@@ -69,6 +71,12 @@ NIRAPOD_SLHDSA_RECORD(SHAKE_256F, scalar, SCALAR, "SLH-DSA-SHAKE-256f", shake_25
 
 #if defined(__x86_64__)
 
+NIRAPOD_SLHDSA_RECORD(SHA2_128S,  avx2,   AVX2,   "SLH-DSA-SHA2-128s",  sha2_128s_avx2,    16)
+NIRAPOD_SLHDSA_RECORD(SHA2_128F,  avx2,   AVX2,   "SLH-DSA-SHA2-128f",  sha2_128f_avx2,    16)
+NIRAPOD_SLHDSA_RECORD(SHA2_192S,  avx2,   AVX2,   "SLH-DSA-SHA2-192s",  sha2_192s_avx2,    24)
+NIRAPOD_SLHDSA_RECORD(SHA2_192F,  avx2,   AVX2,   "SLH-DSA-SHA2-192f",  sha2_192f_avx2,    24)
+NIRAPOD_SLHDSA_RECORD(SHA2_256S,  avx2,   AVX2,   "SLH-DSA-SHA2-256s",  sha2_256s_avx2,    32)
+NIRAPOD_SLHDSA_RECORD(SHA2_256F,  avx2,   AVX2,   "SLH-DSA-SHA2-256f",  sha2_256f_avx2,    32)
 NIRAPOD_SLHDSA_RECORD(SHA2_128S,  shani,  SHANI,  "SLH-DSA-SHA2-128s",  sha2_128s_shani,   16)
 NIRAPOD_SLHDSA_RECORD(SHAKE_128S, avx2,   AVX2,   "SLH-DSA-SHAKE-128s", shake_128s_avx2,   16)
 NIRAPOD_SLHDSA_RECORD(SHA2_128F,  shani,  SHANI,  "SLH-DSA-SHA2-128f",  sha2_128f_shani,   16)
@@ -82,8 +90,15 @@ NIRAPOD_SLHDSA_RECORD(SHAKE_256S, avx2,   AVX2,   "SLH-DSA-SHAKE-256s", shake_25
 NIRAPOD_SLHDSA_RECORD(SHA2_256F,  shani,  SHANI,  "SLH-DSA-SHA2-256f",  sha2_256f_shani,   32)
 NIRAPOD_SLHDSA_RECORD(SHAKE_256F, avx2,   AVX2,   "SLH-DSA-SHAKE-256f", shake_256f_avx2,   32)
 
-#define SHA2_VARIANTS(id)  { &id##_scalar, &id##_shani }
-#define SHAKE_VARIANTS(id) { &id##_scalar, &id##_avx2 }
+/*
+ * A CPU with the SHA extensions runs shani even when it also has AVX2.
+ * avx2 computes the four-way hashes with the 8-way SHA-256 kernel on four
+ * of its eight lanes, where shani runs four SHA-NI compressions
+ * (Makefile, TX_<variant>).
+ */
+#define SHA2_VARIANTS(id)  { &id##_scalar, &id##_avx2, &id##_shani }
+#define SHAKE_VARIANTS(id) { &id##_scalar, &id##_avx2, NULL }
+#define NIRAPOD_SLHDSA_MAX_VARIANTS 3
 
 #elif defined(__aarch64__)
 
@@ -111,12 +126,11 @@ NIRAPOD_SLHDSA_RECORD(SHAKE_256F, sha3,   A64_SHA3, "SLH-DSA-SHAKE-256f", shake_
 
 #define SHA2_VARIANTS(id)  { &id##_scalar, &id##_sha2 }
 #define SHAKE_VARIANTS(id) { &id##_scalar, &id##_sha3 }
+#define NIRAPOD_SLHDSA_MAX_VARIANTS 2
 
 #else
 #error "sets.c: unsupported architecture"
 #endif
-
-#define NIRAPOD_SLHDSA_MAX_VARIANTS 2
 
 /* Indexed by nirapod_slhdsa_set - 1 (FIPS 205 Table 2 order). */
 static const nirapod_slhdsa_impl *const VARIANT_TABLE[12][NIRAPOD_SLHDSA_MAX_VARIANTS] = {

@@ -61,6 +61,9 @@ Not proven:
 - the kernels that replace the portable ones: SHA-NI in the x86-64 `shani` variant
   and the SHA-2 instruction kernels in the AArch64 `sha2` variant (the scalar
   variant runs the portable SHA-2 kernels on both architectures);
+- the x86-64 `avx2` variant of the SHA2 sets: its four-way tweakable hashes
+  (`src/slhdsa/thash_sha2_x4/multi/`) and the AVX2 8-way SHA-256 and 4-way
+  SHA-512 kernels under them;
 - the single-way and four-way kernels on the A64 SHA-3 instructions (AArch64 `sha3`
   variant), and the portable and AVX2 four-way kernels;
 - the sponge, SHA-3 and SHAKE, and every FIPS 205 algorithm; the rest is open.

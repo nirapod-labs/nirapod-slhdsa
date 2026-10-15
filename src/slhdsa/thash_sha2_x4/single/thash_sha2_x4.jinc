@@ -14,9 +14,10 @@
  *     _thash_t_len_x4  TLen::_thash_t on instances 0 .. 3
  *
  * Layouts and contracts are those of thash_sha2.jinc, "Four-way forms".
- * Every variant builds this version (Makefile, TX_<variant>). Each
- * instance goes through a local buffer, so no view of the caller's arrays
- * is held across a call.
+ * The scalar variant builds this version, as does every variant without
+ * a vector multi-way SHA-2 kernel (Makefile, TX_<variant>). Each instance
+ * goes through a local buffer, so no view of the caller's arrays is held
+ * across a call.
  */
 
 /* out[k] <- PRF(PK.seed, SK.seed, adrs[k]), k = 0 .. 3 */

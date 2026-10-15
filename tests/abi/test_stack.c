@@ -46,8 +46,9 @@
  *
  *     The same calls give the stack depth of each public function, C
  *     frames included: the deepest over all sets is printed per function.
- *     docs/API.md records the larger of test_stack_production and
- *     test_stack_base, the deepest over the variants a CPU can select.
+ *     docs/API.md records the largest of test_stack_production,
+ *     test_stack_base and, on x86-64, test_stack_avx2: the deepest over
+ *     the variants a CPU can select.
  *
  * Builds
  *
@@ -62,6 +63,12 @@
  *                         dispatch replaced by one that reports no CPU
  *                         extension (dispatch_base.c): the public
  *                         functions on the scalar variant of every set
+ *     test_stack_avx2 (NIRAPOD_SLHDSA_STACK_PRODUCTION and _STACK_AVX2)
+ *                         x86-64: the same, with the selection made as on
+ *                         a CPU with AVX2 and without the SHA extensions,
+ *                         where the SHA2 sets run their avx2 variant
+ *     Both fail unless every set selects the variant they are named for, so
+ *     a host without AVX2 fails test_stack_avx2 instead of measuring scalar.
  *     test_stack_control (NIRAPOD_SLHDSA_STACK_CONTROL)
  *                         two units built without stack zeroization, the
  *                         negative control below
@@ -151,16 +158,22 @@ static const unit UNITS[] = {
     UNIT(shake_256f, "SLH-DSA-SHAKE-256f", 32, 64, 128, 49856),
 #if defined(__x86_64__)
     UNITV(sha2_128s,  shani, NIRAPOD_SLHDSA_CPU_SHANI, "SLH-DSA-SHA2-128s",  16, 32, 64, 7856),
+    UNITV(sha2_128s,  avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHA2-128s",  16, 32, 64, 7856),
     UNITV(shake_128s, avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHAKE-128s", 16, 32, 64, 7856),
     UNITV(sha2_128f,  shani, NIRAPOD_SLHDSA_CPU_SHANI, "SLH-DSA-SHA2-128f",  16, 32, 64, 17088),
+    UNITV(sha2_128f,  avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHA2-128f",  16, 32, 64, 17088),
     UNITV(shake_128f, avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHAKE-128f", 16, 32, 64, 17088),
     UNITV(sha2_192s,  shani, NIRAPOD_SLHDSA_CPU_SHANI, "SLH-DSA-SHA2-192s",  24, 48, 96, 16224),
+    UNITV(sha2_192s,  avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHA2-192s",  24, 48, 96, 16224),
     UNITV(shake_192s, avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHAKE-192s", 24, 48, 96, 16224),
     UNITV(sha2_192f,  shani, NIRAPOD_SLHDSA_CPU_SHANI, "SLH-DSA-SHA2-192f",  24, 48, 96, 35664),
+    UNITV(sha2_192f,  avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHA2-192f",  24, 48, 96, 35664),
     UNITV(shake_192f, avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHAKE-192f", 24, 48, 96, 35664),
     UNITV(sha2_256s,  shani, NIRAPOD_SLHDSA_CPU_SHANI, "SLH-DSA-SHA2-256s",  32, 64, 128, 29792),
+    UNITV(sha2_256s,  avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHA2-256s",  32, 64, 128, 29792),
     UNITV(shake_256s, avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHAKE-256s", 32, 64, 128, 29792),
     UNITV(sha2_256f,  shani, NIRAPOD_SLHDSA_CPU_SHANI, "SLH-DSA-SHA2-256f",  32, 64, 128, 49856),
+    UNITV(sha2_256f,  avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHA2-256f",  32, 64, 128, 49856),
     UNITV(shake_256f, avx2,  NIRAPOD_SLHDSA_CPU_AVX2,  "SLH-DSA-SHAKE-256f", 32, 64, 128, 49856),
 #elif defined(__aarch64__)
     UNITV(sha2_128s,  sha2,  A64_SHA2, "SLH-DSA-SHA2-128s",  16, 32, 64, 7856),
@@ -401,6 +414,37 @@ static const nirapod_slhdsa_set API_SETS[] = {
     NIRAPOD_SLHDSA_SHAKE_256S, NIRAPOD_SLHDSA_SHA2_256F, NIRAPOD_SLHDSA_SHAKE_256F,
 };
 
+#if defined(NIRAPOD_SLHDSA_STACK_BASE) || defined(NIRAPOD_SLHDSA_STACK_AVX2)
+#if defined(NIRAPOD_SLHDSA_STACK_BASE)
+#define STACK_VARIANT "scalar"
+#else
+#define STACK_VARIANT "avx2"
+#endif
+/* dispatch_base.c: the variant its dispatch selects for set on this host. */
+const char *nirapod_slhdsa_base_variant(nirapod_slhdsa_set set);
+
+/*
+ * The figures of this build describe STACK_VARIANT only if every set runs
+ * it; returns the number of sets that select another variant.
+ */
+static int selection_check(void)
+{
+    size_t s;
+    int failures = 0;
+
+    for (s = 0; s < sizeof(API_SETS) / sizeof(API_SETS[0]); s++) {
+        const char *variant = nirapod_slhdsa_base_variant(API_SETS[s]);
+
+        if (strcmp(variant, STACK_VARIANT) != 0) {
+            printf("FAIL %s: selects %s, not " STACK_VARIANT "\n",
+                   nirapod_slhdsa_set_name(API_SETS[s]), variant);
+            failures++;
+        }
+    }
+    return failures;
+}
+#endif
+
 /*
  * The secret scan over every set, with the deepest stack of each public
  * function; returns the number of failures.
@@ -512,6 +556,9 @@ int main(int argc, char **argv)
     (void)seeds;
 #endif
 
+#if defined(NIRAPOD_SLHDSA_STACK_BASE) || defined(NIRAPOD_SLHDSA_STACK_AVX2)
+    failures += selection_check();
+#endif
 #if !defined(NIRAPOD_SLHDSA_STACK_CONTROL)
     failures += secret_scan();
 #endif
@@ -519,6 +566,9 @@ int main(int argc, char **argv)
 #if defined(NIRAPOD_SLHDSA_STACK_PRODUCTION)
 #if defined(NIRAPOD_SLHDSA_STACK_BASE)
     printf("test_stack (application library, scalar variant selected): %s\n",
+           failures == 0 ? "PASS" : "FAIL");
+#elif defined(NIRAPOD_SLHDSA_STACK_AVX2)
+    printf("test_stack (application library, selected as without the SHA extensions): %s\n",
            failures == 0 ? "PASS" : "FAIL");
 #else
     printf("test_stack (application library): %s\n", failures == 0 ? "PASS" : "FAIL");

@@ -33,7 +33,7 @@ injection is handled only as far as [Faults](#faults) states.
 
 ## Constant time
 
-`jasmin-ct` checks every compilation unit of both architectures, 24 each, the
+`jasmin-ct` checks every compilation unit, 24 on AArch64 and 30 on x86-64, the
 accelerated variants included (`make ct`, CI check `analysis-units`). A PASS means
 that no branch condition, loop bound or memory address depends on a value typed
 secret, under the security types of the exports in `src/slhdsa/api.jinc` and of the

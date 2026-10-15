@@ -18,8 +18,8 @@
  * nirapod_slhdsa_hash_verify).
  * With --variant=V, every call goes through the testing library with
  * config->variant = V, which pins that hash variant per call. A variant is
- * built for some parameter sets only (on x86-64, avx2 for the SHAKE sets and
- * shani for the SHA2 sets); a call for a set without it answers
+ * built for some parameter sets only (on x86-64, shani for the SHA2 sets
+ * only); a call for a set without it answers
  * IMPL_UNSUPPORTED, so drivers count it NOT RUN and never report it under
  * another variant's name.
  *

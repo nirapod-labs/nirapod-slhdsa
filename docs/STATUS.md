@@ -78,7 +78,7 @@ caller's, and the library does not check it.
 | `test-acvp` | PASS | PASS | PASS | 1248 of 1248 NIST ACVP cases, and the runner's negative controls |
 | `differential` | PASS | PASS | PASS | 336 of 336 cases against slhdsa-c `174c02e`, and the comparison controls |
 | `test-hash` | PASS | PASS | PASS | CAVP, differential and negative tests of the hash layer |
-| `analysis-units` | PASS | PASS | PASS | `jasmin-ct` and `jasmin-ct --sct` on all 24 units of the architecture |
+| `analysis-units` | PASS | PASS | PASS | `jasmin-ct` and `jasmin-ct --sct` on every unit of the architecture |
 | `analysis-hash` | PASS | PASS | PASS | the same on the hash test exports |
 | `asm-policy` | PASS | PASS | PASS | exported symbols, no division, reserved AArch64 registers, with controls |
 | `safety` | NOT RUN | NOT RUN | NOT RUN | `jasmin-checksafety`; there is no safety target yet |

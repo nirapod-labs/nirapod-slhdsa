@@ -794,9 +794,13 @@ fn _h_msg(
  *     x     u8[4n]           instance k at bytes kn .. kn + n - 1 (out too)
  *     in    u8[4 len n]      instance k at bytes k len n .. (k + 1) len n - 1
  *
- * They come from the include root Sha2ThashX, so that a variant can
- * replace them (Makefile, TX_<variant>). Every variant builds
- * thash_sha2_x4/single/, four calls of the one-way functions above.
+ * They come from the include root Sha2ThashX, which the build points at
+ * one of two versions with the same functions and contracts (Makefile,
+ * TX_<variant>):
+ *
+ *     thash_sha2_x4/single/  four calls of the one-way functions above
+ *     thash_sha2_x4/multi/   the multi-way SHA-2 kernels of the hash layer
+ *                            (Sha2KernelX), one compression for the four
  */
 
 param int THASH_WAYS = 4;

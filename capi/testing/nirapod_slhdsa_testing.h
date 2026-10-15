@@ -47,7 +47,7 @@ extern "C" {
  *
  * Each parameter set is compiled in one or more hash variants, which
  * compute the same function with different kernels: "scalar" on every
- * target, and on x86-64 "avx2" (SHAKE sets) and "shani" (SHA2 sets).
+ * target, and on x86-64 "avx2" (every set) and "shani" (SHA2 sets).
  */
 
 /* The number of variants compiled for set; 0 for an unknown set. */

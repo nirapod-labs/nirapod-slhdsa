@@ -67,21 +67,22 @@ same FIPS 205 source; only the include roots that name its kernels differ
 | Architecture | Variant | Sets | Kernels it replaces | Needs |
 | :-- | :-- | :-- | :-- | :-- |
 | AArch64, x86-64 | `scalar` | all | none; the portable kernels | the base architecture |
-| x86-64 | `avx2` | SHAKE | four-way Keccak-f[1600] | AVX2, YMM state enabled by the OS |
+| x86-64 | `avx2` | all | four-way Keccak-f[1600] (SHAKE); the four-way SHA2 hashes, on 8-way SHA-256 and 4-way SHA-512 compression (SHA2) | AVX2, YMM state enabled by the OS |
 | x86-64 | `shani` | SHA2 | SHA-256 compression | SHA extensions and AVX |
 | AArch64 | `sha3` | SHAKE | single-way and four-way Keccak-f[1600] | Advanced SIMD and FEAT_SHA3 |
 | AArch64 | `sha2` | SHA2 | SHA-256 and SHA-512 compression | Advanced SIMD, FEAT_SHA256, FEAT_SHA512 |
 
-That gives 24 units per architecture. On AArch64 the scalar variant's single-way
-Keccak-f[1600] keeps the state in registers; its SHA-2 stays on the portable
-compression functions on both architectures, because those are the ones proven
-against FIPS 180-4.
+That gives 24 units on AArch64 and 30 on x86-64. On AArch64 the scalar
+variant's single-way Keccak-f[1600] keeps the state in registers; its SHA-2 stays
+on the portable compression functions on both architectures, because those are
+the ones proven against FIPS 180-4.
 
-`capi/dispatch.c` selects, at each call, the accelerated variant of the set when
-the operating system reports every feature it needs, and the scalar variant
-otherwise. The variants compute the same function: `make check` requires every
-variant the host supports to give the scalar variant's keys and deterministic
-signatures byte for byte.
+`capi/dispatch.c` selects, at each call, the last variant of the set in the
+order of the table whose features the operating system reports, and the scalar
+variant if there is none. An x86-64 SHA2 set takes `shani` where the SHA
+extensions are present, and `avx2` where only AVX2 is. The variants compute the
+same function: `make check` requires every variant the host supports to give the
+scalar variant's keys and deterministic signatures byte for byte.
 
 ## The FIPS 205 core
 
