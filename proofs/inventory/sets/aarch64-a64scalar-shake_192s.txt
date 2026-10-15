@@ -1293,6 +1293,57 @@ lemma thash_t_k_correct:
              FIPS205_Hash.T_l SetModel.P (BArray24.to_list c0)
                (ADRS.bytes_of a0) (BArray408.to_list x0)] = (Real.(%r) 1).
 
+(* Thash.shake_absorb_prefix_correct *)
+lemma shake_absorb_prefix_correct:
+  (forall (s0 : BArray200.t),
+     phoare[ CoreExtracted.M._keccakf1600 :
+              st = s0 ==>
+              KeccakState.lanes res.`1 =
+              Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0)] = (
+     Real.(%r) 1)) =>
+  forall (s0 : BArray200.t) (p0 l0 : JWord.W64.t) (x0 : BArray332.t)
+    (m : JWord.W8.t List.list),
+    phoare[ CoreExtracted.M._shake_absorb_prefix :
+             st = s0 /\
+             pos = p0 /\
+             prefix = x0 /\
+             len = l0 /\
+             Int.(<=) (JWord.W64.to_uint l0) 332 /\
+             JWord.W64.to_uint p0 = IntDiv.(%%) (List.size m) 136 /\
+             KeccakState.lanes s0 = ShakeSponge.abs_state 136 m ==>
+             Int.(<) (JWord.W64.to_uint res.`2) 136 /\
+             JWord.W64.to_uint res.`2 =
+             IntDiv.(%%)
+               (List.size
+                  (List.(++) m
+                     (List.take (JWord.W64.to_uint l0) (BArray332.to_list x0))))
+               136 /\
+             KeccakState.lanes res.`1 =
+             ShakeSponge.abs_state 136
+               (List.(++) m
+                  (List.take (JWord.W64.to_uint l0) (BArray332.to_list x0)))] = (
+    Real.(%r) 1).
+
+(* Thash.keccak_finalize_correct *)
+lemma keccak_finalize_correct:
+  (forall (s0 : BArray200.t),
+     phoare[ CoreExtracted.M._keccakf1600 :
+              st = s0 ==>
+              KeccakState.lanes res.`1 =
+              Keccakf1600_Spec.keccak_f1600_op (KeccakState.lanes s0)] = (
+     Real.(%r) 1)) =>
+  forall (s0 : BArray200.t) (p0 : JWord.W64.t) (m : JWord.W8.t List.list),
+    phoare[ CoreExtracted.M._keccak_finalize :
+             st = s0 /\
+             pos = p0 /\
+             rate = JWord.W64.of_int 136 /\
+             ds = JWord.W64.of_int 31 /\
+             JWord.W64.to_uint p0 = IntDiv.(%%) (List.size m) 136 /\
+             KeccakState.lanes s0 = ShakeSponge.abs_state 136 m ==>
+             KeccakState.lanes res.`1 =
+             Keccakf1600_Spec.keccak_f1600_op
+               (Keccak1600_Spec.SHAKE_ABSORB 136 m)] = (Real.(%r) 1).
+
 definitions 2
 
 Wots.csum op fcda3065d6f37011

@@ -375,7 +375,8 @@ SET_THEOREMS := Encoding.node_copy_correct Encoding.node_concat_correct \
                 Thash.thash_f_correct Thash.thash_prf_correct Thash.thash_h_correct
 # Theorems of one hash family's proofs only (correctness/core/<family>/).
 SET_THEOREMS_sha2 := Thash.thash_ctx_init_correct
-SET_THEOREMS_shake := Thash.thash_t_len_correct Thash.thash_t_k_correct
+SET_THEOREMS_shake := Thash.thash_t_len_correct Thash.thash_t_k_correct \
+                      Thash.shake_absorb_prefix_correct Thash.keccak_finalize_correct
 set_theorems  = $(foreach t,$(SET_THEOREMS) $(SET_THEOREMS_$(call set_family,$(1))),$(if $(filter $(call thm_theory,$(t)),$(basename $(notdir $(call set_proofs,$(1))))),$(t)))
 set_inventories = $(foreach p,$(CORE_PAIRS),$(foreach s,$(CORE_SETS),$(call set_inventory_file,$(p),$(s))))
 

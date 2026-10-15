@@ -74,6 +74,12 @@ Proven, on the x86-64 and AArch64 models, total correctness:
   compute F, PRF, H, T_len and T_k of section 11.1, for every input. The premise is
   that the Keccak-f[1600] procedure of the set's model is correct; the Keccak
   proofs above are about the kernel's own model, and joining the two is open.
+  Under the same premise, two sponge steps of the message hashes are proved for
+  every input: `_shake_absorb_prefix` (`src/slhdsa/thash_shake.jinc`) absorbs a
+  prefix of up to 332 bytes from any position within the 136-byte rate, permuting
+  at each full block, and `_keccak_finalize` (`src/hash/keccak/sponge.jinc`), at
+  rate 136 with domain byte 0x1F, pads the absorbed message and permutes as
+  SHAKE256 does (FIPS 202, sections 5.1 and 6.2). PRF_msg and H_msg are not.
 - **SHA2 tweakable hashes.** For the six SHA2 sets, in `src/slhdsa/thash_sha2.jinc`:
   - `_thash_ctx_init` compresses the PK.seed block once and stores the SHA-256
     chaining value (and, for n = 24 and 32, the SHA-512 one) in the context;
