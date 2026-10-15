@@ -38,18 +38,24 @@ says the internal functions should not be made available to applications; do
 not link the testing library into one.
 
 Most tests link the testing library, whose public functions are compiled from
-the same source as the application library's. Four link the application
-library alone. `tests/core/test_production.c` runs key generation, hedged and
-deterministic signing, pure and pre-hash, and verification for every set,
-including the fault check's refusal of a key whose PK.root does not belong to
-its seeds. The ACVP known answers (`tests/core/test_acvp.c`, from the subset
+the same source as the application library's. Five test programs link the
+application library alone, as do the two built from `README.md`.
+`tests/core/test_production.c` runs key generation, hedged and deterministic
+signing, pure and pre-hash, and verification for every set, including the
+fault check's refusal of a key whose PK.root does not belong to its seeds. The
+ACVP known answers (`tests/core/test_acvp.c`, from the subset
 `tests/core/acvp-subset.txt`) run on both libraries; in the application
 library key generation cannot take given seeds, nor signing a given opt_rand,
 and those cases are not run. A negative control (`tests/core/acvp-control.sh`)
 requires the known-answer test to reject a case whose expected signature or
 verdict was changed. The stack scan below runs on the application library too,
 and `tests/negative/test_entropy.c` makes the operating system's random source
-fail behind it.
+fail behind it. `tests/negative/test_buffers.c` signs with every set on
+concurrent threads, and with every buffer at each offset from 0 to 15 from a
+16-byte boundary on SLH-DSA-SHAKE-128f and SLH-DSA-SHA2-128f. `make check`
+also builds the example of `README.md` against the application library and
+requires it to print `valid`, and a copy with one signature bit flipped to
+print `invalid` and exit 1 (`tests/core/readme-example.py`).
 
 ## Hash variants
 

@@ -65,12 +65,25 @@ vectors are the external reference.
 
 ## Negative and fault tests
 
-Through the public API (`tests/negative/test_negative.c`): NULL pointers, unknown
-sets, wrong buffer lengths, contexts of 256 bytes, pre-hash values outside the
-enum, several wrong arguments at once, overlapping buffers, each with its
-documented status and output state; and tampered signatures with one flipped bit
-in R, in the FORS part, and in the first, a middle and the last hypertree layer,
-changed messages, contexts and public keys, truncated and extended signatures.
+Through the public API (`tests/negative/test_negative.c`, on SLH-DSA-SHAKE-128f and
+SLH-DSA-SHA2-128f): NULL pointers, unknown sets, wrong buffer lengths, contexts of
+256 bytes, pre-hash values outside the enum, several wrong arguments at once,
+overlapping buffers, each with its documented status and output state; and tampered
+signatures with one flipped bit in R, in the FORS part, and in the first, a middle
+and the last hypertree layer, changed messages, contexts and public keys, truncated
+and extended signatures. Signatures do not cross interfaces: a pure signature fails
+under every pre-hash function, a pre-hash signature under pure verification and
+under the other eleven pre-hash functions, and internal and external signatures of
+the same message fail for each other, while the external signature equals the
+internal signature of the M' the test builds. All-zero and all-0xFF public keys
+reject a valid signature, and such secret keys sign nothing. Messages whose length
+puts the input of H_msg or PRF_msg at the edges of the last SHA-256 or SHAKE256
+block, messages of 1 MiB, and contexts of 0, 1, 254 and 255 bytes sign and verify.
+
+`tests/negative/test_buffers.c` runs every set on concurrent threads, each signing
+into its own buffer, and requires the signatures computed on a single thread; and,
+on the same two sets, places keys, message, context and signature at every offset
+from 0 to 15.
 
 `tests/negative/test_fault.c` flips a bit of the FORS public key or of a layer-0
 XMSS root during signing and requires the fault check to withhold the signature.
