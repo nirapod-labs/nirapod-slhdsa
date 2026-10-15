@@ -130,7 +130,9 @@ KERNEL_PROOFS := \
   correctness/hash/SHA256_Compress.ec:Sha2Kernel=sha2 \
   correctness/hash/SHA256_Blocks.ec:Sha2Kernel=sha2 \
   correctness/hash/SHA512_Compress.ec:Sha2Kernel=sha2 \
-  correctness/hash/SHA512_Blocks.ec:Sha2Kernel=sha2
+  correctness/hash/SHA512_Blocks.ec:Sha2Kernel=sha2 \
+  correctness/hash/SHA256_Stream.ec:Sha2Kernel=sha2 \
+  correctness/hash/SHA512_Stream.ec:Sha2Kernel=sha2
 role_field_KeccakKernel  := 3
 role_field_KeccakKernelX := 4
 role_field_Sha2Kernel    := 5
@@ -213,6 +215,14 @@ THEOREMS := \
 # The kernels' entry points that read whole blocks from memory.
 THEOREMS += SHA256_Blocks.sha256_compress_one_total SHA256_Blocks.sha256_compress_blocks_total \
             SHA512_Blocks.sha512_compress_one_total SHA512_Blocks.sha512_compress_blocks_total
+
+# The streaming hashes (absorb from memory, pad and finalize) and the one-shot
+# hashes built on them.
+THEOREMS += SHA256_Stream.sha256_absorb_mem_total SHA256_Stream.sha256_finalize_total \
+            SHA256_Stream.sha256_mem_total SHA256_Stream.sha224_mem_total \
+            SHA512_Stream.sha512_absorb_mem_total SHA512_Stream.sha512_finalize_total \
+            SHA512_Stream.sha512_mem_total SHA512_Stream.sha384_mem_total \
+            SHA512_Stream.sha512_224_mem_total SHA512_Stream.sha512_256_mem_total
 
 # Keccak-f[1600] of the shared scalar kernel; the AArch64 kernel that keeps
 # the state in registers has its own (KERNEL_THEOREMS_aarch64_a64scalar).

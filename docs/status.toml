@@ -70,7 +70,7 @@ scope = "the EasyCrypt specification, 12 sets; not the Jasmin code"
 claim = "The code implements the specification"
 link = "docs/PROOFS.md#the-code-against-the-specification"
 evidence = "UNKNOWN"
-scope = "open; proven: SHA-2 kernel entry points, scalar Keccak-f[1600], address setters"
+scope = "open; proven: SHA-2 kernels and hashes, scalar Keccak-f[1600], address setters"
 
 [[summary]]
 claim = "The compiler preserves program semantics"

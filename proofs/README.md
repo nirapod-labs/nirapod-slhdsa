@@ -15,7 +15,8 @@ implementation.
 theorems of the specification for all twelve parameter sets are written and
 check. The implementation theorems so far cover the entry points of the
 portable SHA-256 and SHA-512 kernels (one block from an array, one block
-and n blocks from memory) and their round functions, the Keccak-f[1600]
+and n blocks from memory) and their round functions, the streaming and
+one-shot SHA-2 hashes built on them, the Keccak-f[1600]
 permutation of the single-way Keccak kernels of the scalar variants, and
 the hash address (ADRS) setters of the SLH-DSA core (below).
 Nothing in this directory supports a claim that the SLH-DSA implementation
@@ -249,6 +250,23 @@ Theorems so far, each checked on every pair unless it says otherwise:
 - `sha512_compress_one_total`, `sha512_compress_blocks_total`
   (`correctness/hash/SHA512_Blocks.ec`): the same for SHA-512 and 128-byte
   blocks;
+- `sha256_absorb_mem_total`, `sha256_finalize_total`, `sha256_mem_total`,
+  `sha224_mem_total` (`correctness/hash/SHA256_Stream.ec`): the streaming
+  SHA-256 of `src/hash/sha2/sha256.jinc`. The stream state after a message
+  `m` from a chaining value `h0` is `stream256 h0 m h buf total`: `total`
+  is `|m|`, `h` is `compress` folded from `h0` over the whole blocks of
+  `m`, and `buf` begins with the bytes after them. `_sha256_absorb_mem`
+  extends `m` by the `l` bytes at `p` (`p + l < 2^64`);
+  `_sha256_finalize` pads as section 5.1.1 says and returns the hash of
+  `m` from `h0` (`|m| < 2^61`); `_sha256_mem` and `_sha224_mem` are the
+  one-shot SHA-256 and SHA-224 (its first 28 bytes) of the `l` bytes at
+  `p`;
+- `sha512_absorb_mem_total`, `sha512_finalize_total`, `sha512_mem_total`,
+  `sha384_mem_total`, `sha512_224_mem_total`, `sha512_256_mem_total`
+  (`correctness/hash/SHA512_Stream.ec`): the same for SHA-512 (section
+  5.1.2, 128-byte blocks) and its truncations SHA-384, SHA-512/224 and
+  SHA-512/256 (the first 48, 28 and 32 bytes, from their own initial
+  values);
 - `keccak_round_correct`, `keccakf1600_correct`, `keccakf1600_total`
   (`correctness/hash/Keccakf1600_Portable.ec`, on the two portable
   pairs): one round of the shared scalar kernel `src/hash/keccak/keccakf1600.jinc`
@@ -289,8 +307,7 @@ The address theorems are about the address procedures themselves. That
 the rest of the core passes them the values FIPS 205 prescribes is part of
 the proofs of the algorithms that call them, which do not exist yet.
 
-Not proven yet: padding, the streaming, one-shot and multi-way functions,
-HMAC, MGF1, the Keccak sponge (absorb, padding, squeeze), SHA-3 and SHAKE;
+Not proven yet: the multi-way functions, HMAC, MGF1, the Keccak sponge (absorb, padding, squeeze), SHA-3 and SHAKE;
 the four-way Keccak-f[1600] kernels (portable, AVX2 and A64 SHA-3) the
 multi-way code uses; the four-way SHA2 tweakable hashes on the multi-way
 SHA-2 kernels (`src/slhdsa/thash_sha2_x4/multi/`) and the AVX2 8-way SHA-256
