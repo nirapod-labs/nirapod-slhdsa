@@ -368,7 +368,8 @@ set_inventory_file = inventory/sets/$(subst /,-,$(1))-$(2).txt
 # The theorems of the per-set proofs, pinned once per (pair, set) in
 # inventory/sets/<arch>-<variant>-<set>.txt, whose definitions are those of the
 # per-set proofs (the spec's are pinned by the pair inventories).
-SET_THEOREMS := Encoding.node_copy_correct Encoding.node_concat_correct
+SET_THEOREMS := Encoding.node_copy_correct Encoding.node_concat_correct \
+                ADRSc.adrs_compress_into64_correct ADRSc.adrs_compress_into128_correct
 set_theorems  = $(foreach t,$(SET_THEOREMS),$(if $(filter $(call thm_theory,$(t)),$(basename $(notdir $(call set_proofs,$(1))))),$(t)))
 set_inventories = $(foreach p,$(CORE_PAIRS),$(foreach s,$(CORE_SETS),$(call set_inventory_file,$(p),$(s))))
 

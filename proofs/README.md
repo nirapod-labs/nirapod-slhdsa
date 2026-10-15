@@ -396,7 +396,13 @@ Per-set theorems, each checked against the 24 per-set models:
 - `node_copy_correct` (`correctness/core/Encoding.ec`): `__node_copy`
   of `src/slhdsa/encoding.jinc` returns its n-byte source;
 - `node_concat_correct`: `__node_concat` returns the 2n bytes of a
-  followed by those of b.
+  followed by those of b;
+- `adrs_compress_into64_correct` and `adrs_compress_into128_correct`
+  (`correctness/core/sha2/ADRSc.ec`, on the 12 SHA2 models):
+  `__adrs_compress_into64` and `__adrs_compress_into128` of
+  `src/slhdsa/thash_sha2.jinc` write ADRS^c, the 22-byte compressed
+  address of FIPS 205 section 11.2, into the first 22 bytes of a hash
+  block and leave its other bytes unchanged.
 
 The SHA-2 and Keccak `_correct` theorems are partial-correctness (Hoare)
 statements about the extracted model: when the procedure returns, its

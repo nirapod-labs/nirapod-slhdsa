@@ -1126,5 +1126,28 @@ lemma node_concat_correct:
              List.(++) (BArray24.to_list a0) (BArray24.to_list b0)] = (
     Real.(%r) 1).
 
-definitions 0
+(* ADRSc.adrs_compress_into64_correct *)
+lemma adrs_compress_into64_correct:
+  forall (d0 : BArray64.t) (a0 : BArray32.t),
+    phoare[ CoreExtracted.M.__adrs_compress_into64 :
+             dst = d0 /\ adrs = a0 ==>
+             List.take 22 (BArray64.to_list res) =
+             FIPS205_Address.compress (BArray32.to_list a0) /\
+             List.drop 22 (BArray64.to_list res) =
+             List.drop 22 (BArray64.to_list d0)] = (Real.(%r) 1).
 
+(* ADRSc.adrs_compress_into128_correct *)
+lemma adrs_compress_into128_correct:
+  forall (d0 : BArray128.t) (a0 : BArray32.t),
+    phoare[ CoreExtracted.M.__adrs_compress_into128 :
+             dst = d0 /\ adrs = a0 ==>
+             List.take 22 (BArray128.to_list res) =
+             FIPS205_Address.compress (BArray32.to_list a0) /\
+             List.drop 22 (BArray128.to_list res) =
+             List.drop 22 (BArray128.to_list d0)] = (Real.(%r) 1).
+
+definitions 3
+
+ADRSc.adrsc_src op 0d45f59ab1064ee6
+ADRSc.written128 op ddee4e99905be241
+ADRSc.written64 op 6ac9806625cc9170
