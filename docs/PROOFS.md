@@ -61,7 +61,9 @@ Proven, on the x86-64 and AArch64 models, total correctness:
   (128-byte seed, 47 or 49 bytes).
 - **Keccak.** The Keccak-f[1600] permutation of the single-way kernels the scalar
   variants build (the portable kernel on x86-64, the kernel that keeps the state in
-  registers on AArch64), against FIPS 202.
+  registers on AArch64), against FIPS 202; and the Keccak sponge's absorb from
+  memory and finalize (padding and the permutation) against FIPS 202, given that
+  permutation.
 
 Not proven:
 
@@ -74,7 +76,7 @@ Not proven:
   SHA-512 kernels under them;
 - the single-way and four-way kernels on the A64 SHA-3 instructions (AArch64 `sha3`
   variant), and the portable and AVX2 four-way kernels;
-- the sponge, SHA-3 and SHAKE, and every FIPS 205 algorithm; the rest is open.
+- the sponge's squeeze, SHA-3 and SHAKE, and every FIPS 205 algorithm; the rest is open.
 
 The details are in
 [`proofs/README.md`](../proofs/README.md#extracted-models-and-correctness-proofs).

@@ -246,6 +246,12 @@ THEOREMS += MGF1_SHA256.mgf64_30_sha256_total MGF1_SHA256.mgf64_34_sha256_total 
 THEOREMS += Keccakf1600_Portable.keccak_round_correct Keccakf1600_Portable.keccakf1600_correct \
             Keccakf1600_Portable.keccakf1600_total
 
+# The Keccak sponge (absorb from memory, finalize); pair-generic, with the
+# pair's Keccak-f[1600] theorem as premise.
+THEOREMS += Sponge.keccak_absorb_mem_h Sponge.keccak_absorb_mem_ll \
+            Sponge.keccak_absorb_mem_total Sponge.keccak_finalize_h \
+            Sponge.keccak_finalize_ll Sponge.keccak_finalize_total
+
 # The address setters of the SLH-DSA core against FIPS 205 Table 1.
 ADRS_THEOREMS := adrs_zero_correct adrs_set_layer_correct adrs_set_tree_correct \
                  adrs_set_type_and_clear_correct adrs_set_keypair_correct \

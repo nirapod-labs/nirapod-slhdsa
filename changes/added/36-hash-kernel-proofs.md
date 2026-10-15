@@ -16,5 +16,8 @@
   key block read from memory is not proven yet.
 - Proofs of MGF1 (RFC 8017) for the seed and output lengths of H_msg in
   the SHA2 sets: MGF1-SHA-256 for n = 16 and MGF1-SHA-512 for n = 24 and
-  32 (`proofs/correctness/hash/MGF1_SHA256.ec`, `MGF1_SHA512.ec`). The
-  Keccak sponge is not proven yet.
+  32 (`proofs/correctness/hash/MGF1_SHA256.ec`, `MGF1_SHA512.ec`).
+- Proofs that the Keccak sponge absorbs bytes from memory and finalizes
+  (padding, permutation) as FIPS 202 specifies, with termination, given
+  the Keccak-f[1600] permutation (`proofs/correctness/hash/Sponge.ec`,
+  `ShakeSponge.ec`). The squeeze is not proven yet.

@@ -311,6 +311,13 @@ Theorems so far, each checked on every pair unless it says otherwise:
   includes ι. The state facts both Keccak proofs use (the lane view, the
   ρ offsets against FIPS 202 Algorithm 2, the round constants) are in
   `correctness/hash/KeccakState.ec`;
+- `keccak_absorb_mem_h`, `keccak_absorb_mem_ll`, `keccak_absorb_mem_total`,
+  `keccak_finalize_h`, `keccak_finalize_ll`, `keccak_finalize_total`
+  (`correctness/hash/Sponge.ec`, on every pair): absorb from memory and
+  finalize (pad, permute) of `src/hash/keccak/sponge.jinc` against FIPS 202
+  (`ABSORB1600` of `Keccak1600_Spec`), total correctness, with the pair's
+  Keccak-f[1600] theorem as premise. `correctness/hash/ShakeSponge.ec`
+  gives the byte view of the absorbing state that these statements use;
 - the eleven `adrs_*_correct` theorems (`correctness/slhdsa/ADRS.ec`):
   every procedure of `src/slhdsa/address.jinc` (zeroing, the setters of
   FIPS 205 Table 1, the key pair copy and the address copy) returns the
@@ -335,7 +342,7 @@ The address theorems are about the address procedures themselves. That
 the rest of the core passes them the values FIPS 205 prescribes is part of
 the proofs of the algorithms that call them, which do not exist yet.
 
-Not proven yet: the multi-way functions, the HMAC key block from memory, the Keccak sponge (absorb, padding, squeeze), SHA-3 and SHAKE;
+Not proven yet: the multi-way functions, the HMAC key block from memory, the Keccak sponge squeeze, SHA-3 and SHAKE;
 the four-way Keccak-f[1600] kernels (portable, AVX2 and A64 SHA-3) the
 multi-way code uses; the four-way SHA2 tweakable hashes on the multi-way
 SHA-2 kernels (`src/slhdsa/thash_sha2_x4/multi/`) and the AVX2 8-way SHA-256
