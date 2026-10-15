@@ -13,7 +13,7 @@
 # Generator: proofs/tools/inventory.py
 # Regenerate: make -C proofs inventory   (check: make -C proofs check-inventory)
 
-axioms 1070
+axioms 1131
 
 AES AESDECE e3fc5387d7eed6ff
 AES AESDECLASTE 09f9ea888e9e081d
@@ -52,6 +52,38 @@ AlgTactic.Requires ofintS d0777023779f970d
 AlgTactic.Requires oner_neq0 9fe0aa7626f8e188
 AlgTactic.Requires oppr_id 616c50179382a318
 AlgTactic.Requires subrE d46c4d8f5f87eae2
+Array200.Array200 createE fc2d87d242b151e1
+Array200.Array200 ext_eq 1174800d2fa9a146
+Array200.Array200 fillE 6d19bb93e86649c1
+Array200.Array200 get_out 28945e9847e5a475
+Array200.Array200 initE c27836ff295fed8a
+Array200.Array200 map2E 74cae35f1fa8634a
+Array200.Array200 mapE 356f93f955f025dd
+Array200.Array200 setE 3d8a69e71b68d174
+Array24.Array24 createE fc2d87d242b151e1
+Array24.Array24 ext_eq 998c471544763c57
+Array24.Array24 fillE 6d19bb93e86649c1
+Array24.Array24 get_out 205c97b61b776fd8
+Array24.Array24 initE c999b6da0a73298f
+Array24.Array24 map2E 74cae35f1fa8634a
+Array24.Array24 mapE 356f93f955f025dd
+Array24.Array24 setE 3d8a69e71b68d174
+Array25.Array25 createE fc2d87d242b151e1
+Array25.Array25 ext_eq bb4c69d536a343f1
+Array25.Array25 fillE 6d19bb93e86649c1
+Array25.Array25 get_out 66bf7260d31cd6d1
+Array25.Array25 initE 173568fa1f0bde9a
+Array25.Array25 map2E 74cae35f1fa8634a
+Array25.Array25 mapE 356f93f955f025dd
+Array25.Array25 setE 3d8a69e71b68d174
+Array5.Array5 createE fc2d87d242b151e1
+Array5.Array5 ext_eq 832cffe9635c72a5
+Array5.Array5 fillE 6d19bb93e86649c1
+Array5.Array5 get_out b66dda7f5ef7b0b4
+Array5.Array5 initE 3d0712347c71f51e
+Array5.Array5 map2E 74cae35f1fa8634a
+Array5.Array5 mapE 356f93f955f025dd
+Array5.Array5 setE 3d8a69e71b68d174
 BArray10 ext_eq 2a2b704fe1e007cf
 BArray10 fillE d05dde13ca0398c1
 BArray10 get128dE ef77bcda55667b84
@@ -1038,6 +1070,8 @@ JWord.W8u8.Pack mapE 1c786b80abeb1ea8
 JWord.W8u8.Pack of_listE 739dc605d1153aa8
 JWord.W8u8.Pack setE 78379a30ae246211
 JWord.W8u8.Pack to_listE 8b7072bcc4d8b715
+JWordList stores64E 78dab771daffcd3a
+JWordList stores8E 65c14aaeea1def0f
 List.Iota iota0 43153312493ee904
 List.Iota iotaS dbe3d80e4131cf76
 Logic choicebdP 7ada9f2aefda6e75
@@ -1085,6 +1119,33 @@ RealExp lnK 0b38609e7d756878
 RealExp ln_le0 86ea2900412cf36e
 RealExp lt3_e 3f793f4f059c680b
 SmtMap offunE 09646d1496ed7455
+WArray200.WArray200 ext_eq 5877045fd7a475b6
+WArray200.WArray200 fillE 65753500dfb02a9e
+WArray200.WArray200 get128E 99ea914955259f39
+WArray200.WArray200 get16E fcaee631b64d3ae3
+WArray200.WArray200 get256E 3af893a6d4f4e581
+WArray200.WArray200 get32E f8b842ad52a1f811
+WArray200.WArray200 get64E ea01dc2ae1abd59b
+WArray200.WArray200 get_out 1894fab40bd01b8c
+WArray200.WArray200 initE 3f5cc330806bcaf3
+WArray200.WArray200 map2E cb78c2b4e820bd7b
+WArray200.WArray200 mapE 3dbf697d25899328
+WArray200.WArray200 of_listE 8ad4a902543a34dd
+WArray200.WArray200 set128E e7926fd0f9f23322
+WArray200.WArray200 set16E 52611a99d2d0c227
+WArray200.WArray200 set256E ca1f3436513a77f9
+WArray200.WArray200 set32E ce47043578eb2514
+WArray200.WArray200 set64E 79ef579b7abeb5d8
+WArray200.WArray200 setE 4e0a335b0af4daa4
+WArray200.WArray200 to_listE e6f105713eac8835
+WArray200.WArray200.ArrayW8 createE fc2d87d242b151e1
+WArray200.WArray200.ArrayW8 ext_eq 5918470f6f7aee42
+WArray200.WArray200.ArrayW8 fillE 20f97a9b255da5e6
+WArray200.WArray200.ArrayW8 get_out 7938368121a2ad10
+WArray200.WArray200.ArrayW8 initE ce4ea20fa584f66b
+WArray200.WArray200.ArrayW8 map2E 42307c45f91eb6aa
+WArray200.WArray200.ArrayW8 mapE d7c591ffb8e211e0
+WArray200.WArray200.ArrayW8 setE 4dc700e5bc954052
 
 theorems
 
@@ -1102,6 +1163,32 @@ lemma node_concat_correct:
              BArray48.to_list res =
              List.(++) (BArray24.to_list a0) (BArray24.to_list b0)] = (
     Real.(%r) 1).
+
+(* DigestIndices.digest_tree_leaf_correct *)
+lemma digest_tree_leaf_correct:
+  forall (d0 : BArray42.t),
+    phoare[ CoreExtracted.M.__digest_tree_leaf :
+             arg = d0 ==>
+             JWord.W64.to_uint res.`1 =
+             (FIPS205_Internal.split_digest SetModel.P (BArray42.to_list d0)).`2 /\
+             JWord.W32.to_uint res.`2 =
+             (FIPS205_Internal.split_digest SetModel.P (BArray42.to_list d0)).`3] = (
+    Real.(%r) 1).
+
+(* DigestIndices.fors_indices_correct *)
+lemma fors_indices_correct:
+  forall (d0 : BArray42.t),
+    phoare[ CoreExtracted.M.__fors_indices :
+             digest = d0 ==>
+             forall (j : int),
+               0 Int.(<=) j Int.(<) FIPS205_Params.k SetModel.P =>
+               JWord.W32.to_uint (BArray132.get32d res (Int.( * ) 4 j)) =
+               List.nth 0
+                 (FIPS205_Encoding.base_2b
+                    (FIPS205_Internal.split_digest SetModel.P
+                       (BArray42.to_list d0)).`1
+                    (FIPS205_Params.a SetModel.P)
+                    (FIPS205_Params.k SetModel.P)) j] = (Real.(%r) 1).
 
 definitions 0
 

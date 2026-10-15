@@ -74,7 +74,9 @@ Proven, on the x86-64 and AArch64 models, total correctness:
   - `__node_concat` returns the 2n bytes of its first argument followed by those of its second;
   - on the six SHA2 sets, `__adrs_compress_into64` and `__adrs_compress_into128` of
     `src/slhdsa/thash_sha2.jinc` write ADRS^c, the 22-byte compressed address of
-    section 11.2, into a hash block and leave its other bytes unchanged.
+    section 11.2, into a hash block and leave its other bytes unchanged;
+  - `__digest_tree_leaf` and `__fors_indices` split the message digest into idx_tree,
+    idx_leaf (Algorithm 19, lines 6 to 10) and the FORS indices (base_2b, Algorithm 4).
 
 Not proven:
 

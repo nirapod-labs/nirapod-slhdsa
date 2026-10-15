@@ -397,12 +397,22 @@ Per-set theorems, each checked against the 24 per-set models:
   of `src/slhdsa/encoding.jinc` returns its n-byte source;
 - `node_concat_correct`: `__node_concat` returns the 2n bytes of a
   followed by those of b;
+- `digest_tree_leaf_correct` (`correctness/core/DigestIndices.ec`):
+  `__digest_tree_leaf` returns idx_tree and idx_leaf, read from the
+  message digest as FIPS 205 Algorithm 19 lines 6 to 10 prescribe
+  (`split_digest`);
+- `fors_indices_correct`: index j of `__fors_indices` is digit j of
+  base_2b(md, a, k) (Algorithm 4), md the first field of the digest;
 - `adrs_compress_into64_correct` and `adrs_compress_into128_correct`
   (`correctness/core/sha2/ADRSc.ec`, on the 12 SHA2 models):
   `__adrs_compress_into64` and `__adrs_compress_into128` of
   `src/slhdsa/thash_sha2.jinc` write ADRS^c, the 22-byte compressed
   address of FIPS 205 section 11.2, into the first 22 bytes of a hash
   block and leave its other bytes unchanged.
+
+The per-set theorems are total-correctness statements about one
+procedure each, for every input. That the WOTS+ digits and checksum
+(`__wots_digits`) are those of Algorithm 7 is not proven yet.
 
 The SHA-2 and Keccak `_correct` theorems are partial-correctness (Hoare)
 statements about the extracted model: when the procedure returns, its
