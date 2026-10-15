@@ -36,3 +36,8 @@ qed.
 lemma bswap64_spec (x0 : W64.t) :
   hoare [M.__bswap64 : x = x0 ==> res = bswap64 x0].
 proof. by proc; auto => />; rewrite REV_64E. qed.
+
+(* The names the shared proofs use; the x86-64 theory proves the same
+   statements for BSWAP_32 and BSWAP_64. *)
+lemma bswap32E x : REV_32 x = bswap32 x by rewrite /REV_32 /bswap32.
+lemma bswap64E x : REV_64 x = bswap64 x by exact: REV_64E.
