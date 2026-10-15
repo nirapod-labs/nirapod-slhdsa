@@ -46,6 +46,11 @@
 # Other areas add targets through their own fragments, included at the
 # end: <dir>/<name>.mk and <dir>/<sub>/<name>.mk.
 
+# `make` with no target builds the libraries. The goal is named here, ahead
+# of every rule, because the first explicit target in the file would
+# otherwise become the default.
+.DEFAULT_GOAL := all
+
 JASMINC  ?=
 JASMIN_CT ?= jasmin-ct
 CC       ?= cc
