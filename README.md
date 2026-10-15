@@ -109,6 +109,7 @@ wrapper picks the variant the CPU supports at each call.
 | [Status](docs/STATUS.md) | every result per parameter set, interface and platform |
 | [Declassification](docs/DECLASSIFICATION.md) | each secret-derived value the code releases, and why |
 | [Toolchain](docs/TOOLCHAIN.md) | the pinned compiler and provers, building them, their trusted base |
+| [Benchmarks](docs/BENCHMARKS.md) | how latency, throughput, stack depth and code size are measured and compared |
 
 <details>
 <summary><b>Repository layout</b></summary>
@@ -122,7 +123,7 @@ tests/          functional, ACVP, differential, negative, ABI and hash tests
 analysis/       constant-time analysis and emitted-code policy
 proofs/         EasyCrypt specification, security and correctness proofs
 third_party/    imported EasyCrypt developments, with their provenance
-bench/          pins of the implementations the tests compare against
+bench/          benchmark harness, and the pins of the baselines it and the tests use
 toolchain/      pinned Jasmin and EasyCrypt, the patch series, build.sh
 ci/             CI checks and release tooling
 changes/        one entry per change, collected at release
