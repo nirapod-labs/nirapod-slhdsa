@@ -7,7 +7,8 @@
  *
  * The tweakable hashes of the SHAKE parameter sets (FIPS 205 section
  * 11.1): _thash_f, _thash_prf, _thash_h, _thash_t_len and _thash_t_k of
- * src/slhdsa/thash_shake.jinc compute F, PRF, H, T_len and T_k.
+ * src/slhdsa/thash_shake.jinc compute F, PRF, H, T_len and T_k, and
+ * _shake_absorb_prefix absorbs the message prefix of PRF_msg and H_msg.
  *
  * F, PRF and H write PK.seed and ADRS into a zeroed state
  * (__shake_seeded_head), store the n- or 2n-byte payload in the lanes
@@ -30,6 +31,13 @@
  * in at lane pos and lane 16, and shake_final gives SHAKE256 of the
  * whole message.
  *
+ * _shake_absorb_prefix absorbs the first len bytes of the message prefix
+ * one byte at a time, at sponge byte position pos, and permutes whenever
+ * pos reaches 136. Its theorem is stated on the sponge state of
+ * ShakeSponge.ec: if st holds abs_state 136 m and pos = |m| mod 136, the
+ * result holds the state and the position for m || prefix[0 : len]. The
+ * message hashes PRF_msg and H_msg absorb their framing prefix this way.
+ *
  * Model. The procedures depend on n, so this file is checked against the
  * model of each SHAKE set (correctness/core/shake/). Arrays are viewed as
  * byte lists by to_list: Node for n bytes, Node2 for 2n, BArray32 for the
@@ -48,14 +56,17 @@
  *     thash_prf_correct   PRF(PK.seed, SK.seed, ADRS);
  *     thash_h_correct     H(PK.seed, ADRS, M2), M2 of 2n bytes;
  *     thash_t_len_correct T_len(PK.seed, ADRS, M), M of len n bytes;
- *     thash_t_k_correct   T_k(PK.seed, ADRS, M), M of k n bytes.
+ *     thash_t_k_correct   T_k(PK.seed, ADRS, M), M of k n bytes;
+ *     shake_absorb_prefix_correct
+ *                         the prefix absorption, len <= SLH_PREFIX_MAX
+ *                         (2 + 255 + 11 + 64 = 332 bytes).
  *)
 
 require import AllCore List IntDiv.
 from Jasmin require import JWord JUtils Jslh.
 from JazzEC require import Array25 WArray200.
 require import Bytes FIPS205_Params FIPS205_Hash FIPS202_Bytes.
-require import BArray32 BArray200 KeccakState Keccakf1600_Spec Keccak1600_Spec.
+require import BArray32 BArray200 BArray332 KeccakState Keccakf1600_Spec Keccak1600_Spec.
 require import ShakeSponge SetModel CoreExtracted.
 
 lemma family_shake : P.`family = SHAKE by rewrite /P.
@@ -245,8 +256,11 @@ lemma w64_inc17 (x : W64.t) : to_uint x < 17 =>
   (x + W64.one = W64.of_int 17 <=> to_uint x + 1 = 17).
 proof. by move=> h; rewrite W64.to_uint_eq W64.to_uintD_small /= /#. qed.
 
-(* The position clamp of the T_l and T_k absorb loop never fires: the position stays below the rate. *)
+(* The position clamps of the T_l, T_k and prefix absorb loops never fire: the position stays below the rate. *)
 lemma clamp17 (x c : W64.t) : to_uint x < 17 => ((W64.of_int 17 \ule x) ? c : x) = x.
+proof. by move=> h; rewrite W64.uleE W64.of_uintK ifF 1:/#. qed.
+
+lemma clamp136 (x c : W64.t) : to_uint x < 136 => ((W64.of_int 136 \ule x) ? c : x) = x.
 proof. by move=> h; rewrite W64.uleE W64.of_uintK ifF 1:/#. qed.
 
 lemma w64_inc_bound (x : W64.t) (b : int) : to_uint x < b => b < W64.modulus =>
@@ -293,6 +307,55 @@ have -> : nth W8.zero (take 8 (drop (8 * i) (TKIn.to_list x0))) k =
   by rewrite h1 h2.
 rewrite TKIn.get_to_list.
 by rewrite TKIn.get64d_byte 1:/#; congr; smt().
+qed.
+
+(* The byte XOR of the prefix loop, with its 64-bit zero-extension. *)
+lemma trunc_xor8 (a b : W8.t) : truncateu8 (zeroextu64 a `^` zeroextu64 b) = a `^` b.
+proof.
+apply W8.wordP => k hk.
+rewrite W8.xorwE /truncateu8 W8.of_intwE hk /= /int_bit.
+have := W64.get_to_uint (zeroextu64 a +^ zeroextu64 b) k.
+rewrite W64.xorwE !zeroextu64_bit (_ : 0 <= k < 64) 1:/# /= => h.
+rewrite (_ : 256 = 2 ^ 8) // modz_pow2_div 1:/# modz_dvd.
++ by apply (dvdz_exp2l 2 1); smt().
+by move: h; smt().
+qed.
+
+(* A byte XOR at byte p is xorb_at of a one-byte list. *)
+lemma byte_xor_at (st : BArray200.t) (p : int) (b : W8.t) : 0 <= p < 200 =>
+  stbytes (lanes (BArray200.set8 st p (st.[p] `^` b))) = xorb_at (stbytes (lanes st)) p [b].
+proof.
+move=> hp; apply WArray200.tP => j hj.
+rewrite stbytes_lanes // xorb_atE // stbytes_lanes // BArray200.get_setE //=.
+by case: (j = p) => h; [rewrite h ifT 1:/# /= | smt()].
+qed.
+
+(* One prefix byte at sponge position p: the byte form of absorb_lane_lt
+   and absorb_lane_eq. *)
+lemma absorb_byte_lt (st : BArray200.t) (m : W8.t list) (p : int) (b : W8.t) :
+  0 <= p => p + 1 < 136 => p = size m %% 136 => lanes st = abs_state 136 m =>
+  lanes (BArray200.set8 st p (st.[p] `^` b)) = abs_state 136 (m ++ [b]).
+proof.
+move=> h0 h1 hp hst; apply stbytes_inj.
+have hc := abs_cat_lt 136 m [b] _ _; [by [] | by rewrite -hp /# | idtac].
+by rewrite byte_xor_at 1:/# hc hst hp.
+qed.
+
+lemma absorb_byte_eq (st : BArray200.t) (m : W8.t list) (p : int) (b : W8.t) :
+  p + 1 = 136 => p = size m %% 136 => lanes st = abs_state 136 m =>
+  keccak_f1600_op (lanes (BArray200.set8 st p (st.[p] `^` b))) = abs_state 136 (m ++ [b]).
+proof.
+move=> h1 hp hst.
+have hc := abs_cat_eq 136 m [b] _ _; [by [] | by rewrite -hp /# | idtac].
+rewrite hc; congr; apply stbytes_inj.
+by rewrite stwordsK byte_xor_at 1:/# hst hp.
+qed.
+
+lemma w64_inc_eq (x : W64.t) (c : int) : to_uint x < c => c < W64.modulus =>
+  (x + W64.one = W64.of_int c <=> to_uint x + 1 = c).
+proof.
+move=> h hc; rewrite W64.to_uint_eq (w64_inc_bound x c h hc) W64.of_uintK.
+by rewrite modz_small; [move: h hc; pose u := to_uint x; smt(W64.to_uint_cmp) | done].
 qed.
 
 lemma keccak_init_ll : islossless M.__keccak_init.
@@ -704,5 +767,119 @@ lemma thash_t_k_correct (x0 : TKIn.t) (c0 : Node.t) (a0 : BArray32.t) :
   phoare [M._thash_t_k : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
     Node.to_list res.`1 = T_l P (Node.to_list c0) (BArray32.to_list a0) (TKIn.to_list x0)] = 1%r.
 proof. by proc; call (thash_t_k_p x0 c0 a0); auto. qed.
+
+local lemma shake_absorb_prefix_h (s0 : BArray200.t) (p0 l0 : W64.t) (x0 : BArray332.t) (m : W8.t list) :
+  hoare [M._shake_absorb_prefix :
+    st = s0 /\ pos = p0 /\ prefix = x0 /\ len = l0 /\ to_uint l0 <= 332 /\
+    to_uint p0 = size m %% 136 /\ lanes s0 = abs_state 136 m ==>
+    to_uint res.`2 < 136 /\
+    to_uint res.`2 = size (m ++ take (to_uint l0) (BArray332.to_list x0)) %% 136 /\
+    lanes res.`1 = abs_state 136 (m ++ take (to_uint l0) (BArray332.to_list x0))].
+proof.
+proc.
+wp.
+while (prefix = x0 /\ len = l0 /\ to_uint l0 <= 332 /\ 0 <= to_uint i <= to_uint l0 /\
+       (more <=> to_uint i < to_uint l0) /\ 0 <= to_uint pos < 136 /\
+       to_uint pos = size (m ++ take (to_uint i) (BArray332.to_list x0)) %% 136 /\
+       lanes st = abs_state 136 (m ++ take (to_uint i) (BArray332.to_list x0))).
++ wp.
+  seq 3 : (#pre).
+  + by wp; skip => &m h; rewrite clamp136 1:/#; exact h.
+  seq 6 : (prefix = x0 /\ len = l0 /\ to_uint l0 <= 332 /\ 0 <= to_uint i < to_uint l0 /\
+           (full <=> to_uint pos = 136) /\ 0 < to_uint pos <= 136 /\
+           to_uint pos %% 136 = size (m ++ take (to_uint i + 1) (BArray332.to_list x0)) %% 136 /\
+           (to_uint pos < 136 => lanes st = abs_state 136 (m ++ take (to_uint i + 1) (BArray332.to_list x0))) /\
+           (to_uint pos = 136 => keccak_f1600_op (lanes st) = abs_state 136 (m ++ take (to_uint i + 1) (BArray332.to_list x0)))).
+  + wp; skip => &m [#] hx hl hL hi0 hi1 hmore hp0 hp1 hpm hst hm /=.
+    have hW : to_uint i{m} < to_uint l0 by rewrite -hmore.
+    have hsz : to_uint i{m} < size (BArray332.to_list x0) by rewrite BArray332.size_to_list /max /=; smt().
+    have hcat : take (to_uint i{m} + 1) (BArray332.to_list x0) =
+                take (to_uint i{m}) (BArray332.to_list x0) ++ [x0.[to_uint i{m}]].
+    + by rewrite (take_nth W8.zero) 1:/# cats1 BArray332.get_to_list.
+    have hpos : to_uint (pos{m} + W64.one) = to_uint pos{m} + 1 by apply (w64_inc_bound _ 136).
+    have hfull := w64_inc_eq pos{m} 136 hp1 _; first done.
+    have hsm : size (m ++ take (to_uint i{m} + 1) (BArray332.to_list x0)) =
+               size (m ++ take (to_uint i{m}) (BArray332.to_list x0)) + 1.
+    + by rewrite hcat catA size_cat.
+    rewrite hpos hx trunc_xor8 /=; do !split.
+    + by [].
+    + by [].
+    + by [].
+    + by move=> _; exact hW.
+    + by rewrite -hfull.
+    + by rewrite hfull.
+    + by move: hp0 => /#.
+    + by move=> _; move: hp1 => /#.
+    + by rewrite hsm hpm modzDml.
+    + move=> hlt; rewrite hcat catA.
+      exact (absorb_byte_lt _ _ _ _ hp0 hlt hpm hst).
+    move=> heq; rewrite hcat catA.
+    exact (absorb_byte_eq _ _ _ _ heq hpm hst).
+  if.
+  + wp; ecall (keccakf1600_hoare st); wp; skip => &m [#] hx hl hL hi0 hi1 hfull hp0 hp1 hpm hlt heq hf.
+    move=> [s2 ms2] /= hs2; rewrite /protect_ptr /protect_64 /=.
+    have hp136 : to_uint pos{m} = 136 by rewrite -hfull.
+    have hi1' := w64_inc_bound i{m} _ hi1 _; first by smt(W64.to_uint_cmp).
+    rewrite W64.ultE hi1' hx hl /=.
+    do !split.
+    + by move: hi0; pose u := to_uint i{m}; smt().
+    + by move: hi1; pose u := to_uint i{m}; smt().
+    + by move=> _; move: hi1; pose u := to_uint i{m}; smt().
+    + by rewrite -hpm hp136.
+    by rewrite hs2 heq.
+  wp; skip => &m [#] hx hl hL hi0 hi1 hfull hp0 hp1 hpm hlt heq hf.
+  have hp136 : to_uint pos{m} < 136 by smt().
+  have hi1' := w64_inc_bound i{m} _ hi1 _; first by smt(W64.to_uint_cmp).
+  rewrite /= W64.ultE hi1' hx hl /=.
+  have hsm : to_uint pos{m} %% 136 = to_uint pos{m}.
+  + by apply modz_small; move: hp0 hp136; pose u := to_uint pos{m}; smt().
+  do !split.
+  + by move: hi0; pose u := to_uint i{m}; smt().
+  + by move: hi1; pose u := to_uint i{m}; smt().
+  + by move=> _; move: hi1; pose u := to_uint i{m}; smt().
+  + by move: hp0; pose u := to_uint pos{m}; smt().
+  + by move=> _; exact hp136.
+  + by rewrite -hpm hsm.
+  exact (hlt hp136).
+wp; skip => &m [#] -> -> -> -> hL hpm hst /=.
+rewrite take0 cats0; split.
++ have h1 : (W64.zero \ult l0 <=> 0 < to_uint l0) by rewrite W64.ultE.
+  have h2 : 0 <= to_uint p0 < 136 by rewrite hpm; smt().
+  have h3 := W64.to_uint_cmp l0.
+  by rewrite h1 hpm hst /=; move: hL h3; pose u := to_uint l0; smt().
+move=> i1 l1 m1 p1 x1 s1 hm1 [#] _ _ _ h0 h1 h2 h3 h4 h5 h6.
+have hi : to_uint i1 = to_uint l0 by move: h1 h2 hm1; pose u := to_uint i1; smt().
+by rewrite clamp136 1:/# -hi h4 -h5 h6.
+qed.
+
+local lemma shake_absorb_prefix_ll : islossless M._shake_absorb_prefix.
+proof.
+proc; wp.
+while ((more <=> to_uint i < to_uint len) /\ to_uint i <= to_uint len) (to_uint len - to_uint i).
++ move=> z.
+  sp; if.
+  + wp; call keccakf1600_ll; wp; skip => &m [] [p0 s0 m0] [#] _ _ _ _ _ _ _ hmore h1 hm hz hf r /=.
+    have hlt : to_uint i{m} < to_uint len{m} by rewrite -hmore.
+    have hi := w64_inc_bound i{m} (to_uint len{m}) hlt _; first by case: (W64.to_uint_cmp len{m}).
+    rewrite /protect_64 /= W64.ultE hi.
+    by move: hlt hz; pose u := to_uint i{m}; pose v := to_uint len{m}; smt().
+  wp; skip => &m [] [p0 s0 m0] [#] _ _ _ _ _ _ _ hmore h1 hm hz hf /=.
+  have hlt : to_uint i{m} < to_uint len{m} by rewrite -hmore.
+  have hi := w64_inc_bound i{m} (to_uint len{m}) hlt _; first by case: (W64.to_uint_cmp len{m}).
+  rewrite W64.ultE hi.
+  by move: hlt hz; pose u := to_uint i{m}; pose v := to_uint len{m}; smt().
+wp; skip => &m /=; split.
++ by rewrite W64.ultE /=; case: (W64.to_uint_cmp len{m}).
+by move=> i1 l1 m1; pose u := to_uint i1; pose v := to_uint l1; smt().
+qed.
+
+lemma shake_absorb_prefix_correct (s0 : BArray200.t) (p0 l0 : W64.t) (x0 : BArray332.t) (m : W8.t list) :
+  phoare [M._shake_absorb_prefix :
+    st = s0 /\ pos = p0 /\ prefix = x0 /\ len = l0 /\ to_uint l0 <= 332 /\
+    to_uint p0 = size m %% 136 /\ lanes s0 = abs_state 136 m ==>
+    to_uint res.`2 < 136 /\
+    to_uint res.`2 = size (m ++ take (to_uint l0) (BArray332.to_list x0)) %% 136 /\
+    lanes res.`1 = abs_state 136 (m ++ take (to_uint l0) (BArray332.to_list x0))] = 1%r.
+proof. by conseq shake_absorb_prefix_ll (shake_absorb_prefix_h s0 p0 l0 x0 m). qed.
 
 end section.
