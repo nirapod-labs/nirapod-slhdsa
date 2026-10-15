@@ -353,16 +353,16 @@ $(EXPORTS_CONTROL): $(LIB_OBJ)
 # functions; test_stack_base the same with the scalar variant selected for
 # every set, and on x86-64 test_stack_avx2 with the choice of a CPU that
 # has AVX2 and not the SHA extensions, see tests/abi/dispatch_base.c; it
-# fails on an x86-64 host without AVX2, whose figures it cannot measure) and
-# test_entropy (the operating system's random source made to
-# fail).
+# fails on an x86-64 host without AVX2, whose figures it cannot measure),
+# test_entropy (the operating system's random source made to fail) and
+# test_buffers (threads on distinct buffers, unaligned buffers).
 
 CORE_TESTS := $(OUT)/tests/test_core $(OUT)/tests/test_negative \
               $(OUT)/tests/test_stack $(OUT)/tests/test_registers \
               $(OUT)/tests/test_acvp $(OUT)/tests/test_acvp_production \
               $(OUT)/tests/test_production $(OUT)/tests/test_stack_production \
               $(OUT)/tests/test_stack_base \
-              $(OUT)/tests/test_entropy
+              $(OUT)/tests/test_entropy $(OUT)/tests/test_buffers
 ifeq ($(ARCH),x86_64)
 CORE_TESTS += $(OUT)/tests/test_stack_avx2
 endif
@@ -431,6 +431,10 @@ $(OUT)/tests/test_stack_production: $(TESTS_DIR)/abi/test_stack.c $(LIB)
 $(OUT)/tests/test_entropy: $(TESTS_DIR)/negative/test_entropy.c $(LIB)
 	@mkdir -p $(@D)
 	$(PRODUCTION_TEST_CC) -o $@ $< $(LIB)
+
+$(OUT)/tests/test_buffers: $(TESTS_DIR)/negative/test_buffers.c $(LIB)
+	@mkdir -p $(@D)
+	$(PRODUCTION_TEST_CC) -pthread -o $@ $< $(LIB)
 
 # Stack depth and residue of the exports (tests/abi/test_stack.c), and its
 # negative control: two units compiled without stack zeroization, which
@@ -562,6 +566,7 @@ check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
 	$(if $(filter x86_64,$(ARCH)),$(OUT)/tests/test_stack_avx2)
 	$(OUT)/tests/test_registers
 	$(OUT)/tests/test_entropy
+	$(OUT)/tests/test_buffers
 ifeq ($(strip $(JASMINC)),)
 	@echo "test_stack (negative control): NOT RUN (needs JASMINC)"
 	@echo "test_fault: NOT RUN (needs JASMINC)"

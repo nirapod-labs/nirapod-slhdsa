@@ -41,6 +41,20 @@
  *                 every other check (a NULL key included), by keygen, the
  *                 four signing functions and the testing signing and
  *                 key-generation functions
+ *     domains     a pure signature under every pre-hash function, a
+ *                 pre-hash signature under pure verification and under
+ *                 each of the other eleven pre-hash functions: all
+ *                 invalid; only the matching pair verifies
+ *     interfaces  internal and external signatures of the same message
+ *                 do not stand for each other; the external signature is
+ *                 the internal signature of M' = 0x00 || |ctx| || ctx || M
+ *     keys        all-zero and all-0xFF public keys reject a valid
+ *                 signature; such secret keys sign nothing (fault check)
+ *     lengths     messages that leave H_msg and PRF_msg at the edges of
+ *                 their last hash block, and of 1 MiB; contexts of 0, 1,
+ *                 254 and 255 bytes: each signature is
+ *                 the internal signature of its M', verifies, and fails
+ *                 when the message or the context loses its last byte
  *
  * The checks run on SLH-DSA-SHAKE-128f and SLH-DSA-SHA2-128f, the fastest
  * set of each hash family. Exit status 0 when every check passes.
@@ -687,6 +701,257 @@ static void test_overlap(nirapod_slhdsa_set set, const uint8_t *pk, const uint8_
     printf("%-20s overlap: keygen, 4 signing functions, testing API refused before writing\n", name);
 }
 
+/*
+ * Pure and pre-hash signatures, and signatures under different pre-hash
+ * functions, do not stand for each other: M' starts with 0x00 for pure
+ * SLH-DSA and 0x01 for HashSLH-DSA, and carries the pre-hash function's
+ * OID (FIPS 205 Algorithms 22 to 25). Every pair of the 12 pre-hash
+ * functions is tried, the matching ones included.
+ */
+static void test_domains(nirapod_slhdsa_set set, const uint8_t *pk, const uint8_t *sk)
+{
+    const char *name = nirapod_slhdsa_set_name(set);
+    size_t pk_len = nirapod_slhdsa_public_key_bytes(set);
+    size_t sk_len = nirapod_slhdsa_secret_key_bytes(set);
+    size_t sig_len = nirapod_slhdsa_signature_bytes(set);
+    uint8_t msg[16], ctx[2] = { 'p', 'h' };
+    nirapod_slhdsa_status st;
+    unsigned a, b;
+
+    memset(msg, 0x6D, sizeof(msg));
+    st = nirapod_slhdsa_sign_deterministic(set, sig, sig_len, msg, sizeof(msg), ctx, 2, sk, sk_len);
+    CHECK(st == NIRAPOD_SLHDSA_OK, "%s pure sign: %d", name, st);
+    for (b = 1; b <= 12; b++) {
+        st = nirapod_slhdsa_hash_verify(set, (nirapod_slhdsa_prehash)b, sig, sig_len, msg, sizeof(msg),
+                                        ctx, 2, pk, pk_len);
+        CHECK(st == NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE, "%s pure signature, hash_verify ph %u: %d",
+              name, b, st);
+    }
+
+    for (a = 1; a <= 12; a++) {
+        st = nirapod_slhdsa_hash_sign_deterministic(set, (nirapod_slhdsa_prehash)a, sig, sig_len,
+                                                    msg, sizeof(msg), ctx, 2, sk, sk_len);
+        CHECK(st == NIRAPOD_SLHDSA_OK, "%s hash_sign ph %u: %d", name, a, st);
+        st = nirapod_slhdsa_verify(set, sig, sig_len, msg, sizeof(msg), ctx, 2, pk, pk_len);
+        CHECK(st == NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE, "%s ph %u signature, pure verify: %d",
+              name, a, st);
+        for (b = 1; b <= 12; b++) {
+            st = nirapod_slhdsa_hash_verify(set, (nirapod_slhdsa_prehash)b, sig, sig_len, msg,
+                                            sizeof(msg), ctx, 2, pk, pk_len);
+            CHECK(st == (a == b ? NIRAPOD_SLHDSA_OK : NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE),
+                  "%s ph %u signature, hash_verify ph %u: %d", name, a, b, st);
+        }
+    }
+    printf("%-20s domains: pure and 12 pre-hash functions, 13 x 13 sign/verify pairs\n", name);
+}
+
+/* The largest message of test_lengths, and its M' (0x00 || 1 byte || context). */
+#define BIG_MESSAGE ((size_t)1 << 20)
+
+static uint8_t big[BIG_MESSAGE];
+static uint8_t mprime[BIG_MESSAGE + 2 + 255];
+static uint8_t sig2[NIRAPOD_SLHDSA_MAX_SIGNATURE_BYTES];
+
+/* M' of pure SLH-DSA, FIPS 205 Algorithm 22 line 8: 0x00 || |ctx| || ctx || M. */
+static size_t pure_mprime(const uint8_t *msg, size_t msg_len, const uint8_t *ctx, size_t ctx_len)
+{
+    mprime[0] = 0x00;
+    mprime[1] = (uint8_t)ctx_len;
+    memcpy(mprime + 2, ctx, ctx_len);
+    memcpy(mprime + 2 + ctx_len, msg, msg_len);
+    return 2 + ctx_len + msg_len;
+}
+
+/*
+ * The external functions against the internal ones. A signature of the
+ * external interface is the internal signature of M', and verifies
+ * internally on M' only; an internal signature of M is not an external
+ * signature of M, under any context, nor the other way round.
+ */
+static void test_interfaces(nirapod_slhdsa_set set, const uint8_t *pk, const uint8_t *sk)
+{
+    const char *name = nirapod_slhdsa_set_name(set);
+    size_t pk_len = nirapod_slhdsa_public_key_bytes(set);
+    size_t sk_len = nirapod_slhdsa_secret_key_bytes(set);
+    size_t sig_len = nirapod_slhdsa_signature_bytes(set);
+    uint8_t msg[24], ctx[3] = { 'i', 'n', 't' };
+    size_t mp_len;
+    nirapod_slhdsa_status st;
+
+    memset(msg, 0x17, sizeof(msg));
+    mp_len = pure_mprime(msg, sizeof(msg), ctx, 3);
+
+    st = nirapod_slhdsa_testing_sign_internal(NULL, set, sig, sig_len, msg, sizeof(msg), sk, sk_len,
+                                              NULL, 0);
+    CHECK(st == NIRAPOD_SLHDSA_OK, "%s sign_internal(M): %d", name, st);
+    CHECK(nirapod_slhdsa_verify(set, sig, sig_len, msg, sizeof(msg), NULL, 0, pk, pk_len) ==
+              NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE, "%s internal signature of M, verify(M)", name);
+    CHECK(nirapod_slhdsa_verify(set, sig, sig_len, msg, sizeof(msg), ctx, 3, pk, pk_len) ==
+              NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE, "%s internal signature of M, verify(M, ctx)", name);
+    CHECK(nirapod_slhdsa_hash_verify(set, NIRAPOD_SLHDSA_PREHASH_SHA2_256, sig, sig_len, msg,
+                                     sizeof(msg), NULL, 0, pk, pk_len) ==
+              NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE, "%s internal signature of M, hash_verify(M)", name);
+
+    st = nirapod_slhdsa_sign_deterministic(set, sig, sig_len, msg, sizeof(msg), ctx, 3, sk, sk_len);
+    CHECK(st == NIRAPOD_SLHDSA_OK, "%s sign_deterministic: %d", name, st);
+    CHECK(nirapod_slhdsa_testing_verify_internal(NULL, set, sig, sig_len, msg, sizeof(msg), pk, pk_len) ==
+              NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE, "%s external signature, verify_internal(M)", name);
+    CHECK(nirapod_slhdsa_testing_verify_internal(NULL, set, sig, sig_len, mprime, mp_len, pk, pk_len) ==
+              NIRAPOD_SLHDSA_OK, "%s external signature, verify_internal(M')", name);
+    st = nirapod_slhdsa_testing_sign_internal(NULL, set, sig2, sig_len, mprime, mp_len, sk, sk_len,
+                                              NULL, 0);
+    CHECK(st == NIRAPOD_SLHDSA_OK && memcmp(sig, sig2, sig_len) == 0,
+          "%s sign_deterministic(M, ctx) == sign_internal(M'): %d", name, st);
+
+    st = nirapod_slhdsa_hash_sign_deterministic(set, NIRAPOD_SLHDSA_PREHASH_SHA2_256, sig, sig_len,
+                                                msg, sizeof(msg), ctx, 3, sk, sk_len);
+    CHECK(st == NIRAPOD_SLHDSA_OK, "%s hash_sign_deterministic: %d", name, st);
+    CHECK(nirapod_slhdsa_testing_verify_internal(NULL, set, sig, sig_len, msg, sizeof(msg), pk, pk_len) ==
+              NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE, "%s pre-hash signature, verify_internal(M)", name);
+    CHECK(nirapod_slhdsa_testing_verify_internal(NULL, set, sig, sig_len, mprime, mp_len, pk, pk_len) ==
+              NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE, "%s pre-hash signature, verify_internal(pure M')", name);
+    printf("%-20s interfaces: internal and external signatures kept apart, M' encoding\n", name);
+}
+
+/*
+ * Degenerate keys. A public key of all zero or all 0xFF bytes rejects a
+ * valid signature of another key, and a secret key of all zero or all
+ * 0xFF bytes, whose PK.root does not belong to its seeds, signs nothing:
+ * the fault check withholds the signature (docs/API.md, "Fault check").
+ */
+static void test_degenerate_keys(nirapod_slhdsa_set set, const uint8_t *pk, const uint8_t *sk)
+{
+    const char *name = nirapod_slhdsa_set_name(set);
+    size_t pk_len = nirapod_slhdsa_public_key_bytes(set);
+    size_t sk_len = nirapod_slhdsa_secret_key_bytes(set);
+    size_t sig_len = nirapod_slhdsa_signature_bytes(set);
+    uint8_t msg[4] = { 'k', 'e', 'y', 's' }, key[128];
+    nirapod_slhdsa_status st;
+    int fill;
+
+    st = nirapod_slhdsa_sign_deterministic(set, sig, sig_len, msg, 4, NULL, 0, sk, sk_len);
+    CHECK(st == NIRAPOD_SLHDSA_OK, "%s sign: %d", name, st);
+    CHECK(nirapod_slhdsa_verify(set, sig, sig_len, msg, 4, NULL, 0, pk, pk_len) == NIRAPOD_SLHDSA_OK,
+          "%s verify under its own key", name);
+
+    for (fill = 0x00; fill <= 0xFF; fill += 0xFF) {
+        memset(key, fill, sizeof(key));
+        st = nirapod_slhdsa_verify(set, sig, sig_len, msg, 4, NULL, 0, key, pk_len);
+        CHECK(st == NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE, "%s verify, pk of 0x%02X: %d", name, fill, st);
+        st = nirapod_slhdsa_hash_verify(set, NIRAPOD_SLHDSA_PREHASH_SHAKE128, sig, sig_len, msg, 4,
+                                        NULL, 0, key, pk_len);
+        CHECK(st == NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE, "%s hash_verify, pk of 0x%02X: %d",
+              name, fill, st);
+
+        memset(sigbuf, CANARY, sizeof(sigbuf));
+        st = nirapod_slhdsa_sign_deterministic(set, sigbuf, sig_len, msg, 4, NULL, 0, key, sk_len);
+        CHECK(st == NIRAPOD_SLHDSA_ERROR_FAULT && all_zero(sigbuf, sig_len) &&
+                  all_canary(sigbuf + sig_len, GUARD),
+              "%s sign_deterministic, sk of 0x%02X: %d, output state", name, fill, st);
+        memset(sigbuf, CANARY, sizeof(sigbuf));
+        st = nirapod_slhdsa_hash_sign(set, NIRAPOD_SLHDSA_PREHASH_SHA2_512, sigbuf, sig_len, msg, 4,
+                                      NULL, 0, key, sk_len);
+        CHECK(st == NIRAPOD_SLHDSA_ERROR_FAULT && all_zero(sigbuf, sig_len) &&
+                  all_canary(sigbuf + sig_len, GUARD),
+              "%s hash_sign, sk of 0x%02X: %d, output state", name, fill, st);
+    }
+    printf("%-20s degenerate keys: all-zero and all-0xFF keys reject and refuse\n", name);
+}
+
+/*
+ * Edge lengths. The message reaches the hash behind a prefix: H_msg hashes
+ * R, PK.seed and PK.root (3n bytes) before M', and PRF_msg hashes opt_rand
+ * after the HMAC key block (SHA2) or after SK.prf (n bytes, SHAKE). M' adds
+ * two bytes and the context. For each of the two inputs, with the 3-byte
+ * context used here, the message lengths below leave the hashed input at
+ * the edges of the last block: for SHA-256 and SHA-512 (blocks of 64 and
+ * 128 bytes, length fields of 8 and 16) where the padding still fits, where
+ * it no longer does, and one byte short of and at the block end; for
+ * SHAKE256 (rate 136) one byte short of the block end, where the padding is
+ * the single byte 0x9F, at the end and one byte past. Lengths 0, 1 and
+ * 1 MiB are added. The context then takes lengths 0, 1, 254 and 255, with a
+ * 5-byte message. Each signature equals sign_internal on the M' built here,
+ * verifies, and fails without the message's or the context's last byte.
+ */
+#define MSG_CTX 3
+
+/* The message length that leaves prefix + M' at residue modulo block. */
+static size_t length_at(size_t prefix, size_t block, size_t residue)
+{
+    return (residue + block - prefix % block) % block;
+}
+
+static void test_lengths(nirapod_slhdsa_set set, const uint8_t *pk, const uint8_t *sk)
+{
+    static const size_t CTX[] = { 0, 1, 254, 255 };
+    const char *name = nirapod_slhdsa_set_name(set);
+    size_t pk_len = nirapod_slhdsa_public_key_bytes(set);
+    size_t sk_len = nirapod_slhdsa_secret_key_bytes(set);
+    size_t sig_len = nirapod_slhdsa_signature_bytes(set);
+    size_t n = pk_len / 2;
+    int sha2 = strncmp(name, "SLH-DSA-SHA2-", 13) == 0;
+    /* SHA-256 in category 1 (n = 16), SHA-512 above (FIPS 205 section 11.2). */
+    size_t block = sha2 ? (n == 16 ? 64 : 128) : 136;
+    size_t lf = block / 8;
+    size_t sha2_at[4], shake_at[3], n_at = sha2 ? 4 : 3;
+    size_t prf_prefix = (sha2 ? block + n : 2 * n) + 2 + MSG_CTX;
+    size_t hmsg_prefix = 3 * n + 2 + MSG_CTX;
+    size_t msg[3 + 2 * 4], n_msg = 0;
+    uint8_t ctx[255];
+    size_t i, m, c, mp_len;
+    nirapod_slhdsa_status st;
+
+    sha2_at[0] = block - 1 - lf;
+    sha2_at[1] = block - lf;
+    sha2_at[2] = block - 1;
+    sha2_at[3] = 0;
+    shake_at[0] = block - 1;
+    shake_at[1] = 0;
+    shake_at[2] = 1;
+    msg[n_msg++] = 0;
+    msg[n_msg++] = 1;
+    for (i = 0; i < n_at; i++) {
+        size_t at = sha2 ? sha2_at[i] : shake_at[i];
+
+        msg[n_msg++] = length_at(hmsg_prefix, block, at);
+        msg[n_msg++] = length_at(prf_prefix, block, at);
+    }
+    msg[n_msg++] = BIG_MESSAGE;
+
+    for (i = 0; i < sizeof(big); i++) {
+        big[i] = (uint8_t)(i * 29 + 3);
+    }
+    memset(ctx, 0xC7, sizeof(ctx));
+
+    for (i = 0; i < n_msg + sizeof(CTX) / sizeof(CTX[0]); i++) {
+        int by_msg = i < n_msg;
+
+        m = by_msg ? msg[i] : 5;
+        c = by_msg ? MSG_CTX : CTX[i - n_msg];
+        st = nirapod_slhdsa_sign_deterministic(set, sig, sig_len, big, m, ctx, c, sk, sk_len);
+        CHECK(st == NIRAPOD_SLHDSA_OK, "%s sign, message %zu, context %zu: %d", name, m, c, st);
+        mp_len = pure_mprime(big, m, ctx, c);
+        st = nirapod_slhdsa_testing_sign_internal(NULL, set, sig2, sig_len, mprime, mp_len, sk, sk_len,
+                                                  NULL, 0);
+        CHECK(st == NIRAPOD_SLHDSA_OK && memcmp(sig, sig2, sig_len) == 0,
+              "%s message %zu, context %zu: sign_internal(M') differs", name, m, c);
+        CHECK(nirapod_slhdsa_verify(set, sig, sig_len, big, m, ctx, c, pk, pk_len) == NIRAPOD_SLHDSA_OK,
+              "%s verify, message %zu, context %zu", name, m, c);
+        if (m > 0) {
+            CHECK(nirapod_slhdsa_verify(set, sig, sig_len, big, m - 1, ctx, c, pk, pk_len) ==
+                      NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE,
+                  "%s verify, message %zu shortened, context %zu", name, m, c);
+        }
+        if (c > 0) {
+            CHECK(nirapod_slhdsa_verify(set, sig, sig_len, big, m, ctx, c - 1, pk, pk_len) ==
+                      NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE,
+                  "%s verify, message %zu, context %zu shortened", name, m, c);
+        }
+    }
+    printf("%-20s lengths: %zu message and 4 context lengths, against sign_internal(M')\n", name,
+           n_msg);
+}
+
 int main(void)
 {
     const nirapod_slhdsa_set sets[2] = { NIRAPOD_SLHDSA_SHAKE_128F, NIRAPOD_SLHDSA_SHA2_128F };
@@ -707,6 +972,10 @@ int main(void)
         test_fault_check(sets[i], sk);
         test_jasmin_selector(sets[i], pk, sk);
         test_overlap(sets[i], pk, sk);
+        test_domains(sets[i], pk, sk);
+        test_interfaces(sets[i], pk, sk);
+        test_degenerate_keys(sets[i], pk, sk);
+        test_lengths(sets[i], pk, sk);
     }
 
     printf("test_negative: %s (%d failures)\n", failures == 0 ? "PASS" : "FAIL", failures);
