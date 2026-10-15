@@ -5,23 +5,36 @@
  * Thash.ec
  * ========
  *
- * The one-block tweakable hashes of the SHAKE parameter sets (FIPS 205
- * section 11.1): _thash_f, _thash_prf and _thash_h of
- * src/slhdsa/thash_shake.jinc compute F, PRF and H.
+ * The tweakable hashes of the SHAKE parameter sets (FIPS 205 section
+ * 11.1): _thash_f, _thash_prf, _thash_h, _thash_t_len and _thash_t_k of
+ * src/slhdsa/thash_shake.jinc compute F, PRF, H, T_len and T_k.
  *
- * Each procedure writes PK.seed and ADRS into a zeroed state
- * (__shake_seeded_head), stores the n- or 2n-byte payload in the lanes
- * after them, adds the SHAKE domain byte after the message and the pad
- * bit at byte 135 (__shake_pad_lanes), permutes once and returns the
+ * F, PRF and H write PK.seed and ADRS into a zeroed state
+ * (__shake_seeded_head), store the n- or 2n-byte payload in the lanes
+ * after them, add the SHAKE domain byte after the message and the pad
+ * bit at byte 135 (__shake_pad_lanes), permute once and return the
  * first n bytes (__shake_extract_n). The message PK.seed || ADRS || M is
  * 2n + 32 or 3n + 32 bytes, at most 128, so it is shorter than one
  * SHAKE256 block (136 bytes): one permutation absorbs and squeezes it
  * (shake_one_block, from the lemmas of ShakeSponge.ec).
  *
+ * T_l (thash_shake_t.jinc, l = len or k) absorbs the l n-byte message
+ * over several blocks, lane by lane: lane pos of the block takes word i
+ * of M, and a full block (pos = 17) is permuted. The loop keeps the
+ * sponge state of ShakeSponge.ec for the bytes absorbed so far,
+ *
+ *     lanes st = abs_state 136 (PK.seed || ADRS || M[0 : 8 i])
+ *     8 pos    = |PK.seed || ADRS || M[0 : 8 i]| mod 136,
+ *
+ * one step being absorb_lane_lt or absorb_lane_eq. The padding then goes
+ * in at lane pos and lane 16, and shake_final gives SHAKE256 of the
+ * whole message.
+ *
  * Model. The procedures depend on n, so this file is checked against the
  * model of each SHAKE set (correctness/core/shake/). Arrays are viewed as
  * byte lists by to_list: Node for n bytes, Node2 for 2n, BArray32 for the
- * address. The context ctx is the n-byte PK.seed (Node).
+ * address, TLenIn and TKIn for the len n and k n bytes of a T_l input.
+ * The context ctx is the n-byte PK.seed (Node).
  *
  * Premise. The permutation is the kernel's _keccakf1600 in the set's
  * model. Its correctness is the section hypothesis keccakf1600_h: it
@@ -33,11 +46,13 @@
  * Theorems (total correctness, every input):
  *     thash_f_correct     F(PK.seed, ADRS, M1), M1 of n bytes;
  *     thash_prf_correct   PRF(PK.seed, SK.seed, ADRS);
- *     thash_h_correct     H(PK.seed, ADRS, M2), M2 of 2n bytes.
+ *     thash_h_correct     H(PK.seed, ADRS, M2), M2 of 2n bytes;
+ *     thash_t_len_correct T_len(PK.seed, ADRS, M), M of len n bytes;
+ *     thash_t_k_correct   T_k(PK.seed, ADRS, M), M of k n bytes.
  *)
 
 require import AllCore List IntDiv.
-from Jasmin require import JWord JUtils.
+from Jasmin require import JWord JUtils Jslh.
 from JazzEC require import Array25 WArray200.
 require import Bytes FIPS205_Params FIPS205_Hash FIPS202_Bytes.
 require import BArray32 BArray200 KeccakState Keccakf1600_Spec Keccak1600_Spec.
@@ -141,6 +156,143 @@ rewrite shake256E shake256_one 1:/# -hsp' -hsk.
 apply (eq_from_nth W8.zero); first by rewrite Node.size_to_list size_take 1:/# size_state2bytes /#.
 move=> j; rewrite Node.size_to_list => hj.
 by rewrite nth_take 1,2:/# state2bytesE stbytes_lanes 1:/# hr /#.
+qed.
+
+(* A lane XOR is a byte XOR of the lane's eight bytes at byte 8 p. *)
+lemma lanes_xor_at (st : BArray200.t) (p : int) (w : W64.t) (bs : W8.t list) :
+  0 <= p < 25 => size bs = 8 => (forall k, 0 <= k < 8 => w \bits8 k = nth W8.zero bs k) =>
+  stbytes (lanes (BArray200.set64d st (8 * p) (BArray200.get64d st (8 * p) `^` w))) =
+  xorb_at (stbytes (lanes st)) (8 * p) bs.
+proof.
+move=> hp hs hw; apply WArray200.tP => j hj.
+rewrite stbytes_lanes // get8_xor64 // xorb_atE // stbytes_lanes // hs.
+by case: (8 * p <= j < 8 * p + 8) => h //; rewrite hw /#.
+qed.
+
+(* One input lane XORed in at lane p < 16 extends the absorbed message by its
+   eight bytes; at lane 16 it completes the block, which is then permuted. *)
+lemma absorb_lane_lt (st : BArray200.t) (m bs : W8.t list) (p : int) (w : W64.t) :
+  0 <= p => p + 1 < 17 => 8 * p = size m %% 136 => size bs = 8 =>
+  (forall k, 0 <= k < 8 => w \bits8 k = nth W8.zero bs k) =>
+  lanes st = abs_state 136 m =>
+  lanes (BArray200.set64d st (8 * p) (BArray200.get64d st (8 * p) `^` w)) = abs_state 136 (m ++ bs).
+proof.
+move=> h0 h1 hp hs hw hst; apply stbytes_inj.
+have hx := lanes_xor_at st p w bs _ hs hw; first smt().
+have hc := abs_cat_lt 136 m bs _ _; [by [] | by rewrite hs -hp /# | idtac].
+by rewrite hx hc hst hp.
+qed.
+
+lemma absorb_lane_eq (st : BArray200.t) (m bs : W8.t list) (p : int) (w : W64.t) :
+  p + 1 = 17 => 8 * p = size m %% 136 => size bs = 8 =>
+  (forall k, 0 <= k < 8 => w \bits8 k = nth W8.zero bs k) =>
+  lanes st = abs_state 136 m =>
+  keccak_f1600_op (lanes (BArray200.set64d st (8 * p) (BArray200.get64d st (8 * p) `^` w))) =
+  abs_state 136 (m ++ bs).
+proof.
+move=> h1 hp hs hw hst.
+have hc := abs_cat_eq 136 m bs _ _; [by [] | by rewrite hs -hp /# | idtac].
+have hx := lanes_xor_at st p w bs _ hs hw; first smt().
+rewrite hc; congr; apply stbytes_inj.
+by rewrite stwordsK hx hst hp.
+qed.
+
+(* Padding at lane p and lane 16, one permutation, the first n bytes: the
+   SHAKE256 hash of the absorbed message (shake_one_block for any length). *)
+lemma shake_final (msg : W8.t list) (p : int) (sa sc : BArray200.t) (r : Node.t) :
+  0 <= p < 17 => 8 * p = size msg %% 136 => lanes sa = abs_state 136 msg =>
+  lanes sc = keccak_f1600_op (lanes
+    (BArray200.set64d (BArray200.set64d sa (8 * p) (BArray200.get64d sa (8 * p) `^` W64.of_int 31))
+       (8 * 16) (BArray200.get64d (BArray200.set64d sa (8 * p) (BArray200.get64d sa (8 * p) `^` W64.of_int 31)) (8 * 16)
+          `^` W64.of_int 9223372036854775808))) =>
+  (forall j, 0 <= j < P.`n => nth W8.zero (Node.to_list r) j = sc.[j]) =>
+  Node.to_list r = shake256 msg (8 * P.`n).
+proof.
+move=> hp hpm hsa hsc hr; have hn := n_val; have hp25 : 0 <= p < 25 by smt().
+pose sb1 := BArray200.set64d sa (8 * p) (BArray200.get64d sa (8 * p) `^` W64.of_int 31).
+pose sb := BArray200.set64d sb1 (8 * 16) (BArray200.get64d sb1 (8 * 16) `^` W64.of_int 9223372036854775808).
+have hsb : lanes sb = ABSORB1600 SHAKE_DS_BYTE 136 msg.
++ rewrite -abs_final //.
+  rewrite -hpm /=.
+  apply stbytes_inj; rewrite stwordsK; apply WArray200.tP => j hj.
+  rewrite stbytes_lanes // /sb get8_xor64 // /sb1 get8_xor64 //.
+  rewrite !xorb_atE //= -hsa stbytes_lanes // /SHAKE_DS_BYTE.
+  have := bits8_ds (j - 8 * p); have := bits8_top (j - 128).
+  case: (8 * p <= j < 8 * p + 8) => ha; case: (128 <= j < 136) => hb.
+  + move=> h1 h2; rewrite h1 1:/# h2 1:/#; have -> : p = 16 by smt().
+    by case: (j = 128) => ?; case: (j = 135) => ? /=; smt(W8.xorw0).
+  + move=> h1 h2; rewrite h2 1:/# (ifF (135 <= j < 136)) 1:/#.
+    by case: (j - 8 * p = 0) => hz /=; first by rewrite ifT 1:/#.
+  + move=> h1 h2; rewrite h1 1:/# (ifF (8 * p <= j < 8 * p + 1)) 1:/#.
+    case: (j = 135) => hz; first by rewrite hz.
+    by rewrite (ifF (j - 128 = 7)) 1:/# (ifF (135 <= j < 136)) 1:/#.
+  + by move=> h1 h2; rewrite (ifF (135 <= j < 136)) 1:/# (ifF (8 * p <= j < 8 * p + 1)) 1:/#.
+rewrite shake256E shake256_one 1:/# -hsb -hsc.
+apply (eq_from_nth W8.zero); first by rewrite Node.size_to_list size_take 1:/# size_state2bytes /#.
+move=> j; rewrite Node.size_to_list => hj.
+by rewrite nth_take 1,2:/# state2bytesE stbytes_lanes 1:/# hr /#.
+qed.
+
+lemma size_word8 ['a] (X : 'a list) (i : int) : 0 <= i => 8 * i + 8 <= size X =>
+  size (take 8 (drop (8 * i) X)) = 8.
+proof. by move=> h0 h1; smt(size_take size_drop). qed.
+
+lemma mod_step (p a : int) : 0 <= p => p < 17 => 8 * p = a %% 136 =>
+  8 * (p + 1) %% 136 = (a + 8) %% 136.
+proof. by move=> h0 h1 h; rewrite -modzDml -h (_ : 8 * (p + 1) = 8 * p + 8) 1:/#. qed.
+
+lemma w64_inc17 (x : W64.t) : to_uint x < 17 =>
+  (x + W64.one = W64.of_int 17 <=> to_uint x + 1 = 17).
+proof. by move=> h; rewrite W64.to_uint_eq W64.to_uintD_small /= /#. qed.
+
+(* The position clamp of the T_l and T_k absorb loop never fires: the position stays below the rate. *)
+lemma clamp17 (x c : W64.t) : to_uint x < 17 => ((W64.of_int 17 \ule x) ? c : x) = x.
+proof. by move=> h; rewrite W64.uleE W64.of_uintK ifF 1:/#. qed.
+
+lemma w64_inc_bound (x : W64.t) (b : int) : to_uint x < b => b < W64.modulus =>
+  to_uint (x + W64.one) = to_uint x + 1.
+proof.
+move=> h hb; have h1 : to_uint W64.one = 1 by exact W64.to_uint1.
+have hm : to_uint x + 1 < W64.modulus by move: h hb; pose M := W64.modulus; pose u := to_uint x; smt().
+by rewrite W64.to_uintD_small h1.
+qed.
+
+(* The state after __shake_seeded_head holds PK.seed || ADRS, not yet permuted. *)
+lemma head_absorbed (c0 : Node.t) (a0 : BArray32.t) (st : BArray200.t) :
+  (forall j, 0 <= j < 200 => st.[j] = nth W8.zero (Node.to_list c0 ++ BArray32.to_list a0) j) =>
+  lanes st = abs_state 136 (Node.to_list c0 ++ BArray32.to_list a0).
+proof.
+move=> hst; have hs : size (Node.to_list c0 ++ BArray32.to_list a0) = P.`n + 32.
++ by rewrite size_cat Node.size_to_list BArray32.size_to_list; smt(n_val).
+apply stbytes_inj; apply WArray200.tP => j hj.
+by rewrite stbytes_lanes // abs_short // 1:/# hst.
+qed.
+
+(* The eight bytes of word i of a T_len or T_k input. *)
+lemma tlen_word (x0 : TLenIn.t) (i : int) : 0 <= i => 8 * i + 8 <= size (TLenIn.to_list x0) => forall k, 0 <= k < 8 =>
+  TLenIn.get64d x0 (8 * i) \bits8 k = nth W8.zero (take 8 (drop (8 * i) (TLenIn.to_list x0))) k.
+proof.
+move=> hi hs k hk.
+have -> : nth W8.zero (take 8 (drop (8 * i) (TLenIn.to_list x0))) k =
+          nth W8.zero (TLenIn.to_list x0) (8 * i + k).
++ have h1 := nth_take W8.zero 8 (drop (8 * i) (TLenIn.to_list x0)) k _ _; [smt() | smt() | idtac].
+  have h2 := nth_drop W8.zero (8 * i) (TLenIn.to_list x0) k _ _; [smt() | smt() | idtac].
+  by rewrite h1 h2.
+rewrite TLenIn.get_to_list.
+by rewrite TLenIn.get64d_byte 1:/#; congr; smt().
+qed.
+
+lemma tk_word (x0 : TKIn.t) (i : int) : 0 <= i => 8 * i + 8 <= size (TKIn.to_list x0) => forall k, 0 <= k < 8 =>
+  TKIn.get64d x0 (8 * i) \bits8 k = nth W8.zero (take 8 (drop (8 * i) (TKIn.to_list x0))) k.
+proof.
+move=> hi hs k hk.
+have -> : nth W8.zero (take 8 (drop (8 * i) (TKIn.to_list x0))) k =
+          nth W8.zero (TKIn.to_list x0) (8 * i + k).
++ have h1 := nth_take W8.zero 8 (drop (8 * i) (TKIn.to_list x0)) k _ _; [smt() | smt() | idtac].
+  have h2 := nth_drop W8.zero (8 * i) (TKIn.to_list x0) k _ _; [smt() | smt() | idtac].
+  by rewrite h1 h2.
+rewrite TKIn.get_to_list.
+by rewrite TKIn.get64d_byte 1:/#; congr; smt().
 qed.
 
 lemma keccak_init_ll : islossless M.__keccak_init.
@@ -308,5 +460,249 @@ lemma thash_h_correct (x0 : Node2.t) (c0 : Node.t) (a0 : BArray32.t) :
   phoare [M._thash_h : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
     Node.to_list res.`1 = H P (Node.to_list c0) (BArray32.to_list a0) (Node2.to_list x0)] = 1%r.
 proof. by conseq thash_h_ll (thash_h_h x0 c0 a0). qed.
+
+local lemma thash_t_len_h (x0 : TLenIn.t) (c0 : Node.t) (a0 : BArray32.t) :
+  hoare [M.tLen___thash_t : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+    Node.to_list res.`1 = T_l P (Node.to_list c0) (BArray32.to_list a0) (TLenIn.to_list x0)].
+proof.
+proc.
+seq 4 : (in_0 = x0 /\ forall j, 0 <= j < 200 =>
+           st.[j] = nth W8.zero (Node.to_list c0 ++ BArray32.to_list a0) j).
++ by ecall (seeded_head_h c0 a0); auto.
+seq 4 : (0 <= to_uint pos < 17 /\
+         8 * to_uint pos = size ((Node.to_list c0 ++ BArray32.to_list a0) ++ TLenIn.to_list x0) %% 136 /\
+         lanes st = abs_state 136 ((Node.to_list c0 ++ BArray32.to_list a0) ++ TLenIn.to_list x0)).
++ while (in_0 = x0 /\ 0 <= to_uint i <= size (TLenIn.to_list x0) %/ 8 /\
+         (more <=> to_uint i < size (TLenIn.to_list x0) %/ 8) /\ 0 <= to_uint pos < 17 /\
+         8 * to_uint pos = size ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * to_uint i) (TLenIn.to_list x0)) %% 136 /\
+         lanes st = abs_state 136 ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * to_uint i) (TLenIn.to_list x0))).
+  + wp.
+    seq 3 : (#pre).
+    + by wp; skip => &m h; rewrite clamp17 1:/#; exact h.
+    seq 6 : (in_0 = x0 /\ 0 <= to_uint i < size (TLenIn.to_list x0) %/ 8 /\ (full <=> to_uint pos = 17) /\ 0 < to_uint pos <= 17 /\
+             (8 * to_uint pos) %% 136 = size ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * (to_uint i + 1)) (TLenIn.to_list x0)) %% 136 /\
+             (to_uint pos < 17 => lanes st = abs_state 136 ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * (to_uint i + 1)) (TLenIn.to_list x0))) /\
+             (to_uint pos = 17 => keccak_f1600_op (lanes st) = abs_state 136 ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * (to_uint i + 1)) (TLenIn.to_list x0)))).
+    + wp; skip => &m [#] hx hi0 hi1 hmore hp0 hp1 hpm hst hm /=.
+      have hW : to_uint i{m} < size (TLenIn.to_list x0) %/ 8 by rewrite -hmore.
+      have hsz : 8 * to_uint i{m} + 8 <= size (TLenIn.to_list x0) by move: hW; rewrite TLenIn.size_to_list /=; smt().
+      have hcat : take (8 * (to_uint i{m} + 1)) (TLenIn.to_list x0) =
+                  take (8 * to_uint i{m}) (TLenIn.to_list x0) ++ take 8 (drop (8 * to_uint i{m}) (TLenIn.to_list x0)).
+      + by rewrite (_ : 8 * (to_uint i{m} + 1) = 8 * to_uint i{m} + 8) 1:/# takeD /#.
+      have hbs := size_word8 (TLenIn.to_list x0) (to_uint i{m}) hi0 hsz.
+      have hw := tlen_word x0 (to_uint i{m}) hi0 hsz.
+      have hpos : to_uint (pos{m} + W64.one) = to_uint pos{m} + 1 by rewrite W64.to_uintD_small /#.
+      have hm' : 8 * (to_uint pos{m} + 1) %% 136 =
+                 size ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * (to_uint i{m} + 1)) (TLenIn.to_list x0)) %% 136.
+      + by rewrite hcat catA size_cat hbs; apply (mod_step _ _ hp0 hp1 hpm).
+      have hfull := w64_inc17 pos{m} hp1.
+      rewrite hpos hx /=; do !split.
+      + by [].
+      + by move=> _; move: hW; rewrite TLenIn.size_to_list.
+      + by rewrite -hfull.
+      + by rewrite hfull.
+      + by move: hp0 => /#.
+      + by move=> _; move: hp1 => /#.
+      + exact hm'.
+      + move=> hlt; rewrite hcat catA.
+        exact (absorb_lane_lt _ _ _ _ _ hp0 hlt hpm hbs hw hst).
+      move=> heq; rewrite hcat catA.
+      exact (absorb_lane_eq _ _ _ _ _ heq hpm hbs hw hst).
+    if.
+    + wp; ecall (keccakf1600_hoare st); wp; skip => &m [#] hx hi0 hi1 hfull hp0 hp1 hpm hlt heq hf.
+      move=> [s2 ms2] /= hs2; rewrite /protect_ptr /protect_64 /=.
+      have hp17 : to_uint pos{m} = 17 by rewrite -hfull.
+      have hb : size (TLenIn.to_list x0) %/ 8 < W64.modulus by rewrite TLenIn.size_to_list.
+      have hi1' := w64_inc_bound i{m} _ hi1 hb.
+      rewrite W64.ultE W64.of_uintK hi1' hx /=; move: hi0 hi1; rewrite !TLenIn.size_to_list /max /= => hi0 hi1.
+      do !split.
+      + by move: hi0; pose u := to_uint i{m}; smt().
+      + by move=> _; move: hi1; pose u := to_uint i{m}; smt().
+      + by rewrite -hpm hp17.
+      by rewrite hs2 heq.
+    wp; skip => &m [#] hx hi0 hi1 hfull hp0 hp1 hpm hlt heq hf.
+    have hp17 : to_uint pos{m} < 17 by smt().
+    have hb : size (TLenIn.to_list x0) %/ 8 < W64.modulus by rewrite TLenIn.size_to_list.
+    have hi1' := w64_inc_bound i{m} _ hi1 hb.
+    rewrite /= W64.ultE W64.of_uintK hi1' hx /=; move: hi0 hi1; rewrite !TLenIn.size_to_list /max /= => hi0 hi1.
+    have hsm : 8 * to_uint pos{m} %% 136 = 8 * to_uint pos{m}.
+    + by apply modz_small; move: hp0 hp17; pose u := to_uint pos{m}; smt().
+    do !split.
+    + by move: hi0; pose u := to_uint i{m}; smt().
+    + by move=> _; move: hi1; pose u := to_uint i{m}; smt().
+    + by move: hp0; pose u := to_uint pos{m}; smt().
+    + by move=> _; exact hp17.
+    + by rewrite -hpm hsm.
+    exact (hlt hp17).
+  wp; skip => &m [#] hx hst /=.
+  have hpre : size (Node.to_list c0 ++ BArray32.to_list a0) = P.`n + 32 by rewrite size_cat Node.size_to_list BArray32.size_to_list; smt(n_val).
+  split.
+  + rewrite take0 cats0 /max /= hpre n_val /=.
+    by split; [exact hx | exact (head_absorbed c0 a0 st{m} hst)].
+  move=> i1 x1 m1 p1 s1 hm1 [#] h0 h1 h2 h3 h4 h5 h6 h7.
+  have hX : take (8 * to_uint i1) (TLenIn.to_list x0) = TLenIn.to_list x0.
+  + rewrite take_oversize // TLenIn.size_to_list; move: h2 h3 hm1; rewrite /max /=.
+    by pose u := to_uint i1; smt().
+  by move: h6 h7; rewrite hX => h6 h7; split; [by split | by split].
+ecall (extract_n_h st); wp; ecall (keccakf1600_hoare st); wp.
+skip => &m [#] hp0 hp1 hpm hst [s2 ms2] /= hs2 r hr.
+rewrite /T_l family_shake /=.
+by apply (shake_final _ (to_uint pos{m}) st{m} s2 r) => //.
+qed.
+
+local lemma thash_t_len_ll : islossless M.tLen___thash_t.
+proof.
+proc; call extract_n_ll; wp; call keccakf1600_ll; wp.
+while (0 <= to_uint i <= size (TLenIn.to_list in_0) %/ 8 /\
+       (more <=> to_uint i < size (TLenIn.to_list in_0) %/ 8))
+      (size (TLenIn.to_list in_0) %/ 8 - to_uint i).
++ move=> z; sp; if.
+  + wp; call keccakf1600_ll; wp; skip => &m [] [p0 s0 m0] [#] _ _ _ _ _ _ _ h0 h1 hmore hm hz hf r /=.
+    have hb : size (TLenIn.to_list in_0{m}) %/ 8 < W64.modulus by rewrite TLenIn.size_to_list.
+    have hlt : to_uint i{m} < size (TLenIn.to_list in_0{m}) %/ 8 by rewrite -hmore.
+    have hi := w64_inc_bound i{m} _ hlt hb.
+    rewrite /protect_64 /= W64.ultE W64.of_uintK hi; move: h0 h1 hz hlt.
+    by rewrite !TLenIn.size_to_list /max /=; pose u := to_uint i{m}; smt().
+  wp; skip => &m [] [p0 s0 m0] [#] _ _ _ _ _ _ _ h0 h1 hmore hm hz hf.
+  have hb : size (TLenIn.to_list in_0{m}) %/ 8 < W64.modulus by rewrite TLenIn.size_to_list.
+  have hlt : to_uint i{m} < size (TLenIn.to_list in_0{m}) %/ 8 by rewrite -hmore.
+  have hi := w64_inc_bound i{m} _ hlt hb.
+  rewrite /= W64.ultE W64.of_uintK hi; move: h0 h1 hz hlt.
+  by rewrite !TLenIn.size_to_list /max /=; pose u := to_uint i{m}; smt().
+wp; call seeded_head_ll; wp; skip => &m /=; rewrite /max /=.
+by move=> i1 m1; pose u := to_uint i1; smt().
+qed.
+
+local lemma thash_t_len_p (x0 : TLenIn.t) (c0 : Node.t) (a0 : BArray32.t) :
+  phoare [M.tLen___thash_t : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+    Node.to_list res.`1 = T_l P (Node.to_list c0) (BArray32.to_list a0) (TLenIn.to_list x0)] = 1%r.
+proof. by conseq thash_t_len_ll (thash_t_len_h x0 c0 a0). qed.
+
+lemma thash_t_len_correct (x0 : TLenIn.t) (c0 : Node.t) (a0 : BArray32.t) :
+  phoare [M._thash_t_len : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+    Node.to_list res.`1 = T_l P (Node.to_list c0) (BArray32.to_list a0) (TLenIn.to_list x0)] = 1%r.
+proof. by proc; call (thash_t_len_p x0 c0 a0); auto. qed.
+
+local lemma thash_t_k_h (x0 : TKIn.t) (c0 : Node.t) (a0 : BArray32.t) :
+  hoare [M.tK___thash_t : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+    Node.to_list res.`1 = T_l P (Node.to_list c0) (BArray32.to_list a0) (TKIn.to_list x0)].
+proof.
+proc.
+seq 4 : (in_0 = x0 /\ forall j, 0 <= j < 200 =>
+           st.[j] = nth W8.zero (Node.to_list c0 ++ BArray32.to_list a0) j).
++ by ecall (seeded_head_h c0 a0); auto.
+seq 4 : (0 <= to_uint pos < 17 /\
+         8 * to_uint pos = size ((Node.to_list c0 ++ BArray32.to_list a0) ++ TKIn.to_list x0) %% 136 /\
+         lanes st = abs_state 136 ((Node.to_list c0 ++ BArray32.to_list a0) ++ TKIn.to_list x0)).
++ while (in_0 = x0 /\ 0 <= to_uint i <= size (TKIn.to_list x0) %/ 8 /\
+         (more <=> to_uint i < size (TKIn.to_list x0) %/ 8) /\ 0 <= to_uint pos < 17 /\
+         8 * to_uint pos = size ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * to_uint i) (TKIn.to_list x0)) %% 136 /\
+         lanes st = abs_state 136 ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * to_uint i) (TKIn.to_list x0))).
+  + wp.
+    seq 3 : (#pre).
+    + by wp; skip => &m h; rewrite clamp17 1:/#; exact h.
+    seq 6 : (in_0 = x0 /\ 0 <= to_uint i < size (TKIn.to_list x0) %/ 8 /\ (full <=> to_uint pos = 17) /\ 0 < to_uint pos <= 17 /\
+             (8 * to_uint pos) %% 136 = size ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * (to_uint i + 1)) (TKIn.to_list x0)) %% 136 /\
+             (to_uint pos < 17 => lanes st = abs_state 136 ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * (to_uint i + 1)) (TKIn.to_list x0))) /\
+             (to_uint pos = 17 => keccak_f1600_op (lanes st) = abs_state 136 ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * (to_uint i + 1)) (TKIn.to_list x0)))).
+    + wp; skip => &m [#] hx hi0 hi1 hmore hp0 hp1 hpm hst hm /=.
+      have hW : to_uint i{m} < size (TKIn.to_list x0) %/ 8 by rewrite -hmore.
+      have hsz : 8 * to_uint i{m} + 8 <= size (TKIn.to_list x0) by move: hW; rewrite TKIn.size_to_list /=; smt().
+      have hcat : take (8 * (to_uint i{m} + 1)) (TKIn.to_list x0) =
+                  take (8 * to_uint i{m}) (TKIn.to_list x0) ++ take 8 (drop (8 * to_uint i{m}) (TKIn.to_list x0)).
+      + by rewrite (_ : 8 * (to_uint i{m} + 1) = 8 * to_uint i{m} + 8) 1:/# takeD /#.
+      have hbs := size_word8 (TKIn.to_list x0) (to_uint i{m}) hi0 hsz.
+      have hw := tk_word x0 (to_uint i{m}) hi0 hsz.
+      have hpos : to_uint (pos{m} + W64.one) = to_uint pos{m} + 1 by rewrite W64.to_uintD_small /#.
+      have hm' : 8 * (to_uint pos{m} + 1) %% 136 =
+                 size ((Node.to_list c0 ++ BArray32.to_list a0) ++ take (8 * (to_uint i{m} + 1)) (TKIn.to_list x0)) %% 136.
+      + by rewrite hcat catA size_cat hbs; apply (mod_step _ _ hp0 hp1 hpm).
+      have hfull := w64_inc17 pos{m} hp1.
+      rewrite hpos hx /=; do !split.
+      + by [].
+      + by move=> _; move: hW; rewrite TKIn.size_to_list.
+      + by rewrite -hfull.
+      + by rewrite hfull.
+      + by move: hp0 => /#.
+      + by move=> _; move: hp1 => /#.
+      + exact hm'.
+      + move=> hlt; rewrite hcat catA.
+        exact (absorb_lane_lt _ _ _ _ _ hp0 hlt hpm hbs hw hst).
+      move=> heq; rewrite hcat catA.
+      exact (absorb_lane_eq _ _ _ _ _ heq hpm hbs hw hst).
+    if.
+    + wp; ecall (keccakf1600_hoare st); wp; skip => &m [#] hx hi0 hi1 hfull hp0 hp1 hpm hlt heq hf.
+      move=> [s2 ms2] /= hs2; rewrite /protect_ptr /protect_64 /=.
+      have hp17 : to_uint pos{m} = 17 by rewrite -hfull.
+      have hb : size (TKIn.to_list x0) %/ 8 < W64.modulus by rewrite TKIn.size_to_list.
+      have hi1' := w64_inc_bound i{m} _ hi1 hb.
+      rewrite W64.ultE W64.of_uintK hi1' hx /=; move: hi0 hi1; rewrite !TKIn.size_to_list /max /= => hi0 hi1.
+      do !split.
+      + by move: hi0; pose u := to_uint i{m}; smt().
+      + by move=> _; move: hi1; pose u := to_uint i{m}; smt().
+      + by rewrite -hpm hp17.
+      by rewrite hs2 heq.
+    wp; skip => &m [#] hx hi0 hi1 hfull hp0 hp1 hpm hlt heq hf.
+    have hp17 : to_uint pos{m} < 17 by smt().
+    have hb : size (TKIn.to_list x0) %/ 8 < W64.modulus by rewrite TKIn.size_to_list.
+    have hi1' := w64_inc_bound i{m} _ hi1 hb.
+    rewrite /= W64.ultE W64.of_uintK hi1' hx /=; move: hi0 hi1; rewrite !TKIn.size_to_list /max /= => hi0 hi1.
+    have hsm : 8 * to_uint pos{m} %% 136 = 8 * to_uint pos{m}.
+    + by apply modz_small; move: hp0 hp17; pose u := to_uint pos{m}; smt().
+    do !split.
+    + by move: hi0; pose u := to_uint i{m}; smt().
+    + by move=> _; move: hi1; pose u := to_uint i{m}; smt().
+    + by move: hp0; pose u := to_uint pos{m}; smt().
+    + by move=> _; exact hp17.
+    + by rewrite -hpm hsm.
+    exact (hlt hp17).
+  wp; skip => &m [#] hx hst /=.
+  have hpre : size (Node.to_list c0 ++ BArray32.to_list a0) = P.`n + 32 by rewrite size_cat Node.size_to_list BArray32.size_to_list; smt(n_val).
+  split.
+  + rewrite take0 cats0 /max /= hpre n_val /=.
+    by split; [exact hx | exact (head_absorbed c0 a0 st{m} hst)].
+  move=> i1 x1 m1 p1 s1 hm1 [#] h0 h1 h2 h3 h4 h5 h6 h7.
+  have hX : take (8 * to_uint i1) (TKIn.to_list x0) = TKIn.to_list x0.
+  + rewrite take_oversize // TKIn.size_to_list; move: h2 h3 hm1; rewrite /max /=.
+    by pose u := to_uint i1; smt().
+  by move: h6 h7; rewrite hX => h6 h7; split; [by split | by split].
+ecall (extract_n_h st); wp; ecall (keccakf1600_hoare st); wp.
+skip => &m [#] hp0 hp1 hpm hst [s2 ms2] /= hs2 r hr.
+rewrite /T_l family_shake /=.
+by apply (shake_final _ (to_uint pos{m}) st{m} s2 r) => //.
+qed.
+
+local lemma thash_t_k_ll : islossless M.tK___thash_t.
+proof.
+proc; call extract_n_ll; wp; call keccakf1600_ll; wp.
+while (0 <= to_uint i <= size (TKIn.to_list in_0) %/ 8 /\
+       (more <=> to_uint i < size (TKIn.to_list in_0) %/ 8))
+      (size (TKIn.to_list in_0) %/ 8 - to_uint i).
++ move=> z; sp; if.
+  + wp; call keccakf1600_ll; wp; skip => &m [] [p0 s0 m0] [#] _ _ _ _ _ _ _ h0 h1 hmore hm hz hf r /=.
+    have hb : size (TKIn.to_list in_0{m}) %/ 8 < W64.modulus by rewrite TKIn.size_to_list.
+    have hlt : to_uint i{m} < size (TKIn.to_list in_0{m}) %/ 8 by rewrite -hmore.
+    have hi := w64_inc_bound i{m} _ hlt hb.
+    rewrite /protect_64 /= W64.ultE W64.of_uintK hi; move: h0 h1 hz hlt.
+    by rewrite !TKIn.size_to_list /max /=; pose u := to_uint i{m}; smt().
+  wp; skip => &m [] [p0 s0 m0] [#] _ _ _ _ _ _ _ h0 h1 hmore hm hz hf.
+  have hb : size (TKIn.to_list in_0{m}) %/ 8 < W64.modulus by rewrite TKIn.size_to_list.
+  have hlt : to_uint i{m} < size (TKIn.to_list in_0{m}) %/ 8 by rewrite -hmore.
+  have hi := w64_inc_bound i{m} _ hlt hb.
+  rewrite /= W64.ultE W64.of_uintK hi; move: h0 h1 hz hlt.
+  by rewrite !TKIn.size_to_list /max /=; pose u := to_uint i{m}; smt().
+wp; call seeded_head_ll; wp; skip => &m /=; rewrite /max /=.
+by move=> i1 m1; pose u := to_uint i1; smt().
+qed.
+
+local lemma thash_t_k_p (x0 : TKIn.t) (c0 : Node.t) (a0 : BArray32.t) :
+  phoare [M.tK___thash_t : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+    Node.to_list res.`1 = T_l P (Node.to_list c0) (BArray32.to_list a0) (TKIn.to_list x0)] = 1%r.
+proof. by conseq thash_t_k_ll (thash_t_k_h x0 c0 a0). qed.
+
+lemma thash_t_k_correct (x0 : TKIn.t) (c0 : Node.t) (a0 : BArray32.t) :
+  phoare [M._thash_t_k : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+    Node.to_list res.`1 = T_l P (Node.to_list c0) (BArray32.to_list a0) (TKIn.to_list x0)] = 1%r.
+proof. by proc; call (thash_t_k_p x0 c0 a0); auto. qed.
 
 end section.
