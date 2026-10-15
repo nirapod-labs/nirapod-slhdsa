@@ -22,7 +22,12 @@
  * the procedure builds. The wide H of the sets with n = 24 and 32 is the
  * same construction over SHA-512 with the chaining value in ctx bytes
  * 32 .. 95. ctx_ok states the ctx layout; the theorems take it as a
- * precondition.
+ * precondition, and thash_ctx_init_correct proves that _thash_ctx_init
+ * establishes it. That proof shows the Hoare correctness and the
+ * termination separately, because the branch on the literal family test
+ * follows loops and calls: rcondt/rcondf would need a Hoare proof of the
+ * prefix anyway, while the `if` rule proves both branches on every set,
+ * the dead one from the contradiction between its condition and n_val.
  *
  * In each set's extracted code the branch condition of _thash_h is a
  * literal, so only one branch is reachable. The two branch lemmas carry
@@ -44,6 +49,7 @@ require import Bytes FIPS180_SHA2 FIPS180_SHA2_Blocks.
 require import FIPS205_Params FIPS205_Encoding FIPS205_Address FIPS205_Address_Props FIPS205_Hash.
 require import BArray32 BArray64 BArray96 BArray128 SetModel CoreExtracted ADRSc WordSpec.
 require ArchWord.
+require import SBArray128_64.
 
 lemma family_sha2 : P.`family = SHA2 by rewrite /P.
 
@@ -677,5 +683,205 @@ case: (P.`n = 16) => h16.
 + by conseq (thash_h_narrow pk c0 a0 x0); smt().
 by conseq (thash_h_wide pk c0 a0 x0); smt().
 qed.
+
+(* ------------------------------------------------------------------ *)
+(* _thash_ctx_init: the seed block, compressed once per key           *)
+
+lemma hoare_of_phoare256 (h0 : W32.t list) (blk : BArray64.t) :
+  hoare [M._sha256_compress : hw256 h = h0 /\ block = blk ==>
+         hw256 res.`1 = SHA256.compress h0 (map be32 (chunk 4 (BArray64.to_list blk)))].
+proof. by conseq (sha256_compress_h h0 blk). qed.
+
+lemma hoare_of_phoare512 (h0 : W64.t list) (blk : BArray128.t) :
+  hoare [M._sha512_compress : hw512 h = h0 /\ block = blk ==>
+         hw512 res.`1 = SHA512.compress h0 (map be64 (chunk 8 (BArray128.to_list blk)))].
+proof. by conseq (sha512_compress_h h0 blk). qed.
+
+(* The initial hash values of the model are those of FIPS 180-4
+   sections 5.3.3 and 5.3.5. *)
+lemma iv256_model k : 0 <= k < 8 => BArray32.get32 sHA256_IV k = nth W32.zero SHA256.H0_256 k.
+proof. by move=> hk; rewrite BArray32.get32_of_list32 1://; congr; rewrite /SHA256.H0_256 /=. qed.
+
+lemma iv512_model k : 0 <= k < 8 => BArray64.get64 sHA512_IV k = nth W64.zero SHA512.H0_512 k.
+proof. by move=> hk; rewrite BArray64.get64_of_list64 1://; congr; rewrite /SHA512.H0_512 /=. qed.
+
+lemma sha256_init_h : hoare [M.__sha256_init : true ==> hw256 res = SHA256.H0_256].
+proof.
+proc; while (0 <= i <= 8 /\ iv = sHA256_IV /\
+             forall k, 0 <= k < i => BArray32.get32 h k = nth W32.zero SHA256.H0_256 k).
++ auto => /> &hr hi0 hi8 hk hlt; split; first smt().
+  move=> k hk0 hk1; rewrite BArray32.get_set32E 1,2:/#.
+  by case: (i{hr} = k) => [<-|ne]; [rewrite iv256_model /# | apply hk => /#].
+auto => /> &hr; split; first smt().
+move=> hv iv hn hi0 hi8 hk; apply (eq_from_nth W32.zero).
++ by rewrite size_hw256 /SHA256.H0_256.
+move=> k; rewrite size_hw256 => hk'.
+have hk8 : 0 <= k < size (iota_ 0 8) by rewrite size_iota /#.
+by rewrite /hw256 (nth_map 0 W32.zero _ _ _ hk8) nth_iota 1:/# /= hk /#.
+qed.
+
+lemma sha256_init_ll : islossless M.__sha256_init.
+proof. by proc; while true (8 - i); auto => /#. qed.
+
+lemma sha512_load_iv_h (iv0 : BArray64.t) :
+  hoare [M.__sha512_load_iv :
+           iv = iv0 ==> forall k, 0 <= k < 8 => BArray64.get64 res k = BArray64.get64 iv0 k].
+proof.
+proc; while (0 <= i <= 8 /\ iv = iv0 /\
+             forall k, 0 <= k < i => BArray64.get64 h k = BArray64.get64 iv0 k).
++ auto => /> &hr hi0 hi8 hk hlt; split; first smt().
+  move=> k hk0 hk1; rewrite BArray64.get_set64E 1,2:/#.
+  by case: (i{hr} = k) => [<-|ne] //; apply hk => /#.
+auto => /> &hr; split; first smt().
+by move=> hv i hn hi0 hi8 hk k hk0 hk1; apply hk => /#.
+qed.
+
+lemma sha512_init_h : hoare [M.__sha512_init : true ==> hw512 res = SHA512.H0_512].
+proof.
+proc; ecall (sha512_load_iv_h sHA512_IV); auto => /> r hr.
+apply (eq_from_nth W64.zero); first by rewrite size_hw512 /SHA512.H0_512.
+move=> k; rewrite size_hw512 => hk'.
+have hk8 : 0 <= k < size (iota_ 0 8) by rewrite size_iota /#.
+by rewrite /hw512 (nth_map 0 W64.zero _ _ _ hk8) nth_iota 1:/# /= hr // iv512_model.
+qed.
+
+lemma sha512_init_ll : islossless M.__sha512_init.
+proof. by proc; inline *; wp; while true (8 - i); auto => /#. qed.
+
+(* The block before the first compression: PK.seed, then zeros. *)
+op init_block (pk : bytes) (blk : BArray128.t) =
+  forall j, 0 <= j < 128 => blk.[j] = if j < P.`n then nth W8.zero pk j else W8.zero.
+
+lemma nth_seed_block (b : int) (pk : bytes) (j : int) :
+  size pk = P.`n => P.`n <= b => 0 <= j < b =>
+  nth W8.zero (seed_block b pk) j = if j < P.`n then nth W8.zero pk j else W8.zero.
+proof.
+move=> hpk hb hj; rewrite /seed_block nth_cat hpk toByte0 1:/#.
+by case: (j < P.`n) => // hjn; rewrite nth_nseq /#.
+qed.
+
+lemma size_seed_block (b : int) (pk : bytes) :
+  size pk = P.`n => P.`n <= b => size (seed_block b pk) = b.
+proof. by move=> hpk hb; rewrite /seed_block size_cat hpk toByte0 1:/# size_nseq /#. qed.
+
+lemma seed_block64 (pk : bytes) (blk : BArray128.t) :
+  size pk = P.`n => init_block pk blk =>
+  BArray64.to_list (SBArray128_64.get_sub blk 0) = seed_block 64 pk.
+proof.
+move=> hpk hb; have hn := n_val.
+apply (eq_from_nth W8.zero).
++ by rewrite BArray64.size_to_list size_seed_block // /#.
+move=> j; rewrite BArray64.size_to_list => hj.
+by rewrite BArray64.get_to_list SBArray128_64.get8_get_sub ifT 1:/# /= hb 1:/# nth_seed_block // /#.
+qed.
+
+lemma seed_block128 (pk : bytes) (blk : BArray128.t) :
+  size pk = P.`n => init_block pk blk => BArray128.to_list blk = seed_block 128 pk.
+proof.
+move=> hpk hb; have hn := n_val.
+apply (eq_from_nth W8.zero).
++ by rewrite BArray128.size_to_list size_seed_block // /#.
+move=> j; rewrite BArray128.size_to_list => hj.
+by rewrite BArray128.get_to_list hb 1:/# nth_seed_block // /#.
+qed.
+
+(* Writes to words 4 .. 11 leave the SHA-256 chaining value. *)
+lemma cv256_set64 (c : BArray96.t) (k : int) (w : W64.t) : 4 <= k =>
+  cv256 (BArray96.set64 c k w) = cv256 c.
+proof.
+move=> hk; apply eq_in_map => i /mem_iota hi /=.
+apply W4u8.wordP => b hb; rewrite !BArray96.get32d_byte //.
+by rewrite BArray96.get8_set64dE ifF /#.
+qed.
+
+op cvs256 (pk : bytes) = SHA256.compress SHA256.H0_256 (words256 (seed_block 64 pk)).
+op cvs512 (pk : bytes) = SHA512.compress SHA512.H0_512 (words512 (seed_block 128 pk)).
+
+lemma ctx_init_h (s0 : Node.t) :
+  hoare [M._thash_ctx_init : pk_seed = s0 ==> ctx_ok (Node.to_list s0) res.`1].
+proof.
+proc; have hn := n_val.
+have hsz : size (Node.to_list s0) = P.`n by rewrite Node.size_to_list; smt().
+seq 14 : (pk_seed = s0 /\ init_block (Node.to_list s0) block /\
+          cv256 ctx = cvs256 (Node.to_list s0)).
++ while (0 <= i <= 4 /\ pk_seed = s0 /\ init_block (Node.to_list s0) block /\
+         hw256 h256 = cvs256 (Node.to_list s0) /\
+         forall j, 0 <= j < 8 * i => ctx.[j] = h256.[j]).
+  + wp; skip => &m [#] g0 g1 gs gb gh hj hlt; do !(split; first smt()); move=> j hj'.
+    rewrite BArray96.get8_set64dE; case: (8 * i{m} <= j < 8 * i{m} + 8) => h /=.
+    + by rewrite ifT 1:/# BArray32.get64d_byte /#.
+    by rewrite hj 1:/#.
+  wp; ecall (hoare_of_phoare256 (hw256 h256) (SBArray128_64.get_sub block 0)).
+  wp; call sha256_init_h.
+  while (0 <= i <= inc /\ inc = P.`n %/ 8 /\ pk_seed = s0 /\
+         forall j, 0 <= j < 128 => block.[j] = if j < 8 * i then Node.get8 s0 j else W8.zero).
+  + wp; skip => &m [#] g0 g1 gi gs hj hlt; do !(split; first smt()); move=> j hj'.
+    rewrite BArray128.get8_set64dE; case: (8 * i{m} <= j < 8 * i{m} + 8) => h /=.
+    + by rewrite ifT 1:/# ifT 1:/# gs Node.get64d_byte 1:/#; congr; ring.
+    by rewrite hj //; smt().
+  wp; while (0 <= i <= 16 /\ z = W64.zero /\ pk_seed = s0 /\
+             forall j, 0 <= j < 8 * i => block.[j] = W8.zero).
+  + wp; skip => &m [#] g0 g1 gz gs hj hlt; do !(split; first smt()); move=> j hj'.
+    rewrite BArray128.get8_set64dE; case: (8 * i{m} <= j < 8 * i{m} + 8) => h /=.
+    + by rewrite ifT 1:/# gz W8u8.get_zero.
+    by rewrite hj 1:/#.
+  wp; skip => &m hs; split; first smt().
+  move=> b0 i0 hx0 [#] g0 g1 gz gs hb0; split.
+  + do !(split; first smt()); move=> j hj; rewrite hb0 1:/#; smt().
+  move=> b1 i1 hx1 [#] f0 f1 fi fs hb1.
+  have hib : init_block (Node.to_list s0) b1.
+  + move=> j hj; rewrite hb1 //; smt(Node.get_to_list).
+  move=> h0 hh0; split; first done.
+  move=> _ r hh1 /=; split.
+  + do 2!(split; first smt()); split; last smt().
+    by rewrite hh1 hh0 (seed_block64 _ _ hsz hib) /cvs256 /words256.
+  move=> c2 i2 hx2 [#] e0 e1 es eb eh hc2; do !(split; first smt()).
+  by rewrite -eh; apply/eq_sym/hw256_bytes => j hj; rewrite hc2 /#.
+if.
++ wp; while (0 <= i <= 8 /\ init_block (Node.to_list s0) block /\
+             cv256 ctx = cvs256 (Node.to_list s0) /\
+             hw512 h512 = cvs512 (Node.to_list s0) /\
+             forall j, 0 <= j < 8 * i => ctx.[32 + j] = h512.[j]).
+  + wp; skip => &m [#] g0 g1 gb gc gh hj hlt; do 2!(split; first smt()).
+    split; first by rewrite cv256_set64 /#.
+    split; first smt().
+    move=> j hj'; rewrite BArray96.get8_set64dE; case: (8 * (4 + i{m}) <= 32 + j < 8 * (4 + i{m}) + 8) => h /=.
+    + by rewrite ifT 1:/# BArray64.get64d_byte /#.
+    by rewrite hj 1:/#.
+  wp; ecall (hoare_of_phoare512 (hw512 h512) block).
+  wp; call sha512_init_h.
+  wp; skip => &m [#] hs hb hc hcond h0 hh0; split; first done.
+  move=> _ r hh1 /=; split.
+  + split; first smt().
+    split; first by rewrite /Jslh.SLH64.protect_ptr /= hc.
+    split; last smt().
+    by rewrite hh1 hh0 (seed_block128 _ _ hsz hb) /cvs512 /words512.
+  move=> c2 i2 hx2 [#] e0 e1 eb ec eh hc2; rewrite /ctx_ok /=; split; first by rewrite ec /cvs256.
+  move=> _; rewrite -/(cvs512 (Node.to_list s0)) -eh.
+  by apply/eq_sym/hw512_bytes => j hj; rewrite hc2 /#.
+wp; while (0 <= i <= 8 /\ cv256 ctx = cvs256 (Node.to_list s0)).
++ by wp; skip => &m [#] g0 g1 gc hlt; split; [smt() | rewrite cv256_set64 /#].
+wp; skip => &m hpre; split; first smt().
+move=> c2 i2 hx2 [#] e0 e1 ec; rewrite /ctx_ok /=; split; first by rewrite ec /cvs256.
+by move=> hn16; smt(n_val).
+qed.
+
+lemma ctx_init_ll : islossless M._thash_ctx_init.
+proof.
+proc; seq 14 : true 1%r 1%r 0%r 0%r => //.
++ wp; while true (4 - i); first by auto => /#.
+  wp; call compress256_ll; call sha256_init_ll.
+  wp; while true (inc - i); first by auto => /#.
+  by wp; while true (16 - i); auto => /#.
+if.
++ wp; while true (8 - i); first by auto => /#.
+  by wp; call compress512_ll; call sha512_init_ll; skip; smt().
+by wp; while true (8 - i); auto => /#.
+qed.
+
+(* _thash_ctx_init establishes ctx_ok. *)
+lemma thash_ctx_init_correct (s0 : Node.t) :
+  phoare [M._thash_ctx_init : pk_seed = s0 ==> ctx_ok (Node.to_list s0) res.`1] = 1%r.
+proof. by conseq ctx_init_ll (ctx_init_h s0). qed.
 
 end section Thash.
