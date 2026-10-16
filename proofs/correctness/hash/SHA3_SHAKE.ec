@@ -16,7 +16,8 @@
  * length below the rate) or squeezes outlen bytes to memory at out
  * (SHAKE). The proofs compose Sponge.ec and SpongeSqueeze.ec; the
  * permutation's correctness is again the section hypothesis kf_h (with
- * kf_ll), a premise of every theorem once the section is closed.
+ * kf_ll), a premise of every theorem once the section is closed, which
+ * Sponge_Portable.ec and Sponge_KernelSpec.ec discharge.
  *
  * The SHAKE functions read the whole message before they write any
  * output, so the statements hold when the two regions overlap.

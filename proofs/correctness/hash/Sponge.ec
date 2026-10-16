@@ -16,8 +16,9 @@
  * between the kernels a pair builds. Its correctness is the section
  * hypothesis kf_h (with kf_ll for termination); the theorems below hold
  * under it and take it as their first premises once the section is
- * closed. Sponge_Kernel.ec of each pair discharges them with that pair's
- * Keccak-f[1600] theorem.
+ * closed. Sponge_Portable.ec, on the pairs that build the portable kernel,
+ * and Sponge_KernelSpec.ec, on aarch64/a64scalar, discharge both with that
+ * kernel's Keccak-f[1600] theorems.
  *
  * Theorems (total correctness, under kf_h and kf_ll):
  *     keccak_finalize_total    the state after padding and permuting is

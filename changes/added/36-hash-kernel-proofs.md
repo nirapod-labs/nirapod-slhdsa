@@ -26,7 +26,9 @@
   finalizes (padding, permutation) and squeezes to memory from any offset
   in its output stream, and that the one-shot SHA3-224, SHA3-256,
   SHA3-384, SHA3-512, SHAKE128 and SHAKE256 of a message in memory compute
-  FIPS 202, with termination, given the Keccak-f[1600] permutation
-  (`proofs/correctness/hash/Sponge.ec`, `ShakeSponge.ec`,
-  `SpongeSqueeze.ec`, `SHA3_SHAKE.ec`). The sponge forms over fixed-length
-  arrays and the four-way sponge are not proven yet.
+  FIPS 202, with termination (`proofs/correctness/hash/Sponge.ec`,
+  `ShakeSponge.ec`, `SpongeSqueeze.ec`, `SHA3_SHAKE.ec`). The proofs hold
+  for any permutation that computes Keccak-f[1600]; `Sponge_Portable.ec`
+  and `aarch64/a64scalar/Sponge_KernelSpec.ec` state them for the two
+  proven Keccak-f[1600] kernels, with no premise left. The sponge forms
+  over fixed-length arrays and the four-way sponge are not proven yet.

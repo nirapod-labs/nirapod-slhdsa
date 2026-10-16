@@ -302,7 +302,8 @@ Theorems so far, each checked on every pair unless it says otherwise:
   (`correctness/hash/MGF1_SHA512.ec`): the same for `_mgf1_sha512` and
   MGF1-SHA-512, with a 112-byte seed and 39 or 42 bytes of output (n = 24)
   and a 128-byte seed and 47 or 49 bytes (n = 32);
-- `keccak_round_correct`, `keccakf1600_correct`, `keccakf1600_total`
+- `keccak_round_correct`, `keccakf1600_correct`, `keccakf1600_ll`,
+  `keccakf1600_total`
   (`correctness/hash/Keccakf1600_Portable.ec`, on the two portable
   pairs): one round of the shared scalar kernel `src/hash/keccak/keccakf1600.jinc`
   computes `keccak_pround_op` (θ, ρ, π and χ), and `_keccakf1600` computes
@@ -312,7 +313,8 @@ Theorems so far, each checked on every pair unless it says otherwise:
   procedure for FIPS 202 sections 3.3 and 3.4 (`keccak_f1600_ph`), which
   `make check-imported` re-checks here. The x86-64 library builds this
   kernel; the AArch64 library does not;
-- `keccak_round_regs_correct`, `keccakf1600_correct`, `keccakf1600_total`
+- `keccak_round_regs_correct`, `keccakf1600_correct`, `keccakf1600_ll`,
+  `keccakf1600_total`
   (`correctness/hash/aarch64/a64scalar/KernelSpec.ec`, on
   `aarch64/a64scalar`): the same for the AArch64 kernel, whose round
   includes ι. The state facts both Keccak proofs use (the lane view, the
@@ -324,9 +326,9 @@ Theorems so far, each checked on every pair unless it says otherwise:
   finalize (pad, permute) of `src/hash/keccak/sponge.jinc` against FIPS 202
   (`ABSORB1600` of `Keccak1600_Spec`), total correctness, for a rate of
   `r8` bytes with `0 < r8 < 200` (absorb) or `0 < r8 <= 200` (finalize),
-  and with the correctness and termination of `_keccakf1600` as premises.
-  `correctness/hash/ShakeSponge.ec` gives the byte view of the absorbing
-  state that these statements use;
+  and with the correctness and termination of `_keccakf1600` as premises
+  (discharged below). `correctness/hash/ShakeSponge.ec` gives the byte
+  view of the absorbing state that these statements use;
 - `extract_mem_h`, `extract_mem_ll`, `keccak_squeeze_mem_h`,
   `keccak_squeeze_mem_ll`, `keccak_squeeze_mem_total`
   (`correctness/hash/SpongeSqueeze.ec`, on every pair): squeeze to memory
@@ -348,6 +350,16 @@ Theorems so far, each checked on every pair unless it says otherwise:
   `0 < r8 < 200`). The SHAKE functions read the whole message before
   they write output, so the statements need no disjointness of the two
   regions;
+- `keccak_absorb_mem_total`, `keccak_finalize_total`,
+  `keccak_squeeze_mem_total`, `sha3_absorb_all_total`,
+  `sha3_224_mem_total` to `sha3_512_mem_total`, `shake_mem_total`,
+  `shake128_mem_total`, `shake256_mem_total`
+  (`correctness/hash/Sponge_Portable.ec` on the two portable pairs, with
+  `keccakf1600_correct` and `keccakf1600_ll` of
+  `Keccakf1600_Portable.ec`; `correctness/hash/aarch64/a64scalar/Sponge_KernelSpec.ec`
+  on `aarch64/a64scalar`, with those of `KernelSpec.ec`): the theorems of
+  the same names above with both premises discharged, so the sponge,
+  SHA-3 and SHAKE results hold on each pair with no premise;
 - the eleven `adrs_*_correct` theorems (`correctness/slhdsa/ADRS.ec`):
   every procedure of `src/slhdsa/address.jinc` (zeroing, the setters of
   FIPS 205 Table 1, the key pair copy and the address copy) returns the

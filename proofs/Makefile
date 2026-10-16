@@ -127,6 +127,7 @@ pair_dirs    = $(foreach d,$(SHARED_PROOF_DIRS),$(wildcard $(d)/$(call pair_arch
 # Every other shared proof is checked against every pair.
 KERNEL_PROOFS := \
   correctness/hash/Keccakf1600_Portable.ec:KeccakKernel=keccak \
+  correctness/hash/Sponge_Portable.ec:KeccakKernel=keccak \
   correctness/hash/SHA256_Compress.ec:Sha2Kernel=sha2 \
   correctness/hash/SHA256_Blocks.ec:Sha2Kernel=sha2 \
   correctness/hash/SHA512_Compress.ec:Sha2Kernel=sha2 \
@@ -244,16 +245,16 @@ THEOREMS += MGF1_SHA256.mgf64_30_sha256_total MGF1_SHA256.mgf64_34_sha256_total 
 # Keccak-f[1600] of the shared scalar kernel; the AArch64 kernel that keeps
 # the state in registers has its own (KERNEL_THEOREMS_aarch64_a64scalar).
 THEOREMS += Keccakf1600_Portable.keccak_round_correct Keccakf1600_Portable.keccakf1600_correct \
-            Keccakf1600_Portable.keccakf1600_total
+            Keccakf1600_Portable.keccakf1600_ll Keccakf1600_Portable.keccakf1600_total
 
 # The Keccak sponge (absorb from memory, finalize); pair-generic, with the
-# pair's Keccak-f[1600] theorem as premise.
+# correctness and termination of _keccakf1600 as premises.
 THEOREMS += Sponge.keccak_absorb_mem_h Sponge.keccak_absorb_mem_ll \
             Sponge.keccak_absorb_mem_total Sponge.keccak_finalize_h \
             Sponge.keccak_finalize_ll Sponge.keccak_finalize_total
 
 # The sponge squeeze to memory and the one-shot SHA-3 and SHAKE functions;
-# pair-generic, with the pair's Keccak-f[1600] theorem as premise.
+# pair-generic, with the same premises.
 THEOREMS += SpongeSqueeze.extract_mem_h SpongeSqueeze.extract_mem_ll \
             SpongeSqueeze.keccak_squeeze_mem_h SpongeSqueeze.keccak_squeeze_mem_ll \
             SpongeSqueeze.keccak_squeeze_mem_total
@@ -261,6 +262,16 @@ THEOREMS += SHA3_SHAKE.sha3_absorb_all_total SHA3_SHAKE.sha3_224_mem_total \
             SHA3_SHAKE.sha3_256_mem_total SHA3_SHAKE.sha3_384_mem_total \
             SHA3_SHAKE.sha3_512_mem_total SHA3_SHAKE.shake_mem_total \
             SHA3_SHAKE.shake128_mem_total SHA3_SHAKE.shake256_mem_total
+
+# The total-correctness sponge, SHA-3 and SHAKE theorems above, with both
+# premises discharged by the portable Keccak-f[1600] theorems, on the pairs
+# that build that kernel; aarch64/a64scalar has its own (Sponge_KernelSpec,
+# below).
+SPONGE_THEOREMS := keccak_absorb_mem_total keccak_finalize_total keccak_squeeze_mem_total \
+                   sha3_absorb_all_total sha3_224_mem_total sha3_256_mem_total \
+                   sha3_384_mem_total sha3_512_mem_total shake_mem_total \
+                   shake128_mem_total shake256_mem_total
+THEOREMS += $(foreach t,$(SPONGE_THEOREMS),Sponge_Portable.$(t))
 
 # The address setters of the SLH-DSA core against FIPS 205 Table 1.
 ADRS_THEOREMS := adrs_zero_correct adrs_set_layer_correct adrs_set_tree_correct \
@@ -283,7 +294,8 @@ THEOREMS += $(foreach s,$(SLHDSA_SETS),$(foreach t,$(SLHDSA_THEOREMS),SPHINCS_Se
 # The theorems of one pair: those of the theories it checks (a KernelSpec
 # is named by pair, KERNEL_THEOREMS_<arch>_<variant>).
 KERNEL_THEOREMS_aarch64_a64scalar := KernelSpec.keccak_round_regs_correct \
-  KernelSpec.keccakf1600_correct KernelSpec.keccakf1600_total
+  KernelSpec.keccakf1600_correct KernelSpec.keccakf1600_ll KernelSpec.keccakf1600_total \
+  $(foreach t,$(SPONGE_THEOREMS),Sponge_KernelSpec.$(t))
 thm_theory   = $(firstword $(subst ., ,$(1)))
 pair_loaded  = $(basename $(notdir $(OWN_FILES) $(IMPORTED_FILES) $(FORMOSA_FILES) \
                  $(call pair_shared,$(1))))

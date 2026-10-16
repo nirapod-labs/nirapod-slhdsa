@@ -19,13 +19,15 @@
  * leaves squeezing r8 s 0 st 0 with s = ABSORB1600 trail r8 m.
  *
  * As in Sponge.ec, the permutation's correctness is the section
- * hypothesis kf_h (with kf_ll), a premise of every theorem once the
- * section is closed.
+ * hypothesis kf_h (with kf_ll), a premise of every theorem that calls the
+ * permutation once the section is closed; Sponge_Portable.ec and
+ * Sponge_KernelSpec.ec discharge it.
  *
- * Theorems (under kf_h and kf_ll):
+ * Theorems:
  *     extract_mem_h, extract_mem_ll   __keccak_extract_mem writes state
  *                                     bytes [p, p + k) to memory at q
- *     keccak_squeeze_mem_total        the memory at out receives bytes
+ *     keccak_squeeze_mem_total        (under kf_h and kf_ll) the memory
+ *                                     at out receives bytes
  *                                     [t0, t0 + outlen) of the stream
  *)
 

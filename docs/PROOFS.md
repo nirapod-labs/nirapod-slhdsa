@@ -61,11 +61,11 @@ Proven, on the x86-64 and AArch64 models, total correctness:
   (128-byte seed, 47 or 49 bytes).
 - **Keccak.** The Keccak-f[1600] permutation of the single-way kernels the scalar
   variants build (the portable kernel on x86-64, the kernel that keeps the state in
-  registers on AArch64), against FIPS 202; the Keccak sponge's absorb from
-  memory, finalize (padding and the permutation) and squeeze to memory against
-  FIPS 202, given that permutation; and, given it too, the one-shot SHA3-224,
-  SHA3-256, SHA3-384, SHA3-512, SHAKE128 and SHAKE256 of a message in memory
-  against FIPS 202.
+  registers on AArch64), against FIPS 202; and, over each of those kernels,
+  the single-way Keccak sponge's absorb from memory, finalize (padding and the
+  permutation) and squeeze to memory, and the one-shot SHA3-224, SHA3-256,
+  SHA3-384, SHA3-512, SHAKE128 and SHAKE256 of a message in memory, against
+  FIPS 202.
 
 Not proven:
 
