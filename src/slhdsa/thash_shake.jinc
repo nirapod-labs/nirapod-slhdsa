@@ -291,13 +291,23 @@ fn _shake_absorb_prefix(
   reg u64 ms
 ) -> reg ptr u64[25], reg u64, reg u64
 {
-  reg u64 i t b;
+  reg u64 i t b cap;
   reg bool more full;
 
   i = 0;
   while { more = i < len; } (more) {
     ms = #update_msf(more, ms);
 
+    /*
+     * Safety-checker workaround, as in _thash_t (thash_shake_t.jinc;
+     * reset_eq and reset_clamp in tests/core/checker/workarounds.jazz):
+     * pos < SLH_SHAKE_RATE holds here (it is reset when it reaches the
+     * rate), so the clamp, a conditional move on a public value, never
+     * changes it; the checker cannot bound a position reset on equality
+     * without it.
+     */
+    cap = SLH_SHAKE_RATE - 1;
+    pos = pos >= SLH_SHAKE_RATE ? cap : pos;
     t = (64u) st[:u8 pos];
     b = (64u) prefix[i];
     t ^= b;
@@ -321,6 +331,14 @@ fn _shake_absorb_prefix(
     i += 1;
   }
   ms = #update_msf(!more, ms);
+
+  /*
+   * The same bound for the caller, whose sponge continues at pos: the
+   * last reset leaves pos < SLH_SHAKE_RATE, and the clamp never changes
+   * it.
+   */
+  cap = SLH_SHAKE_RATE - 1;
+  pos = pos >= SLH_SHAKE_RATE ? cap : pos;
 
   return st, pos, ms;
 }

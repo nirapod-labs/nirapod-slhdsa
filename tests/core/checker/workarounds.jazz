@@ -33,7 +33,7 @@
  *   reset_eq    / reset_clamp   a position reset when it equals the rate:
  *                               in_bound, unless it is clamped below the
  *                               rate before use (the SHAKE T_l, T_k and
- *                               T_l x4 absorb loops)
+ *                               T_l x4 absorb loops, _shake_absorb_prefix)
  *   tail_padded / tail_whole    blocks read at an offset that only the loop
  *                               test bounds, from a buffer longer than the
  *                               blocks: is_init, unless the whole buffer is
