@@ -14,6 +14,9 @@
  *     2. Fill [sp - REGION, sp) with a canary byte, from inside the test
  *        function and without calls, so no frame below sp is live.
  *     3. Call one Jasmin export directly; its frames grow down from sp.
+ *        Every export of the unit is probed: key generation, the internal
+ *        signing and verification of FIPS 205 section 9, signing and
+ *        verification.
  *     4. Scan the region again:
  *          depth    = sp minus the lowest address whose byte changed;
  *          residue  = changed bytes that are not zero, below the top
@@ -114,13 +117,17 @@ typedef struct {
     void (*keygen)(uint8_t *, uint8_t *, const uint8_t *);
     uint64_t (*sign)(uint8_t *, const uint8_t *, uint64_t, const uint8_t *, const uint8_t *, const uint8_t *);
     uint64_t (*verify)(const uint8_t *, const uint8_t *, uint64_t, const uint8_t *, const uint8_t *);
+    void (*sign_internal)(uint8_t *, const uint8_t *, uint64_t, const uint8_t *, const uint8_t *);
+    uint64_t (*verify_internal)(const uint8_t *, const uint8_t *, uint64_t, const uint8_t *);
 } unit;
 
 #define UNITV(set, var, feat, label, n_, pk_, sk_, sig_)                       \
     { label, #var, feat, n_, pk_, sk_, sig_,                                   \
       nirapod_slhdsa_jz_##set##_##var##__keygen,                               \
       nirapod_slhdsa_jz_##set##_##var##__sign,                                 \
-      nirapod_slhdsa_jz_##set##_##var##__verify }
+      nirapod_slhdsa_jz_##set##_##var##__verify,                               \
+      nirapod_slhdsa_jz_##set##_##var##__sign_internal,                        \
+      nirapod_slhdsa_jz_##set##_##var##__verify_internal }
 
 #define UNIT(set, label, n_, pk_, sk_, sig_) UNITV(set, scalar, 0u, label, n_, pk_, sk_, sig_)
 
@@ -202,8 +209,13 @@ static unsigned host_features(void)
 #endif
 }
 
-enum { OP_KEYGEN, OP_SIGN, OP_VERIFY };
-static const char *OP_NAMES[] = { "keygen", "sign", "verify" };
+/*
+ * In this order, each verification checks the signature of the call
+ * before it, and the last signature, checked after the probes, is that of
+ * sign.
+ */
+enum { OP_KEYGEN, OP_SIGN_INTERNAL, OP_VERIFY_INTERNAL, OP_SIGN, OP_VERIFY, OP_COUNT };
+static const char *OP_NAMES[] = { "keygen", "sign_i", "verify_i", "sign", "verify" };
 
 typedef struct {
     size_t depth;
@@ -251,6 +263,12 @@ static probe_result probe(const unit *u, int op)
     switch (op) {
     case OP_KEYGEN:
         u->keygen(pk, sk, seeds);
+        break;
+    case OP_SIGN_INTERNAL:
+        u->sign_internal(sig, msg, sizeof(msg), sk, opt_rand);
+        break;
+    case OP_VERIFY_INTERNAL:
+        (void)u->verify_internal(sig, msg, sizeof(msg), pk);
         break;
     case OP_SIGN:
         (void)u->sign(sig, msg, sizeof(msg), domain, sk, opt_rand);
@@ -516,16 +534,16 @@ int main(int argc, char **argv)
         size_t total_residue = 0, u;
         int op;
 
-        printf("%-20s %-7s %-7s %10s %8s\n", "set", "variant", "op", "depth", "residue");
+        printf("%-20s %-7s %-8s %10s %8s\n", "set", "variant", "op", "depth", "residue");
         for (u = 0; u < sizeof(UNITS) / sizeof(UNITS[0]); u++) {
             if ((UNITS[u].features & ~host_features()) != 0) {
                 printf("%-20s %-7s skipped: CPU feature missing\n", UNITS[u].name, UNITS[u].variant);
                 continue;
             }
-            for (op = OP_KEYGEN; op <= OP_VERIFY; op++) {
+            for (op = OP_KEYGEN; op < OP_COUNT; op++) {
                 probe_result r = probe(&UNITS[u], op);
 
-                printf("%-20s %-7s %-7s %10zu %8zu\n", UNITS[u].name, UNITS[u].variant,
+                printf("%-20s %-7s %-8s %10zu %8zu\n", UNITS[u].name, UNITS[u].variant,
                        OP_NAMES[op], r.depth, r.residue);
                 if (r.depth == 0 || r.depth > REGION - 4096) {
                     printf("FAIL %s %s: depth outside the probed region\n", UNITS[u].name,
