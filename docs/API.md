@@ -338,6 +338,12 @@ system's responsibility. On CPUs without such a control, AMD processors among
 them, the caller depends on the CPU executing these instructions in time
 independent of their operands. See `capi/timing.c`.
 
+Which instructions the Jasmin code runs on secrets is checked: `jasmin-ct
+--doit` on every unit of both architectures, and, on AArch64, every emitted
+instruction against Arm's list of data-independent-time instructions
+([SECURITY-MODEL](SECURITY-MODEL.md#instruction-timing) states the scope). The
+mode itself, and whether the CPU honours it, stay as described above.
+
 ## Known limitations
 
 - On x86-64, the compiled code uses rbp, the frame-pointer register, as a

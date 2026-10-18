@@ -22,6 +22,15 @@ runs, for every parameter-set unit of the host's target,
   the misspeculation flag threaded through every function and every value
   reloaded from a spill slot or a stack array protected before it addresses
   memory or decides a branch.
+- `jasmin-ct --doit`, after the compiler's `slhlowering` pass: PASS means that
+  additionally every instruction that takes a secret operand is one the
+  compiler marks data-operand-independent (Intel's DOIT list, Arm's DIT list),
+  arithmetic and the speculation operators included. Moves, loads and stores
+  are outside this policy, and the marks are the compiler's transcription of
+  the vendor lists, not checked here; on AArch64 the emitted code is checked
+  against Arm's list directly (`asm/dit.awk`, below). A control file per
+  architecture (`ct/controls/`) gives a secret to an unmarked instruction;
+  `jasmin-ct` must accept it and `--doit` must reject it.
 
 Scope and limits:
 
@@ -31,14 +40,21 @@ Scope and limits:
 - A declassification is a type escape. The checker accepts it without judging
   it; each one carries its argument at the source site, and
   `docs/DECLASSIFICATION.md` lists them.
-- The checks run on the source after typing. That the compiler preserves the
-  property down to assembly is a claim of the compiler's own proofs for the
-  pinned version, not of this check.
-- Instruction timing: the default policy treats arithmetic as constant-time.
-  On AArch64 the library runs secret computations with PSTATE.DIT set where
-  the CPU has FEAT_DIT; on x86-64 the corresponding DOITM mode is the
-  platform's responsibility (`capi/timing.c`). The stricter `--doit` policy
-  has not been run.
+- The checks run on the program inside the compiler, not on its output:
+  `jasmin-ct` and `--sct` after typing, `--doit` after `slhlowering`. No
+  theorem of the pinned compiler carries them to the assembly; its proofs are
+  of semantic preservation and state nothing about leakage
+  ([TOOLCHAIN](../docs/TOOLCHAIN.md#assurance-boundary-of-the-toolchain)). The passes after `slhlowering` (address
+  lowering, stack and register allocation, linearization, stack zeroization,
+  assembly generation) are not seen by `--doit`. On AArch64 `asm/dit.awk`
+  checks the instructions they emit (below); on x86-64 no check covers them.
+  That branches and addresses in the emitted code still depend on no secret
+  rests on the type checks and on the compiler, not on a proof.
+- Instruction timing: `--doit` restricts which instructions see secrets; that
+  they then run in time independent of those secrets needs the CPU's mode. On
+  AArch64 the library runs secret computations with PSTATE.DIT set where the
+  CPU has FEAT_DIT; on x86-64 the corresponding DOITM mode is the platform's
+  responsibility (`capi/timing.c`).
 
 ## Stack depth and residue (`tests/abi/test_stack.c`)
 
@@ -138,9 +154,30 @@ label of the unit, none is indirect, and nothing calls out of it; no trap,
 system call or, on AArch64, system-register instruction appears, so the
 timing mode stays with the C layer; every export runs its speculation
 barrier before its first call, and reaches its return only through the
-compiler's stack-zeroing epilogue. That epilogue's size covering the frame
+compiler's stack-zeroing epilogue: the export ends at its first RET, every
+branch before it lands on a label of the export defined before it, no label
+of the export follows it, and no other code branches into the export. No
+data directive (`.byte`, `.inst`, `.long` and the like) appears in a code
+section, so no instruction escapes these rules as raw bytes. That the
+epilogue starts from the entry stack pointer and its size covers the frame
 is the compiler's computation, measured by the residue scan of
-`tests/abi/test_stack.c`. Each rule has
+`tests/abi/test_stack.c`.
+
+On AArch64, `asm/dit.awk` checks every instruction against the list of
+data-independent-time instructions of the Arm Architecture Reference Manual
+(DDI 0487 M.d, B1.5.6 "About PSTATE.DIT", and the Operational information of
+each instruction), form by form, each with the section it comes from. The
+only other forms it accepts consume no secret by construction: MOVZ and
+MOVN (and MOVK only while it builds such a constant), ADRP, direct branches,
+RET, conditional branches, whose flags are public by the constant-time
+check, and the barriers DSB, ISB and CSDB. Any other instruction fails the
+target, so a new instruction in the emitted code is reviewed against the
+manual before it is listed. On the units of this tree every instruction but
+those is on Arm's list. Whether the CPU honours DIT is not something the
+check can see. x86-64 has no such check of the emitted code; there the
+`--doit` result above, on the compiler's marks, is what exists.
+
+Each rule has
 negative controls (`asm/check-controls.sh`), files with a single violation of
 that rule, and each must be rejected by that rule, or the target fails. These
 are textual checks of the emitted code; they complement, and do not replace,

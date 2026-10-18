@@ -42,9 +42,12 @@ functions they call. The hash test exports are checked the same way
 
 What the result does not cover:
 
-- It is a property of the Jasmin source after type checking. That compilation
-  preserves it rests on the compiler's correctness proof for the pinned version,
-  not on this check.
+- It is a property of the Jasmin program after type checking. No theorem of the
+  pinned compiler carries it to the assembly: the compiler's proofs are of
+  semantic preservation and say nothing about leakage
+  ([TOOLCHAIN](TOOLCHAIN.md#assurance-boundary-of-the-toolchain)). That the
+  emitted code branches and addresses memory as the source does rests on the
+  compiler, unproved.
 - It assumes a safe program, which has not been checked; see
   [Memory safety](#memory-safety).
 - A `#declassify` is accepted without judgement by the checker; its justification
@@ -64,7 +67,32 @@ and the speculative guarantees of barrier instructions are an assumption of it
 
 ## Instruction timing
 
-The checks above treat arithmetic as constant-time.
+The constant-time checks above keep secrets out of branches and addresses.
+Which instructions see secrets is checked as follows:
+
+- `jasmin-ct --doit` runs on every unit of both architectures, after the
+  compiler has lowered arithmetic and the speculation operators to
+  instructions (`make ct`, CI check `analysis-units`). It admits a secret
+  operand only in an instruction the compiler marks data-operand-independent,
+  after Intel's DOIT and Arm's DIT lists. Moves, loads and stores are outside
+  its policy, and the marks are the compiler's, not checked by it. It sees the
+  program as it stands after `slhlowering`; what the later passes emit (stack
+  and register allocation, linearization, assembly generation) is checked only
+  on AArch64, below.
+- On AArch64, every instruction of the emitted assembly of every unit is
+  checked against the list of data-independent-time instructions in the Arm
+  Architecture Reference Manual, DDI 0487 M.d (`analysis/asm/dit.awk`, CI check
+  `asm-policy`). All are on that list except MOVZ, MOVN, ADRP, branches, RET and
+  the barriers DSB, ISB and CSDB, which read no secret: immediates, addresses,
+  public branch conditions and no data. MOVK, listed by DDI 0487 M.d but not by
+  Arm's A64 instruction XML, is accepted only while it builds a constant. The
+  instructions of the C layer, compiled by the host's C compiler, are not part of
+  this check.
+- x86-64 has no check of the emitted instructions against Intel's list; the
+  `--doit` result rests on the compiler's marks.
+
+That these instructions then run in time independent of their operands is the
+CPU's guarantee, under the mode that enables it:
 
 - **AArch64.** On CPUs with FEAT_DIT, key generation and signing, the check of the
   new signature included, run with PSTATE.DIT set, and the caller's value is
@@ -78,10 +106,10 @@ The checks above treat arithmetic as constant-time.
 
 The emitted code contains no division instruction and, on AArch64, no
 system-register access, so only the C layer sets and restores the timing mode
-(`make asm-policy`). Two questions are open: whether every instruction the
-AArch64 units emit is one the Arm architecture lists as data-independent-time
-under DIT has not been checked, and the stricter `--doit` policy of `jasmin-ct`
-has not been run.
+(`make asm-policy`). What remains with the caller or the platform: a CPU
+without FEAT_DIT, where nothing is set and the guarantee is the CPU's alone;
+DOITM on Intel CPUs; any x86-64 CPU without such a mode; and whether a given
+CPU honours DIT or DOITM as specified, which no check here can observe.
 
 ## Memory safety
 
