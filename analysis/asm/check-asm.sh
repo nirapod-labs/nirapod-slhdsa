@@ -15,6 +15,13 @@
 #     x18       AArch64: the platform register is never written or read
 #     x29       AArch64: the frame-pointer register (fp) is never written or
 #               read, so a frame-chain walk during a call stays valid
+#     branches, traps, fence, leave, data
+#               the rules of analysis/asm/exports.awk: no branch or call
+#               leaves the unit or is indirect; no trap or system-register
+#               instruction; every export runs a speculation barrier
+#               before its first call and has one RET, reached only through
+#               the stack-zeroing epilogue; no data directive in a code
+#               section
 #
 # analysis/asm/check-controls.sh holds a negative control for each rule.
 #
@@ -24,6 +31,7 @@
 
 arch=$1
 shift
+here=$(dirname "$0")
 fail=0
 
 for f in "$@"; do
@@ -56,6 +64,9 @@ for f in "$@"; do
       exit 2
       ;;
   esac
+
+  flow=$(awk -v arch="$arch" -f "$here/exports.awk" "$f")
+  if [ -n "$flow" ]; then echo "$flow"; bad=1; fi
 
   if [ "$bad" -eq 0 ]; then echo "$f: PASS"; else fail=1; fi
 done
