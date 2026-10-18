@@ -10,9 +10,11 @@
  * Method
  *
  *     A trampoline in inline assembly fills the caller-saved registers
- *     with a pattern, calls a function of this test with no arguments,
- *     and stores every caller-saved register to memory the moment control
- *     comes back, before any compiler-generated code runs.
+ *     with a pattern and calls a function of this test with no arguments.
+ *     That function calls the library through the thunk of call_dump.h,
+ *     which stores every caller-saved register to memory the moment the
+ *     library function returns, before any compiler-generated code of the
+ *     test runs.
  *
  *     1. mechanism   the function is nirapod_slhdsa_clear_registers: every
  *                    register it promises to zero must be zero (clear.c
@@ -30,9 +32,10 @@
  *     3. end to end  the function runs keygen, signing or hash signing
  *                    through the public API: no register may hold 8
  *                    consecutive bytes of SK.seed or SK.prf
- *     4. control     the function loads 8 bytes of SK.prf into a
- *                    caller-saved register and returns: check 3 must find
- *                    them, otherwise the test fails
+ *     4. control     the function calls, through the thunk, functions
+ *                    that load bytes of SK.prf into one caller-saved
+ *                    register each (call_dump.h) and return: check 3 must
+ *                    find them, otherwise the test fails
  *
  *     5. timing      AArch64 with FEAT_DIT: keygen, signing and the check
  *                    of the new signature run with PSTATE.DIT set, read by
@@ -47,9 +50,11 @@
  * Check 2 is the one that shows the clearing runs after each export: the
  * Jasmin exports happen not to return with the seeds in registers, so
  * check 3 passes with or without it, and covers copies of the seeds only,
- * not values derived from them. The flags and, on x86-64, the upper halves
- * of the zmm registers and the registers above 15 of AVX-512 CPUs are not
- * inspected; the library does not use them.
+ * not values derived from them; test_clearing.c compares the registers
+ * of two runs instead. The flags, x18 on macOS and, on x86-64, the upper
+ * halves of the zmm registers, zmm16-zmm31 and the mask registers of
+ * AVX-512 CPUs are not inspected. Check 1 does not require x18 to be
+ * zero: the library never writes it.
  */
 
 #include <stdio.h>
@@ -65,24 +70,7 @@
 #include "nirapod_slhdsa.h"
 #include "nirapod_slhdsa_testing.h"
 
-#if defined(__aarch64__)
-#define NGPR 18           /* x0-x17 */
-#define NVEC 32           /* v0-v31, 16 bytes each */
-#define VEC_BYTES 16
-#elif defined(__x86_64__)
-#define NGPR 9            /* rax rcx rdx rsi rdi r8 r9 r10 r11 */
-#define NVEC 16           /* ymm0-ymm15, 32 bytes each (16 without AVX) */
-#define VEC_BYTES 32
-#else
-#error "test_registers.c: unsupported architecture"
-#endif
-
-typedef struct {
-    uint64_t gpr[NGPR];
-    uint8_t vec[NVEC][VEC_BYTES];
-} dump;
-
-#define PATTERN 0xA5u
+#include "call_dump.h"
 
 static int failures;
 
@@ -96,146 +84,6 @@ static int failures;
         }                                                                      \
     } while (0)
 
-#if defined(__x86_64__)
-/* Whether the trampoline stores full ymm registers (x86-64 with AVX). */
-static int wide_vectors;
-#endif
-
-/*
- * Call fn() with the caller-saved registers pre-filled with PATTERN and
- * store them to *d on return. Everything the call can change is declared
- * clobbered, so the compiler keeps nothing live in those registers.
- */
-__attribute__((noinline))
-static void call_and_dump(void (*fn)(void), dump *d)
-{
-#if defined(__aarch64__)
-    register void (*f)(void) __asm__("x20") = fn;
-    register dump *p __asm__("x19") = d;
-
-    __asm__ __volatile__(
-        "mov x0, #0xa5a5\n\t"
-        "orr x0, x0, x0, lsl #16\n\t"
-        "orr x0, x0, x0, lsl #32\n\t"
-        "mov x1, x0\n\t"  "mov x2, x0\n\t"  "mov x3, x0\n\t"  "mov x4, x0\n\t"
-        "mov x5, x0\n\t"  "mov x6, x0\n\t"  "mov x7, x0\n\t"  "mov x8, x0\n\t"
-        "mov x9, x0\n\t"  "mov x10, x0\n\t" "mov x11, x0\n\t" "mov x12, x0\n\t"
-        "mov x13, x0\n\t" "mov x14, x0\n\t" "mov x15, x0\n\t" "mov x16, x0\n\t"
-        "mov x17, x0\n\t"
-        "movi v0.16b, #0xa5\n\t"
-        "mov v1.16b, v0.16b\n\t"  "mov v2.16b, v0.16b\n\t"  "mov v3.16b, v0.16b\n\t"
-        "mov v4.16b, v0.16b\n\t"  "mov v5.16b, v0.16b\n\t"  "mov v6.16b, v0.16b\n\t"
-        "mov v7.16b, v0.16b\n\t"  "mov v8.16b, v0.16b\n\t"  "mov v9.16b, v0.16b\n\t"
-        "mov v10.16b, v0.16b\n\t" "mov v11.16b, v0.16b\n\t" "mov v12.16b, v0.16b\n\t"
-        "mov v13.16b, v0.16b\n\t" "mov v14.16b, v0.16b\n\t" "mov v15.16b, v0.16b\n\t"
-        "mov v16.16b, v0.16b\n\t" "mov v17.16b, v0.16b\n\t" "mov v18.16b, v0.16b\n\t"
-        "mov v19.16b, v0.16b\n\t" "mov v20.16b, v0.16b\n\t" "mov v21.16b, v0.16b\n\t"
-        "mov v22.16b, v0.16b\n\t" "mov v23.16b, v0.16b\n\t" "mov v24.16b, v0.16b\n\t"
-        "mov v25.16b, v0.16b\n\t" "mov v26.16b, v0.16b\n\t" "mov v27.16b, v0.16b\n\t"
-        "mov v28.16b, v0.16b\n\t" "mov v29.16b, v0.16b\n\t" "mov v30.16b, v0.16b\n\t"
-        "mov v31.16b, v0.16b\n\t"
-        "blr x20\n\t"
-        "stp x0, x1, [x19, #0]\n\t"     "stp x2, x3, [x19, #16]\n\t"
-        "stp x4, x5, [x19, #32]\n\t"    "stp x6, x7, [x19, #48]\n\t"
-        "stp x8, x9, [x19, #64]\n\t"    "stp x10, x11, [x19, #80]\n\t"
-        "stp x12, x13, [x19, #96]\n\t"  "stp x14, x15, [x19, #112]\n\t"
-        "stp x16, x17, [x19, #128]\n\t"
-        "stp q0, q1, [x19, #144]\n\t"   "stp q2, q3, [x19, #176]\n\t"
-        "stp q4, q5, [x19, #208]\n\t"   "stp q6, q7, [x19, #240]\n\t"
-        "stp q8, q9, [x19, #272]\n\t"   "stp q10, q11, [x19, #304]\n\t"
-        "stp q12, q13, [x19, #336]\n\t" "stp q14, q15, [x19, #368]\n\t"
-        "stp q16, q17, [x19, #400]\n\t" "stp q18, q19, [x19, #432]\n\t"
-        "stp q20, q21, [x19, #464]\n\t" "stp q22, q23, [x19, #496]\n\t"
-        "stp q24, q25, [x19, #528]\n\t" "stp q26, q27, [x19, #560]\n\t"
-        "stp q28, q29, [x19, #592]\n\t" "stp q30, q31, [x19, #624]"
-        : "+r"(f), "+r"(p)
-        :
-        : "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11",
-          "x12", "x13", "x14", "x15", "x16", "x17", "x30",
-          "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
-          "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22",
-          "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31",
-          "memory", "cc");
-#else
-    /*
-     * rbx holds d and r12 the caller's rsp across the call; the stack is
-     * moved below the red zone and aligned to 32 bytes first.
-     */
-    if (wide_vectors) {
-        __asm__ __volatile__(
-            "movq %%rsp, %%r12\n\t"
-            "subq $256, %%rsp\n\t"
-            "andq $-32, %%rsp\n\t"
-            "movq $0xa5a5a5a5a5a5a5a5, %%rcx\n\t"
-            "movq %%rcx, %%rdx\n\t" "movq %%rcx, %%rsi\n\t" "movq %%rcx, %%rdi\n\t"
-            "movq %%rcx, %%r8\n\t"  "movq %%rcx, %%r9\n\t"  "movq %%rcx, %%r10\n\t"
-            "movq %%rcx, %%r11\n\t"
-            "vmovq %%rcx, %%xmm0\n\t"
-            "vpbroadcastq %%xmm0, %%ymm0\n\t"
-            "vmovdqa %%ymm0, %%ymm1\n\t"   "vmovdqa %%ymm0, %%ymm2\n\t"   "vmovdqa %%ymm0, %%ymm3\n\t"
-            "vmovdqa %%ymm0, %%ymm4\n\t"   "vmovdqa %%ymm0, %%ymm5\n\t"   "vmovdqa %%ymm0, %%ymm6\n\t"
-            "vmovdqa %%ymm0, %%ymm7\n\t"   "vmovdqa %%ymm0, %%ymm8\n\t"   "vmovdqa %%ymm0, %%ymm9\n\t"
-            "vmovdqa %%ymm0, %%ymm10\n\t"  "vmovdqa %%ymm0, %%ymm11\n\t"  "vmovdqa %%ymm0, %%ymm12\n\t"
-            "vmovdqa %%ymm0, %%ymm13\n\t"  "vmovdqa %%ymm0, %%ymm14\n\t"  "vmovdqa %%ymm0, %%ymm15\n\t"
-            "callq *%%rax\n\t"
-            "movq %%rax, 0(%%rbx)\n\t"  "movq %%rcx, 8(%%rbx)\n\t"  "movq %%rdx, 16(%%rbx)\n\t"
-            "movq %%rsi, 24(%%rbx)\n\t" "movq %%rdi, 32(%%rbx)\n\t" "movq %%r8, 40(%%rbx)\n\t"
-            "movq %%r9, 48(%%rbx)\n\t"  "movq %%r10, 56(%%rbx)\n\t" "movq %%r11, 64(%%rbx)\n\t"
-            "vmovdqu %%ymm0, 72(%%rbx)\n\t"   "vmovdqu %%ymm1, 104(%%rbx)\n\t"
-            "vmovdqu %%ymm2, 136(%%rbx)\n\t"  "vmovdqu %%ymm3, 168(%%rbx)\n\t"
-            "vmovdqu %%ymm4, 200(%%rbx)\n\t"  "vmovdqu %%ymm5, 232(%%rbx)\n\t"
-            "vmovdqu %%ymm6, 264(%%rbx)\n\t"  "vmovdqu %%ymm7, 296(%%rbx)\n\t"
-            "vmovdqu %%ymm8, 328(%%rbx)\n\t"  "vmovdqu %%ymm9, 360(%%rbx)\n\t"
-            "vmovdqu %%ymm10, 392(%%rbx)\n\t" "vmovdqu %%ymm11, 424(%%rbx)\n\t"
-            "vmovdqu %%ymm12, 456(%%rbx)\n\t" "vmovdqu %%ymm13, 488(%%rbx)\n\t"
-            "vmovdqu %%ymm14, 520(%%rbx)\n\t" "vmovdqu %%ymm15, 552(%%rbx)\n\t"
-            "vzeroupper\n\t"
-            "movq %%r12, %%rsp"
-            : "+a"(fn), "+b"(d)
-            :
-            : "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12",
-              "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", "xmm8",
-              "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
-              "memory", "cc");
-    } else {
-        __asm__ __volatile__(
-            "movq %%rsp, %%r12\n\t"
-            "subq $256, %%rsp\n\t"
-            "andq $-32, %%rsp\n\t"
-            "movq $0xa5a5a5a5a5a5a5a5, %%rcx\n\t"
-            "movq %%rcx, %%rdx\n\t" "movq %%rcx, %%rsi\n\t" "movq %%rcx, %%rdi\n\t"
-            "movq %%rcx, %%r8\n\t"  "movq %%rcx, %%r9\n\t"  "movq %%rcx, %%r10\n\t"
-            "movq %%rcx, %%r11\n\t"
-            "movq %%rcx, %%xmm0\n\t"
-            "punpcklqdq %%xmm0, %%xmm0\n\t"
-            "movdqa %%xmm0, %%xmm1\n\t"   "movdqa %%xmm0, %%xmm2\n\t"   "movdqa %%xmm0, %%xmm3\n\t"
-            "movdqa %%xmm0, %%xmm4\n\t"   "movdqa %%xmm0, %%xmm5\n\t"   "movdqa %%xmm0, %%xmm6\n\t"
-            "movdqa %%xmm0, %%xmm7\n\t"   "movdqa %%xmm0, %%xmm8\n\t"   "movdqa %%xmm0, %%xmm9\n\t"
-            "movdqa %%xmm0, %%xmm10\n\t"  "movdqa %%xmm0, %%xmm11\n\t"  "movdqa %%xmm0, %%xmm12\n\t"
-            "movdqa %%xmm0, %%xmm13\n\t"  "movdqa %%xmm0, %%xmm14\n\t"  "movdqa %%xmm0, %%xmm15\n\t"
-            "callq *%%rax\n\t"
-            "movq %%rax, 0(%%rbx)\n\t"  "movq %%rcx, 8(%%rbx)\n\t"  "movq %%rdx, 16(%%rbx)\n\t"
-            "movq %%rsi, 24(%%rbx)\n\t" "movq %%rdi, 32(%%rbx)\n\t" "movq %%r8, 40(%%rbx)\n\t"
-            "movq %%r9, 48(%%rbx)\n\t"  "movq %%r10, 56(%%rbx)\n\t" "movq %%r11, 64(%%rbx)\n\t"
-            "movdqu %%xmm0, 72(%%rbx)\n\t"   "movdqu %%xmm1, 104(%%rbx)\n\t"
-            "movdqu %%xmm2, 136(%%rbx)\n\t"  "movdqu %%xmm3, 168(%%rbx)\n\t"
-            "movdqu %%xmm4, 200(%%rbx)\n\t"  "movdqu %%xmm5, 232(%%rbx)\n\t"
-            "movdqu %%xmm6, 264(%%rbx)\n\t"  "movdqu %%xmm7, 296(%%rbx)\n\t"
-            "movdqu %%xmm8, 328(%%rbx)\n\t"  "movdqu %%xmm9, 360(%%rbx)\n\t"
-            "movdqu %%xmm10, 392(%%rbx)\n\t" "movdqu %%xmm11, 424(%%rbx)\n\t"
-            "movdqu %%xmm12, 456(%%rbx)\n\t" "movdqu %%xmm13, 488(%%rbx)\n\t"
-            "movdqu %%xmm14, 520(%%rbx)\n\t" "movdqu %%xmm15, 552(%%rbx)\n\t"
-            "movq %%r12, %%rsp"
-            : "+a"(fn), "+b"(d)
-            :
-            : "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12",
-              "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", "xmm8",
-              "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
-              "memory", "cc");
-    }
-#endif
-}
-
 /* The functions the trampoline calls, and their shared inputs. */
 
 static nirapod_slhdsa_set the_set;
@@ -244,46 +92,61 @@ static uint8_t pk[64], sk[128], msg[32], sig[NIRAPOD_SLHDSA_MAX_SIGNATURE_BYTES]
 
 static void run_clear(void)
 {
-    nirapod_slhdsa_clear_registers(the_features);
+    CAPTURED(nirapod_slhdsa_clear_registers)(the_features);
 }
 
 static void run_keygen(void)
 {
     size_t n = nirapod_slhdsa_public_key_bytes(the_set) / 2;
 
-    (void)nirapod_slhdsa_keygen(the_set, pk, 2 * n, sk, 4 * n);
+    (void)CAPTURED(nirapod_slhdsa_keygen)(the_set, pk, 2 * n, sk, 4 * n);
 }
 
 static void run_sign(void)
 {
     size_t n = nirapod_slhdsa_public_key_bytes(the_set) / 2;
 
-    (void)nirapod_slhdsa_sign(the_set, sig, nirapod_slhdsa_signature_bytes(the_set),
-                              msg, sizeof(msg), NULL, 0, sk, 4 * n);
+    (void)CAPTURED(nirapod_slhdsa_sign)(the_set, sig, nirapod_slhdsa_signature_bytes(the_set),
+                                        msg, sizeof(msg), NULL, 0, sk, 4 * n);
 }
 
 static void run_hash_sign(void)
 {
     size_t n = nirapod_slhdsa_public_key_bytes(the_set) / 2;
 
-    (void)nirapod_slhdsa_hash_sign_deterministic(the_set, NIRAPOD_SLHDSA_PREHASH_SHAKE256, sig,
-                                                 nirapod_slhdsa_signature_bytes(the_set),
-                                                 msg, sizeof(msg), NULL, 0, sk, 4 * n);
+    (void)CAPTURED(nirapod_slhdsa_hash_sign_deterministic)(
+        the_set, NIRAPOD_SLHDSA_PREHASH_SHAKE256, sig, nirapod_slhdsa_signature_bytes(the_set),
+        msg, sizeof(msg), NULL, 0, sk, 4 * n);
 }
 
-/* The control: SK.prf[0 .. 8) left in a caller-saved register. */
-static void run_leak(void)
+/*
+ * The controls: bytes of SK.prf left in one caller-saved register by a
+ * callee, after which the caller stores a status, as the wrappers above
+ * do.
+ */
+static int leak_status;
+
+static void run_leak_gpr(void)
 {
-    size_t n = nirapod_slhdsa_public_key_bytes(the_set) / 2;
-    uint64_t v;
-
-    memcpy(&v, sk + n, 8);
-#if defined(__aarch64__)
-    __asm__ __volatile__("mov x9, %0" : : "r"(v) : "x9");
-#else
-    __asm__ __volatile__("movq %0, %%r10" : : "r"(v) : "r10");
-#endif
+    leak_status = CAPTURED(call_dump_leave_gpr)(sk + nirapod_slhdsa_public_key_bytes(the_set) / 2);
 }
+
+static void run_leak_gpr2(void)
+{
+    leak_status = CAPTURED(call_dump_leave_gpr2)(sk + nirapod_slhdsa_public_key_bytes(the_set) / 2);
+}
+
+static void run_leak_vec(void)
+{
+    leak_status = CAPTURED(call_dump_leave_vec)(sk + nirapod_slhdsa_public_key_bytes(the_set) / 2);
+}
+
+#if defined(__aarch64__) && CALL_DUMP_X18
+static void run_leak_x18(void)
+{
+    leak_status = CAPTURED(call_dump_leave_x18)(sk + nirapod_slhdsa_public_key_bytes(the_set) / 2);
+}
+#endif
 
 /* 1 if the dump holds 8 consecutive bytes of secret[0 .. n). */
 static int dump_contains(const dump *d, const uint8_t *secret, size_t n)
@@ -509,44 +372,43 @@ static nirapod_slhdsa_status wiring_status;
 
 static void wire_keygen(void)
 {
-    wiring_status = nirapod_slhdsa_keygen_env(&stub_env, pk, stub_rec.public_key_bytes,
-                                              sk, stub_rec.secret_key_bytes);
+    wiring_status = CAPTURED(nirapod_slhdsa_keygen_env)(&stub_env, pk, stub_rec.public_key_bytes,
+                                                        sk, stub_rec.secret_key_bytes);
 }
 
 static void wire_sign(void)
 {
-    wiring_status = nirapod_slhdsa_sign_framed(&stub_env, 0, 0, NIRAPOD_SLHDSA_OPT_RAND_PK_SEED,
-                                               sig, stub_rec.signature_bytes, msg, sizeof(msg),
-                                               NULL, 0, sk, stub_rec.secret_key_bytes);
+    wiring_status = CAPTURED(nirapod_slhdsa_sign_framed)(
+        &stub_env, 0, 0, NIRAPOD_SLHDSA_OPT_RAND_PK_SEED, sig, stub_rec.signature_bytes,
+        msg, sizeof(msg), NULL, 0, sk, stub_rec.secret_key_bytes);
 }
 
 static void wire_sign_hedged(void)
 {
-    wiring_status = nirapod_slhdsa_sign_framed(&stub_env, 0, 0, NIRAPOD_SLHDSA_OPT_RAND_ENTROPY,
-                                               sig, stub_rec.signature_bytes, msg, sizeof(msg),
-                                               NULL, 0, sk, stub_rec.secret_key_bytes);
+    wiring_status = CAPTURED(nirapod_slhdsa_sign_framed)(
+        &stub_env, 0, 0, NIRAPOD_SLHDSA_OPT_RAND_ENTROPY, sig, stub_rec.signature_bytes,
+        msg, sizeof(msg), NULL, 0, sk, stub_rec.secret_key_bytes);
 }
 
 static void wire_hash_sign(void)
 {
-    wiring_status = nirapod_slhdsa_sign_framed(&stub_env, 1, NIRAPOD_SLHDSA_PREHASH_SHA2_256,
-                                               NIRAPOD_SLHDSA_OPT_RAND_PK_SEED,
-                                               sig, stub_rec.signature_bytes, msg, sizeof(msg),
-                                               NULL, 0, sk, stub_rec.secret_key_bytes);
+    wiring_status = CAPTURED(nirapod_slhdsa_sign_framed)(
+        &stub_env, 1, NIRAPOD_SLHDSA_PREHASH_SHA2_256, NIRAPOD_SLHDSA_OPT_RAND_PK_SEED,
+        sig, stub_rec.signature_bytes, msg, sizeof(msg), NULL, 0, sk, stub_rec.secret_key_bytes);
 }
 
 static void wire_sign_internal(void)
 {
-    wiring_status = nirapod_slhdsa_sign_internal_env(&stub_env, NIRAPOD_SLHDSA_OPT_RAND_PK_SEED,
-                                                     sig, stub_rec.signature_bytes,
-                                                     msg, sizeof(msg),
-                                                     sk, stub_rec.secret_key_bytes);
+    wiring_status = CAPTURED(nirapod_slhdsa_sign_internal_env)(
+        &stub_env, NIRAPOD_SLHDSA_OPT_RAND_PK_SEED, sig, stub_rec.signature_bytes,
+        msg, sizeof(msg), sk, stub_rec.secret_key_bytes);
 }
 
-/* The control: a stub called directly, with nothing after it. */
+/* The control: a stub called directly, then a status stored. */
 static void wire_control(void)
 {
-    stub_rec.keygen(pk, sk, msg);
+    CAPTURED(stub_rec.keygen)(pk, sk, msg);
+    wiring_status = NIRAPOD_SLHDSA_OK;
 }
 
 /*
@@ -628,10 +490,28 @@ static const nirapod_slhdsa_set SETS[] = {
     NIRAPOD_SLHDSA_SHA2_256F, NIRAPOD_SLHDSA_SHAKE_256F,
 };
 
+/* The operations of check 3; the first CHECKED_OPS are not controls. */
+#define CHECKED_OPS 3
+
 static void test_end_to_end(void)
 {
-    static void (*const ops[])(void) = { run_keygen, run_sign, run_hash_sign, run_leak };
-    static const char *const names[] = { "keygen", "sign", "hash_sign_det", "control" };
+    static void (*const ops[])(void) = {
+        run_keygen, run_sign, run_hash_sign, run_leak_gpr, run_leak_gpr2, run_leak_vec,
+#if defined(__aarch64__) && CALL_DUMP_X18
+        run_leak_x18,
+#endif
+    };
+    static const char *const names[] = {
+        "keygen", "sign", "hash_sign_det",
+#if defined(__aarch64__)
+        "control x8", "control x9", "control v16",
+#if CALL_DUMP_X18
+        "control x18",
+#endif
+#else
+        "control r11", "control r10", "control xmm15",
+#endif
+    };
     dump d;
     size_t s, op, n;
     int found;
@@ -640,13 +520,15 @@ static void test_end_to_end(void)
     for (s = 0; s < sizeof(SETS) / sizeof(SETS[0]); s++) {
         the_set = SETS[s];
         n = nirapod_slhdsa_public_key_bytes(the_set) / 2;
-        for (op = 0; op < 4; op++) {
+        for (op = 0; op < sizeof(ops) / sizeof(ops[0]); op++) {
+            int control = op >= CHECKED_OPS;
+
             memset(&d, 0, sizeof(d));
             call_and_dump(ops[op], &d);
             found = dump_contains(&d, sk, n) || dump_contains(&d, sk + n, n);
             printf("%-20s %-14s seeds in registers: %s\n", nirapod_slhdsa_set_name(the_set),
                    names[op], found ? "yes" : "no");
-            CHECK(op == 3 ? found : !found, "%s %s", nirapod_slhdsa_set_name(the_set), names[op]);
+            CHECK(control ? found : !found, "%s %s", nirapod_slhdsa_set_name(the_set), names[op]);
         }
     }
 }

@@ -30,9 +30,13 @@
  *                            xmm0-xmm15, or all of ymm0-ymm15 with VZEROALL
  *                            after a variant that used AVX
  *
- *     x18 is the platform register on macOS and is left alone; the Jasmin
- *     code does not use it. Flags are not cleared. Registers saved by the
- *     operating system on a context switch are outside this file's reach.
+ *     x18 is left alone: macOS reserves it, as do Linux systems that keep
+ *     a shadow call stack there, so writing it is not safe everywhere. The
+ *     Jasmin code never uses it (make asm-policy rejects it); on Linux,
+ *     where the C compiler may use it as a temporary, tests/abi/
+ *     test_clearing.c compares it between two secret inputs. Flags are not
+ *     cleared. Registers saved by the operating system on a context switch
+ *     are outside this file's reach.
  */
 
 #include "internal.h"

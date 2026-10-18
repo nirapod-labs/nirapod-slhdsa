@@ -11,8 +11,8 @@
 #     make            build/<target>/lib/libnirapod_slhdsa.a
 #                     build/<target>/lib/libnirapod_slhdsa_testing.a
 #     make check      check the symbols of the application library, run the
-#                     ACVP known answers, the core, negative, stack, register
-#                     and fault tests on this host; writes
+#                     ACVP known answers, the core, negative, stack, register,
+#                     clearing and fault tests on this host; writes
 #                     build/<target>/transcript-core.txt
 #     make fill-check build the library once more with the safety-checker
 #                     fills of the core written as 0xa5 bytes instead of
@@ -360,6 +360,8 @@ $(EXPORTS_CONTROL): $(LIB_OBJ)
 
 CORE_TESTS := $(OUT)/tests/test_core $(OUT)/tests/test_negative \
               $(OUT)/tests/test_stack $(OUT)/tests/test_registers \
+              $(OUT)/tests/test_clearing $(OUT)/tests/test_clearing_production \
+              $(OUT)/tests/test_clearing_skip \
               $(OUT)/tests/test_acvp $(OUT)/tests/test_acvp_production \
               $(OUT)/tests/test_production $(OUT)/tests/test_stack_production \
               $(OUT)/tests/test_stack_base \
@@ -473,9 +475,39 @@ $(OUT)/tests/test_stack: $(TESTS_DIR)/abi/test_stack.c $(TESTING_LIB)
 	$(TEST_CC) -o $@ $< $(TESTING_LIB)
 
 # Register state after the library returns (tests/abi/test_registers.c).
-$(OUT)/tests/test_registers: $(TESTS_DIR)/abi/test_registers.c $(TESTING_LIB)
+CALL_DUMP := $(TESTS_DIR)/abi/call_dump.h
+
+$(OUT)/tests/test_registers: $(TESTS_DIR)/abi/test_registers.c $(CALL_DUMP) $(TESTING_LIB)
 	@mkdir -p $(@D)
 	$(TEST_CC) -o $@ $< $(TESTING_LIB)
+
+# Secret-dependent residue on the stack and in the registers after each
+# secret-reading call (tests/abi/test_clearing.c): on the testing library,
+# on the application library, and two negative controls that must show
+# residue: the testing library's objects with capi/clear.c replaced by
+# tests/abi/clear_skip.c, which clears nothing (test_clearing_skip), and
+# the units compiled without stack zeroization (test_clearing_nozero).
+$(OUT)/tests/test_clearing: $(TESTS_DIR)/abi/test_clearing.c $(CALL_DUMP) $(TESTING_LIB)
+	@mkdir -p $(@D)
+	$(TEST_CC) -o $@ $< $(TESTING_LIB)
+
+$(OUT)/tests/test_clearing_production: $(TESTS_DIR)/abi/test_clearing.c $(CALL_DUMP) $(LIB)
+	@mkdir -p $(@D)
+	$(PRODUCTION_TEST_CC) -DNIRAPOD_SLHDSA_CLEARING_PRODUCTION -o $@ $< $(LIB)
+
+SKIP_COBJ := $(filter-out $(OUT)/obj/c-testing/clear.o,$(TCOBJ)) $(OUT)/obj/c-skip/clear_skip.o
+
+$(OUT)/obj/c-skip/clear_skip.o: $(TESTS_DIR)/abi/clear_skip.c $(CAPI_DEPS)
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(TESTING_DEF) $(CWARN) $(CFLAGS) -c -o $@ $<
+
+$(OUT)/tests/test_clearing_skip: $(TESTS_DIR)/abi/test_clearing.c $(CALL_DUMP) $(SKIP_COBJ) $(JOBJ)
+	@mkdir -p $(@D)
+	$(TEST_CC) -o $@ $< $(SKIP_COBJ) $(JOBJ)
+
+$(OUT)/tests/test_clearing_nozero: $(TESTS_DIR)/abi/test_clearing.c $(CALL_DUMP) $(CONTROL_OBJ)
+	@mkdir -p $(@D)
+	$(TEST_CC) -DNIRAPOD_SLHDSA_CLEARING_NOZERO -o $@ $< $(CONTROL_OBJ)
 
 $(OUT)/tests/test_stack_control: $(TESTS_DIR)/abi/test_stack.c $(CONTROL_OBJ)
 	@mkdir -p $(@D)
@@ -562,7 +594,8 @@ TEST_CORE_FLAGS ?=
 ifeq ($(strip $(JASMINC)),)
 CHECK_TESTS := $(CORE_TESTS)
 else
-CHECK_TESTS := $(CORE_TESTS) $(OUT)/tests/test_stack_control $(OUT)/tests/test_fault
+CHECK_TESTS := $(CORE_TESTS) $(OUT)/tests/test_stack_control $(OUT)/tests/test_clearing_nozero \
+               $(OUT)/tests/test_fault
 endif
 
 check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
@@ -582,14 +615,19 @@ check: $(CHECK_TESTS) $(LIB) $(EXPORTS_CONTROL)
 	$(OUT)/tests/test_stack_base
 	$(if $(filter x86_64,$(ARCH)),$(OUT)/tests/test_stack_avx2)
 	$(OUT)/tests/test_registers
+	$(OUT)/tests/test_clearing
+	$(OUT)/tests/test_clearing_production
+	$(OUT)/tests/test_clearing_skip --expect-residue
 	$(OUT)/tests/test_entropy
 	$(OUT)/tests/test_buffers
 	$(PYTHON) -I $(README_EXAMPLE) run $(OUT)/readme/example $(OUT)/readme/tampered
 ifeq ($(strip $(JASMINC)),)
 	@echo "test_stack (negative control): NOT RUN (needs JASMINC)"
+	@echo "test_clearing (negative control, no stack zeroization): NOT RUN (needs JASMINC)"
 	@echo "test_fault: NOT RUN (needs JASMINC)"
 else
 	$(OUT)/tests/test_stack_control --expect-residue
+	$(OUT)/tests/test_clearing_nozero --expect-residue
 	$(OUT)/tests/test_fault
 endif
 
