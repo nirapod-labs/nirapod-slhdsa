@@ -26,5 +26,5 @@ exactly = 7
 [fill-controls]
 [[fill-controls.line]]
 what = "filled buffers whose control the fill check detected"
-pattern = '^fill-check controls: detected=(\d+) of 9$'
-exactly = 9
+pattern = '^fill-check controls: detected=(\d+) of 11$'
+exactly = 11

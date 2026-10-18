@@ -84,16 +84,23 @@ fn _xmss_treehash(
 
   /*
    * Safety-checker workaround, as for pk in _wots_leaf_x4 (wots.jinc):
-   * _treehash_fold parks nodes at run-time slots, so the checker reports
-   * is_init where the fold reads a parked sibling and where the root is
-   * copied out. By the fold invariant (treehash.jinc) each of those reads
-   * is of a slot the fold has written. The fill check covers this site
-   * too.
+   * _treehash_fold parks nodes and records auth at run-time slots, and
+   * _wots_leaf_x4 writes wsig at run-time offsets, so the checker reports
+   * is_init where the fold reads a parked sibling, where the root is
+   * copied out, and where wsig and auth are copied into sig. By the fold
+   * invariant (treehash.jinc) each node read is of a slot the fold has
+   * written; for a target below 2^h', auth[0 : h' n] holds AUTH and wsig
+   * the target's WOTS+ signature, both written in full before the copy.
+   * The fill check covers this site too.
    */
 
   fill = 0;
   for k = 0 to SLH_FOLD_SLOTS * SLH_N / 8 {
     nodes[:u64 k] = fill;
+    auth[:u64 k] = fill;
+  }
+  for k = 0 to SLH_WOTS_SIG_BYTES / 8 {
+    wsig[:u64 k] = fill;
   }
 
   /* Values needed after a call wait in spill slots. */

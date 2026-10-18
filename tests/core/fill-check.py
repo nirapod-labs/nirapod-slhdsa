@@ -60,7 +60,7 @@ FILL = "fill = 0xa5a5a5a5a5a5a5a5;"
 
 SITES = {
     "slhdsa/wots.jinc": 2,      # pk in _wots_leaf_x4, tmp in _wots_pk_from_sig
-    "slhdsa/xmss.jinc": 1,      # nodes in _xmss_treehash
+    "slhdsa/xmss.jinc": 1,      # nodes, auth and wsig in _xmss_treehash
     "slhdsa/fors.jinc": 3,      # nodes, auth and selected in _fors_tree,
                                 # roots in _fors_sign and _fors_pk_from_sig
     "slhdsa/external.jinc": 1,  # prefix in _slh_frame
@@ -105,6 +105,17 @@ CONTROLS = {
                "  root = __node_copy(root, nodes[SLH_HP * SLH_N : SLH_N]);\n",
                "  root = __node_copy(root, nodes[SLH_HP * SLH_N : SLH_N]);\n"
                "  root = __node_xor(root, nodes[(SLH_HP + 1) * SLH_N : SLH_N]);\n")],
+    # auth[h'] exists (a > h') and is never recorded: (target >> h') xor 1
+    # = 1 for a target below 2^h', and the root has index 0.
+    "xmss_auth": [("slhdsa/xmss.jinc",
+                   "      sig[:u64 SLH_WOTS_SIG_BYTES / 8 + k] = t;\n    }\n",
+                   "      sig[:u64 SLH_WOTS_SIG_BYTES / 8 + k] = t;\n    }\n"
+                   "    sig[0 : SLH_N] = __node_xor(sig[0 : SLH_N], auth[SLH_HP * SLH_N : SLH_N]);\n")],
+    # The target's chain values are XORed into wsig instead of written.
+    "xmss_wsig": [("slhdsa/wots.jinc",
+                   "          t = cp.[:u64 src];\n          sig.[:u64 off] = t;\n",
+                   "          t = cp.[:u64 src];\n          fill = sig.[:u64 off];\n"
+                   "          t ^= fill;\n          sig.[:u64 off] = t;\n")],
     # The root parks in slot a only after the last leaf, so slot a still
     # holds the fill when the target's group is found.
     "fors_nodes": [("slhdsa/fors.jinc",
