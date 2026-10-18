@@ -153,6 +153,9 @@ More than one thread requires a backend that keeps no state between calls.
 This library, slhdsa-c, SPHINCS+ and BoringSSL qualify. The OpenSSL and wolfSSL
 adapters keep the last key object in process-wide variables, so they are
 measured with one thread and their multi-threaded rows are reported as not run.
+Every row not run carries the reason the benchmark program gave: "keeps state
+between calls" for these, or "not offered" for a set or mode an implementation
+lacks, such as BoringSSL's deterministic signing.
 
 ## Stack and code size
 

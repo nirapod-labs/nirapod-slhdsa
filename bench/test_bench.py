@@ -24,10 +24,15 @@
 #     or printed by its raw codes, never "unknown";
 #   - the working-tree digest matches the commit exactly when the files
 #     git does not ignore are unchanged;
+#   - a row not run keeps the reason bench.c gave for it into the record
+#     and the table; a row without a reason, or with one bench.c does not
+#     print, is refused, and the renderer names a recorded row that lacks
+#     it;
 #   - the renderer refuses a cell that names a path, labels smoke and
 #     trial records, and prints every build's identity;
 #   - the code-size reader classes ELF and Mach-O sections.
 
+import json
 import os
 import random
 import shutil
@@ -82,9 +87,32 @@ class Ratios(unittest.TestCase):
         self.assertEqual(ratios(o), [])
 
     def test_unsupported_is_not_run(self):
-        o = [dict(name="boringssl", set="SLH-DSA-SHA2-128f", status="unsupported")]
+        o = [dict(name="boringssl", set="SLH-DSA-SHA2-128f", status="unsupported",
+                  reason="not offered")]
         self.assertEqual(ratios(o), [])
-        self.assertEqual(run.not_run(o), [("boringssl", "SLH-DSA-SHA2-128f", "*")])
+        self.assertEqual(run.not_run(o), [("boringssl", "SLH-DSA-SHA2-128f", "*", "not offered")])
+
+    def test_not_run_needs_a_reason(self):
+        o = [dict(name="boringssl", set="SLH-DSA-SHA2-128f", op="sign-det", status="unsupported")]
+        with self.assertRaises(run.Failure):
+            run.not_run(o)
+
+    def test_not_run_refuses_an_unknown_reason(self):
+        # A reason is printed into a table cell as it is, so one bench.c
+        # does not print, here one that would split the row, is refused.
+        o = [dict(name="boringssl", set="SLH-DSA-SHA2-128f", op="sign-det", status="unsupported",
+                  reason="not offered | here")]
+        with self.assertRaisesRegex(run.Failure, "unknown reason 'not offered | here'"):
+            run.not_run(o)
+
+    def test_variant_line_is_not_run(self):
+        # bench.c's line for a --variant the backend lacks names no set or
+        # operation.
+        o = [dict(name="nirapod", status="unsupported", variant="x", reason="not offered")]
+        self.assertEqual(run.not_run(o), [("nirapod", "*", "*", "not offered")])
+        del o[0]["reason"]
+        with self.assertRaisesRegex(run.Failure, r"^nirapod \* \*: a row not run gives no reason"):
+            run.not_run(o)
 
 
 class Verdict(unittest.TestCase):
@@ -318,6 +346,45 @@ class Render(unittest.TestCase):
         self.assertTrue(render.render(record(kind="smoke")).startswith("**Smoke run"))
         text = render.render(record(kind="trial", reasons=["run at nice 15"]))
         self.assertTrue(text.startswith("**Trial run, not a measurement: run at nice 15."))
+
+    def test_not_run_rows_give_their_reason(self):
+        # BoringSSL is concurrent, so at four threads it reaches the timed
+        # loop and its deterministic signing comes back not offered; the
+        # OpenSSL adapter keeps state between calls and is not started.
+        s = "SLH-DSA-SHA2-128s"
+        tput = [dict(name=n, set=s, op="sign", threads=4, round=0, status="ok", calls=c,
+                     wall_ns=1e9) for n, c in (("nirapod", 200), ("boringssl", 100))]
+        tput += [dict(name="boringssl", set=s, op="sign-det", threads=4, round=0,
+                      status="unsupported", reason="not offered"),
+                 dict(name="openssl", set=s, op="sign", threads=4, round=0,
+                      status="unsupported", reason="keeps state between calls")]
+        rec = record()
+        rec["throughput"] = dict(observations=tput, summary=stats.throughput_rows(tput),
+                                 ratios=stats.throughput_ratios(tput, "nirapod"),
+                                 not_run=run.not_run(tput, "threads"))
+        rec["config"]["duration_s"] = 1
+        rec["not_run"] = run.not_run([dict(name="boringssl", set="SLH-DSA-SHA2-128f",
+                                           status="unsupported", reason="not offered")])
+        text = render.render(json.loads(json.dumps(rec)))
+        self.assertIn(f"| boringssl | {s} | sign (deterministic) | 4 | NOT RUN (not offered) |",
+                      text)
+        self.assertIn(f"| openssl | {s} | sign (hedged) | 4 | NOT RUN (keeps state between "
+                      "calls) |", text)
+        self.assertIn("| boringssl | SLH-DSA-SHA2-128f | * | NOT RUN (not offered) |", text)
+        self.assertEqual(text.count("keeps state between calls"), 1)
+
+    def test_not_run_row_without_reason_is_named(self):
+        rec = record()
+        rec["not_run"] = [["boringssl", "SLH-DSA-SHA2-128f", "*"]]
+        with self.assertRaisesRegex(render.Failure, "^not_run: .* no reason field"):
+            render.render(rec)
+        rec["not_run"] = []
+        tput = [dict(name="nirapod", set="SLH-DSA-SHA2-128s", op="sign", threads=4, round=0,
+                     status="ok", calls=200, wall_ns=1e9)]
+        rec["throughput"] = dict(summary=stats.throughput_rows(tput), ratios=[],
+                                 not_run=[["openssl", "SLH-DSA-SHA2-128s", "sign", 4]])
+        with self.assertRaisesRegex(render.Failure, "^throughput.not_run: .* no reason field"):
+            render.render(rec)
 
     def test_path_is_refused(self):
         with self.assertRaises(render.Failure):

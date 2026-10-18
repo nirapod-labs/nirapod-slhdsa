@@ -64,8 +64,14 @@
  * wall time from the release to the end of the last call, so a thread
  * that started late or a last call that overran lowers the rate rather
  * than raising it. T > 1 needs a backend that keeps no mutable state
- * between calls (backend_concurrent); otherwise the line says
- * "unsupported".
+ * between calls (backend_concurrent).
+ *
+ * Not run. An operation, set or variant that is not measured gets a line
+ * with status "unsupported" and a reason: "not offered" when the backend
+ * answers BACKEND_UNSUPPORTED (the implementation or this build lacks the
+ * set, mode or variant, as the BoringSSL adapter does for deterministic
+ * signing), or "keeps state between calls" when T > 1 and the backend is
+ * not concurrent. bench/run.py accepts no other reason.
  *
  * Stack. --stack runs each operation once on a painted stack, the method
  * of tests/abi/test_stack.c: the region below the stack pointer of a
@@ -283,6 +289,16 @@ static void print_head(int set, const char *set_name, op_id op, const char *stat
            backend_name(), backend_variant(set), set_name, OP_NAMES[op], status);
 }
 
+/* The line for an operation that is not run (see "Not run" above). */
+static const char NOT_OFFERED[] = "not offered";
+static const char KEEPS_STATE[] = "keeps state between calls";
+
+static void print_not_run(int set, const char *set_name, op_id op, const char *reason)
+{
+    print_head(set, set_name, op, "unsupported");
+    printf(",\"reason\":\"%s\"}\n", reason);
+}
+
 static int fail(const char *what)
 {
     fprintf(stderr, "bench: %s\n", what);
@@ -434,8 +450,7 @@ static int throughput(int set, const char *set_name, op_id op, size_t threads,
         end = w[i].end_ns > end ? w[i].end_ns : end;
     }
     if (started == threads && st == BACKEND_UNSUPPORTED) {
-        print_head(set, set_name, op, "unsupported");
-        printf("}\n");
+        print_not_run(set, set_name, op, NOT_OFFERED);
     } else if (started == threads && st == BACKEND_OK) {
         print_head(set, set_name, op, "ok");
         printf(",\"threads\":%zu,\"duration_ms\":%lu,\"calls\":%llu,\"wall_ns\":%llu,"
@@ -507,8 +522,8 @@ int main(int argc, char **argv)
         return fail("bad --ops list");
     }
     if (backend_init(variant) != BACKEND_OK) {
-        printf("{\"impl\":\"%s\",\"status\":\"unsupported\",\"variant\":\"%s\"}\n",
-               backend_name(), variant ? variant : "");
+        printf("{\"impl\":\"%s\",\"status\":\"unsupported\",\"variant\":\"%s\","
+               "\"reason\":\"%s\"}\n", backend_name(), variant ? variant : "", NOT_OFFERED);
         return 0;
     }
     if (describe_only) {
@@ -519,8 +534,8 @@ int main(int argc, char **argv)
     }
     set = backend_set_index(set_name);
     if (set < 0) {
-        printf("{\"impl\":\"%s\",\"set\":\"%s\",\"status\":\"unsupported\"}\n", backend_name(),
-               set_name);
+        printf("{\"impl\":\"%s\",\"set\":\"%s\",\"status\":\"unsupported\",\"reason\":\"%s\"}\n",
+               backend_name(), set_name, NOT_OFFERED);
         return 0;
     }
     backend_sizes(set, &n, &pk_len, &sk_len, &sig_len);
@@ -539,8 +554,8 @@ int main(int argc, char **argv)
         }
     }
     if (st0 == BACKEND_UNSUPPORTED) {
-        printf("{\"impl\":\"%s\",\"set\":\"%s\",\"status\":\"unsupported\"}\n",
-               backend_name(), set_name);
+        printf("{\"impl\":\"%s\",\"set\":\"%s\",\"status\":\"unsupported\",\"reason\":\"%s\"}\n",
+               backend_name(), set_name, NOT_OFFERED);
         return 0;
     }
     if (st0 != BACKEND_OK || backend_verify(set, b->pk, b->msg, mlen, b->sig_ref) != BACKEND_OK) {
@@ -556,8 +571,7 @@ int main(int argc, char **argv)
 
         if (tput) {
             if (threads > 1 && !backend_concurrent()) {
-                print_head(set, set_name, op, "unsupported");
-                printf(",\"threads\":%lu,\"reason\":\"keeps state between calls\"}\n", threads);
+                print_not_run(set, set_name, op, KEEPS_STATE);
                 continue;
             }
             if (throughput(set, set_name, op, threads, warmup, duration_ms) != 0) {
@@ -571,8 +585,7 @@ int main(int argc, char **argv)
             size_t d1 = painted_depth(set, op, 0x5A, &st);
             size_t d2 = st == BACKEND_OK ? painted_depth(set, op, 0xA5, &st) : 0;
             if (st == BACKEND_UNSUPPORTED) {
-                print_head(set, set_name, op, "unsupported");
-                printf("}\n");
+                print_not_run(set, set_name, op, NOT_OFFERED);
                 continue;
             }
             if (st != BACKEND_OK) {
@@ -589,8 +602,7 @@ int main(int argc, char **argv)
             st = run_op(set, op, b);
         }
         if (st == BACKEND_UNSUPPORTED) {
-            print_head(set, set_name, op, "unsupported");
-            printf("}\n");
+            print_not_run(set, set_name, op, NOT_OFFERED);
             continue;
         }
         for (i = 0; i < samples && st == BACKEND_OK; i++) {
@@ -607,8 +619,7 @@ int main(int argc, char **argv)
         }
         if (st == BACKEND_UNSUPPORTED && i == 1) {
             /* Without warm-up calls, the first timed call is the probe. */
-            print_head(set, set_name, op, "unsupported");
-            printf("}\n");
+            print_not_run(set, set_name, op, NOT_OFFERED);
             continue;
         }
         if (st != BACKEND_OK) {

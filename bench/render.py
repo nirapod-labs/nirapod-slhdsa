@@ -198,6 +198,20 @@ def latency(rec, words):
          "Baseline (median latency)", "R", "Variability", "CPU", "Revision"], rows, words)
 
 
+def not_run_rows(rows, width, where):
+    """The rows of a not-run list, each of which must end in its reason.
+
+    bench/run.py records the reason bench.c gave as the last field of each
+    row. A record written before it did, under the same schema, has rows one
+    field shorter; that is refused by name rather than failing to unpack.
+    """
+    for r in rows:
+        if len(r) != width or not r[-1]:
+            raise Failure(f"{where}: row {r} has no reason field; the record predates it, "
+                          "so re-run bench/run.py")
+    return rows
+
+
 def throughput(rec, words):
     tp = rec.get("throughput") or {}
     if not tp.get("summary"):
@@ -226,9 +240,10 @@ def throughput(rec, words):
                     "Rounds"], own, words)]
     if tp.get("not_run"):
         parts.append(table(["Implementation", "Set", "Operation", "Threads", "Status"],
-                           [[n, s, OP_NAMES.get(o, o), t,
-                             "NOT RUN (keeps state between calls)" if t > 1 else "NOT RUN"]
-                            for n, s, o, t in tp["not_run"]], words))
+                           [[n, s, OP_NAMES.get(o, o), t, f"NOT RUN ({why})"]
+                            for n, s, o, t, why in not_run_rows(tp["not_run"], 5,
+                                                                  "throughput.not_run")],
+                           words))
     return "\n\n".join(parts)
 
 
@@ -295,8 +310,9 @@ def render(rec):
     parts.append(throughput(rec, words))
     if rec["not_run"]:
         parts.append(table(["Implementation", "Set", "Operation", "Status"],
-                           [[n, s, OP_NAMES.get(o, o), "NOT RUN (not offered)"]
-                            for n, s, o in rec["not_run"]], words))
+                           [[n, s, OP_NAMES.get(o, o), f"NOT RUN ({why})"]
+                            for n, s, o, why in not_run_rows(rec["not_run"], 4, "not_run")],
+                           words))
     parts += diagnostics(rec, words)
     if rec["stack"]:
         deepest = {}

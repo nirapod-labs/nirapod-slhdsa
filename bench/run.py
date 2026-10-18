@@ -61,8 +61,10 @@
 # reasons recorded; bench/render.py heads smoke and trial records as not
 # being measurements.
 #
-# Status words: a workload a baseline does not offer is NOT RUN, never a
-# result. The record is written atomically (to FILE.partial, then renamed).
+# Status words: a workload that is not measured is NOT RUN, never a
+# result, with the reason bench.c gave for it ("not offered", or "keeps
+# state between calls" for a backend that cannot run on several threads).
+# The record is written atomically (to FILE.partial, then renamed).
 
 import argparse
 import datetime
@@ -403,9 +405,32 @@ def stack(impls, sets, ops, cpu):
     return rows
 
 
-def not_run(observations):
-    return sorted({(o["name"], o["set"], o.get("op", "*")) for o in observations
-                   if o.get("status") == "unsupported"})
+# The reasons bench.c gives for a row not run, its NOT_OFFERED and
+# KEEPS_STATE. They are printed into a table cell as they are, so any other
+# string is refused rather than recorded.
+NOT_RUN_REASONS = ("not offered", "keeps state between calls")
+
+
+def not_run(observations, *keys):
+    """The rows not run, each once: (name, set, op, *keys, reason).
+
+    The reason is the one bench.c printed for the row; a row without one, or
+    with one bench.c does not print, is an error rather than a guess. A line
+    that names no set or operation (a --variant the backend lacks) gets "*".
+    """
+    rows = set()
+    for o in observations:
+        if o.get("status") != "unsupported":
+            continue
+        where = f"{o['name']} {o.get('set', '*')} {o.get('op', '*')}"
+        if not o.get("reason"):
+            raise Failure(f"{where}: a row not run gives no reason")
+        if o["reason"] not in NOT_RUN_REASONS:
+            raise Failure(f"{where}: unknown reason {o['reason']!r} for a row not run "
+                          f"(bench.c gives {' or '.join(map(repr, NOT_RUN_REASONS))})")
+        rows.add((o["name"], o.get("set", "*"), o.get("op", "*"), *(o[k] for k in keys),
+                  o["reason"]))
+    return sorted(rows)
 
 
 def disqualifiers(cfg, env, ids, stale):
@@ -541,9 +566,7 @@ def main(argv):
             fault_check=stats.fault_check_cost(observations, TESTING),
             throughput=dict(observations=tput, summary=stats.throughput_rows(tput),
                             ratios=stats.throughput_ratios(tput, SUBJECT),
-                            not_run=sorted({(o["name"], o["set"], o.get("op", "*"),
-                                             o["threads"]) for o in tput
-                                            if o.get("status") == "unsupported"})),
+                            not_run=not_run(tput, "threads")),
             not_run=not_run(observations), stack=stacks,
             code_size=dict(library="libnirapod_slhdsa.a", **codesize.library_size(lib)))
         check_private(record)
