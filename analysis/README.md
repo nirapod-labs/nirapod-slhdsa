@@ -179,6 +179,8 @@ check can see. x86-64 has no such check of the emitted code; there the
 
 Each rule has
 negative controls (`asm/check-controls.sh`), files with a single violation of
-that rule, and each must be rejected by that rule, or the target fails. These
+that rule, and each must be rejected by that rule, or the target fails. An
+awk rule that exits with an error fails its file, with a control of its own,
+since the lines it did not reach are unchecked. These
 are textual checks of the emitted code; they complement, and do not replace,
 the constant-time checks above.

@@ -30,7 +30,8 @@
 #
 # usage: check-asm.sh <arch: aarch64|x86_64> <unit.s>...
 # Prints one line per file and per violation; exit status 0 when every file
-# passes.
+# passes. A file on which an awk rule exits non-zero fails, since the lines
+# that awk did not reach are unchecked.
 
 arch=$1
 shift
@@ -58,7 +59,7 @@ for f in "$@"; do
       if grep -Eq '^[[:space:]]+[us]div[[:space:]]' "$f"; then echo "$f: division instruction"; bad=1; fi
       if grep -Eq '\b[xw]18\b' "$f"; then echo "$f: uses x18"; bad=1; fi
       if grep -Eq '\b([xw]29|fp)\b' "$f"; then echo "$f: uses x29"; bad=1; fi
-      timing=$(awk -f "$here/dit.awk" "$f")
+      timing=$(awk -f "$here/dit.awk" "$f") || { echo "$f: dit.awk failed"; bad=1; }
       if [ -n "$timing" ]; then echo "$timing"; bad=1; fi
       ;;
     x86_64)
@@ -70,7 +71,7 @@ for f in "$@"; do
       ;;
   esac
 
-  flow=$(awk -v arch="$arch" -f "$here/exports.awk" "$f")
+  flow=$(awk -v arch="$arch" -f "$here/exports.awk" "$f") || { echo "$f: exports.awk failed"; bad=1; }
   if [ -n "$flow" ]; then echo "$flow"; bad=1; fi
 
   if [ "$bad" -eq 0 ]; then echo "$f: PASS"; else fail=1; fi

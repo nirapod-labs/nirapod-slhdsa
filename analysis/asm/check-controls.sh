@@ -67,6 +67,27 @@ accept_template() {
   fi
 }
 
+# stops NAME SCRIPT: the template, checked with an awk that exits 2 once
+# it has run SCRIPT over the file, as an awk that stops partway leaves it:
+# no message for the lines it did not reach. check-asm.sh must fail the
+# file with "SCRIPT failed"; other scripts run on the real awk.
+stops() {
+  mkdir -p "$dir/$1"
+  printf '#!/bin/sh\n"%s" "$@" || exit\ncase " $* " in *"/%s "*) exit 2 ;; esac\n' \
+    "$(command -v awk)" "$2" > "$dir/$1/awk"
+  chmod +x "$dir/$1/awk"
+  f=$dir/$1/sha2_128f-scalar.s
+  printf '%b\n' "$template" > "$f"
+  if PATH="$dir/$1:$PATH" sh "$here/check-asm.sh" "$arch" "$f" > "$dir/$1.log" 2>&1; then
+    echo "control $1: accepted"
+    fail=1
+  elif ! grep -Eq ": $2 failed\$" "$dir/$1.log"; then
+    echo "control $1: rejected, but not as a failed $2"
+    fail=1
+  fi
+  n=$((n + 1))
+}
+
 symbol='global symbol [A-Za-z0-9_]+ outside the export set'
 leave='keygen does not clear its stack before returning'
 out='keygen branches out of the export \(.*\)'
@@ -141,6 +162,8 @@ s/^Lf.1:$/'"$e"'$9:\
     mutant movk-chain  "$movk" '/^.movz.x4/d'
     mutant movk-label  "$movk" 's/^.movk.x4, #3/Lk:\
 &/'
+    stops awk-dit     dit.awk
+    stops awk-exports exports.awk
     ;;
   x86_64)
     control divq  'division instruction' '\tdivq\t%rcx'
@@ -177,6 +200,7 @@ s/^\.Lf.1:$/'"$e"'$9:\
 	jmp	'"$e"'$2/'
     mutant fence       "$fence" '/^.lfence/d'
     mutant extcall     'branch or call to memcpy outside the unit' 's/call.\.Lf.1$/call	memcpy/'
+    stops awk-exports exports.awk
     ;;
   *)
     echo "check-controls.sh: unknown architecture $arch" >&2
