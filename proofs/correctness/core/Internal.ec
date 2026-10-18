@@ -14,7 +14,14 @@
  * stack buffer and msg_len bytes at address msg; slh_msg names their
  * concatenation as the specification sees it. msg_ok is what the message
  * hashes need of the two lengths: the prefix fits its buffer and the
- * message does not wrap the address space.
+ * message does not wrap the address space. The SHA2 sets also need the
+ * domain of FIPS 180-4, sha2_msg_ok: SHA-256 and SHA-512 take messages
+ * of fewer than 2^64 bits, and the code counts the hashed bytes in one
+ * 64-bit word, so every input the message hashes give them stays under
+ * 2^61 bytes, and the message ends strictly below the top of the address
+ * space. The longest such input is the inner message of HMAC in PRF_msg,
+ * K0 xor ipad || opt_rand || M (at most 128 + n bytes ahead of M; H_msg
+ * hashes 3n bytes ahead of M), so |M| < 2^61 - 256 covers every set.
  *
  * Context. Every tweakable hash is called with the context that
  * _thash_ctx_init derives from PK.seed. Its contents differ between the
@@ -80,8 +87,26 @@ require Wots XmssPk Xmss ForsPk JWordList.
 op slh_msg (mem : global_mem_t) (x : Prefix.t) (pl m ml : W64.t) : bytes =
   take (to_uint pl) (Prefix.to_list x) ++ JWordList.memread mem (to_uint m) (to_uint ml).
 
-op msg_ok (pl m ml : W64.t) : bool =
-  to_uint pl <= Prefix.size /\ to_uint m + to_uint ml <= W64.modulus.
+(* The FIPS 180-4 domain of the SHA2 message hashes: |M| < 2^61 - 256
+   and M ends below 2^64. *)
+op sha2_msg_max : int = 2 ^ 61 - 256.
+
+op sha2_msg_ok (pl m ml : W64.t) : bool =
+  to_uint m + to_uint ml < W64.modulus /\ to_uint pl + to_uint ml < sha2_msg_max.
+
+(* The bound on the message of every set, and the domain of the SHA2 sets.
+   Opaque, so that the proofs see the two parts of msg_ok as two facts. *)
+op [opaque] msg_dom (pl m ml : W64.t) : bool =
+  to_uint m + to_uint ml <= W64.modulus /\ (P.`family = SHA2 => sha2_msg_ok pl m ml).
+
+op msg_ok (pl m ml : W64.t) : bool = to_uint pl <= Prefix.size /\ msg_dom pl m ml.
+
+lemma msg_domE (pl m ml : W64.t) :
+  msg_dom pl m ml <=> to_uint m + to_uint ml <= W64.modulus /\ (P.`family = SHA2 => sha2_msg_ok pl m ml).
+proof. by rewrite /msg_dom. qed.
+
+lemma msg_dom_end (pl m ml : W64.t) : msg_dom pl m ml => to_uint m + to_uint ml <= W64.modulus.
+proof. by rewrite msg_domE. qed.
 
 lemma sk_size : SK.size = 4 * P.`n by rewrite n_val.
 lemma pk_size : PK.size = 2 * P.`n by rewrite n_val.

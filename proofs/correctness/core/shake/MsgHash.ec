@@ -92,7 +92,7 @@ seq 3 : (to_uint pos = size (h0 ++ take (to_uint pl) (Prefix.to_list x0)) %% 136
 + call (shake_absorb_prefix_total s0 (W64.of_int (size h0)) pl x0 h0); wp; skip.
   move=> &hr [#] -> -> -> -> -> -> -> [hpl hm] hs hst; rewrite /protect_64 /= -prefix_size hpl hst /=.
   have hs0 := size_ge0 h0; split; first by rewrite W64.to_uint_small 1:/# modz_small //; smt().
-  by move=> _ r [#] _ -> -> /=; exact hm.
+  by move=> _ r [#] _ -> -> /=; exact (msg_dom_end _ _ _ hm).
 + seq 4 : (Glob.mem = mem0 /\ absorbing 136 (h0 ++ take (to_uint pl) (Prefix.to_list x0) ++
                                     memread mem0 (to_uint m) (to_uint ml)) st pos) 1%r 1%r 0%r _ => //.
   + call (keccak_absorb_mem_total 136 (h0 ++ take (to_uint pl) (Prefix.to_list x0)) mem0 m ml); wp; skip.
@@ -116,7 +116,7 @@ hoare; call (_ : st = s0 /\ pos = W64.of_int (size h0) /\ prefix = x0 /\ len = p
 + by conseq (shake_absorb_prefix_total s0 (W64.of_int (size h0)) pl x0 h0).
 wp; skip => &hr [#] -> -> -> -> -> -> -> [hpl hm] hs hst; rewrite /protect_64 /= -prefix_size hpl hst /=.
 have hs0 := size_ge0 h0; split; first by rewrite W64.to_uint_small 1:/# modz_small //; smt().
-by move=> _ r [#] _ -> -> /=; exact hm.
+by move=> _ r [#] _ -> -> /=; exact (msg_dom_end _ _ _ hm).
 qed.
 
 lemma absorb_message_h (s0 : BArray200.t) (h0 : W8.t list) (x0 : Prefix.t) (pl m ml : W64.t)
