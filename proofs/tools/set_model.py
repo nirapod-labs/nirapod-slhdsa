@@ -88,6 +88,10 @@ ROLES = [
      "the n-byte slots of a ForsSig"),
     ("Sig", ("SLH_SIG_BYTES",),
      "an SLH-DSA signature: R, the FORS signature, then d XMSS signatures (u8[n + k (a + 1) n + d (len + hp) n])"),
+    ("HtSig", ("SLH_HT_SIG_BYTES",),
+     "a hypertree signature: d XMSS signatures (u8[d (len + hp) n])"),
+    ("HtSigXmss", ("SLH_HT_SIG_BYTES", "SLH_XMSS_SIG_BYTES"),
+     "the XMSS signature slots of an HtSig"),
 ]
 
 # The SHA2 T_l and T_k hash their input in a work buffer of whole SHA-512

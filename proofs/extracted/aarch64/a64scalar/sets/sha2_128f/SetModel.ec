@@ -104,7 +104,7 @@
 
 require import AllCore.
 require FIPS205_Params.
-require BArray16 BArray32 BArray34 BArray35 BArray64 BArray96 BArray112 BArray132 BArray528 BArray560 BArray608 BArray640 BArray2240 BArray3696 BArray17088 SBArray32_16 SBArray64_16 SBArray112_16 SBArray528_16 SBArray560_16 SBArray608_16 SBArray608_560 SBArray640_64 SBArray640_128 SBArray3696_16.
+require BArray16 BArray32 BArray34 BArray35 BArray64 BArray96 BArray112 BArray132 BArray528 BArray560 BArray608 BArray640 BArray2240 BArray3696 BArray13376 BArray17088 SBArray32_16 SBArray64_16 SBArray112_16 SBArray528_16 SBArray560_16 SBArray608_16 SBArray608_560 SBArray640_64 SBArray640_128 SBArray3696_16 SBArray13376_608.
 
 op P : FIPS205_Params.params = FIPS205_Params.slh_dsa_sha2_128f.
 
@@ -161,6 +161,10 @@ theory ForsSig = BArray3696.
 theory ForsSigNode = SBArray3696_16.SBArray3696_16.
 (* an SLH-DSA signature: R, the FORS signature, then d XMSS signatures (u8[n + k (a + 1) n + d (len + hp) n]) *)
 theory Sig = BArray17088.
+(* a hypertree signature: d XMSS signatures (u8[d (len + hp) n]) *)
+theory HtSig = BArray13376.
+(* the XMSS signature slots of an HtSig *)
+theory HtSigXmss = SBArray13376_608.SBArray13376_608.
 (* the T_len work buffer *)
 theory TLenBuf = BArray640.
 (* its 64-byte SHA-256 blocks *)
