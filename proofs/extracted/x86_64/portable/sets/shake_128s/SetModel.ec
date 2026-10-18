@@ -104,7 +104,7 @@
 
 require import AllCore.
 require FIPS205_Params.
-require BArray16 BArray30 BArray32 BArray35 BArray56 BArray64 BArray208 BArray224 BArray560 BArray704 BArray2240 BArray2912 SBArray32_16 SBArray64_16 SBArray208_16 SBArray224_16 SBArray560_16 SBArray704_16 SBArray704_560 SBArray2912_16.
+require BArray16 BArray30 BArray32 BArray35 BArray56 BArray64 BArray208 BArray224 BArray560 BArray704 BArray2240 BArray2912 BArray7856 SBArray32_16 SBArray64_16 SBArray208_16 SBArray224_16 SBArray560_16 SBArray704_16 SBArray704_560 SBArray2912_16.
 
 op P : FIPS205_Params.params = FIPS205_Params.slh_dsa_shake_128s.
 
@@ -159,3 +159,5 @@ theory XmssSigWots = SBArray704_560.SBArray704_560.
 theory ForsSig = BArray2912.
 (* the n-byte slots of a ForsSig *)
 theory ForsSigNode = SBArray2912_16.SBArray2912_16.
+(* an SLH-DSA signature: R, the FORS signature, then d XMSS signatures (u8[n + k (a + 1) n + d (len + hp) n]) *)
+theory Sig = BArray7856.

@@ -86,6 +86,8 @@ ROLES = [
      "a FORS signature: k trees of a secret and a nodes (u8[k (a + 1) n])"),
     ("ForsSigNode", ("SLH_FORS_SIG_BYTES", "SLH_N"),
      "the n-byte slots of a ForsSig"),
+    ("Sig", ("SLH_SIG_BYTES",),
+     "an SLH-DSA signature: R, the FORS signature, then d XMSS signatures (u8[n + k (a + 1) n + d (len + hp) n])"),
 ]
 
 # The SHA2 T_l and T_k hash their input in a work buffer of whole SHA-512
