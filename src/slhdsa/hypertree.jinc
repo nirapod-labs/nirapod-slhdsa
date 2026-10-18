@@ -61,7 +61,7 @@ fn _ht_sign(
   stack u64[4] adrs;
   reg ptr u8[SLH_XMSS_SIG_BYTES] src;
   reg u32 j leaf;
-  reg u64 off k t;
+  reg u64 off o k t;
   reg bool more copy;
 
   adrs = __adrs_zero(adrs);
@@ -115,14 +115,21 @@ fn _ht_sign(
 
     off = __offset(j, SLH_XMSS_SIG_BYTES);
     off += SLH_SIG_HT_OFFSET;
-    /* layer through src: stack slots at run-time offsets (see wots.jinc). */
+    /*
+     * layer through src: stack slots at run-time offsets (see wots.jinc).
+     * The store goes to off + k with off fixed for the layer, so that its
+     * address is a bounded base plus the loop counter, which the safety
+     * checker bounds by the loop test, as in _fors_sign (fors.jinc;
+     * copy_beside and copy_fixed in tests/core/checker/workarounds.jazz).
+     */
     src = layer;
     k = 0;
     while { copy = k < SLH_XMSS_SIG_BYTES; } (copy) {
       ms = #update_msf(copy, ms);
       t = src.[:u64 k];
-      sig.[:u64 off] = t;
-      off += 8;
+      o = off;
+      o += k;
+      sig.[:u64 o] = t;
       k += 8;
     }
     ms = #update_msf(!copy, ms);

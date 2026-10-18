@@ -29,8 +29,9 @@
  *   copy_beside / copy_fixed    stores at an offset advanced beside the loop
  *                               counter: in_bound, unless the offset is the
  *                               fixed base plus the counter (_fors_sign
- *                               signature copy, _slh_frame pre-hash copy,
- *                               the SHA-2 T_l / T_k message layout)
+ *                               signature copy, _ht_sign layer copy,
+ *                               _slh_frame pre-hash copy, the SHA-2 T_l /
+ *                               T_k message layout)
  *   reset_eq    / reset_clamp   a position reset when it equals the rate:
  *                               in_bound, unless it is clamped below the
  *                               rate before use (the SHAKE T_l, T_k and
