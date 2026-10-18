@@ -46,6 +46,8 @@ EXPECT = {
     "copy_fixed": ("", None),
     "reset_eq": ("", "in_bound"),
     "reset_clamp": ("", None),
+    "tail_padded": ("", "is_init"),
+    "tail_whole": ("", None),
 }
 
 

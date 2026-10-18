@@ -34,19 +34,34 @@
  *                               in_bound, unless it is clamped below the
  *                               rate before use (the SHAKE T_l, T_k and
  *                               T_l x4 absorb loops)
+ *   tail_padded / tail_whole    blocks read at an offset that only the loop
+ *                               test bounds, from a buffer longer than the
+ *                               blocks: is_init, unless the whole buffer is
+ *                               cleared, not only the blocks (the SHA-2
+ *                               T_l / T_k message buffer, __t_layout)
  *
  * The clamp of prefix_len in _slh_frame (external.jinc) has no pair, so
  * make checker-repro does not re-check it. It restates, where the callers
  * that read prefix[0 : prefix_len] can see it, a bound that holds by
  * construction in the framing arithmetic.
  *
- * The constants are those of SLH-DSA-SHA2-128f (n = 16, a = 6, len = 35);
- * the shapes do not depend on them.
+ * The constants are those of SLH-DSA-SHA2-128f (n = 16, a = 6, len = 35,
+ * k = 33); the shapes do not depend on them.
  */
 
 param int N = 16;
 param int A = 6;
 param int LEN = 35;
+param int K = 33;
+
+/*
+ * The T_k message of thash_sha2_t.jinc: ADRS^c (22 bytes) and M (k n),
+ * padded to SHA-256 blocks (576 bytes) in a buffer sized for SHA-512
+ * blocks (640 bytes).
+ */
+param int T_BYTES = 22 + K * N;
+param int T_PADDED = (T_BYTES + 9 + 63) / 64 * 64;
+param int T_BUF = (T_BYTES + 17 + 127) / 128 * 128;
 
 /* Chain ends stored at i n for i < len, as in the WOTS+ loops. */
 inline fn __ends(reg mut ptr u8[LEN * N] b, reg u64 x) -> reg ptr u8[LEN * N]
@@ -280,4 +295,66 @@ export fn reset_clamp(reg u64 n) -> reg u64
   }
   t = st[pos];
   return t;
+}
+
+/*
+ * The blocks of T_PADDED bytes read 64 at a time at off, advanced by 64
+ * while off < T_PADDED, as _thash_t compresses them; the buffer is first
+ * cleared up to T_PADDED or whole.
+ */
+fn _block(reg const ptr u8[64] blk) -> reg u64
+{
+  reg u64 s t;
+  inline int k;
+
+  s = 0;
+  for k = 0 to 8 {
+    t = blk[:u64 k];
+    s ^= t;
+  }
+  return s;
+}
+
+export fn tail_padded(reg u64 x) -> reg u64
+{
+  stack u8[T_BUF] b;
+  reg ptr u8[T_BUF] p;
+  reg u64 s t off z;
+  reg bool more;
+  inline int i;
+
+  z = 0;
+  for i = 0 to T_PADDED / 8 { b[:u64 i] = z; }
+  b[:u64 0] = x;
+  s = 0;
+  off = 0;
+  while { more = off < T_PADDED; } (more) {
+    p = b;
+    t = _block(p[off : 64]);
+    s ^= t;
+    off += 64;
+  }
+  return s;
+}
+
+export fn tail_whole(reg u64 x) -> reg u64
+{
+  stack u8[T_BUF] b;
+  reg ptr u8[T_BUF] p;
+  reg u64 s t off z;
+  reg bool more;
+  inline int i;
+
+  z = 0;
+  for i = 0 to T_BUF / 8 { b[:u64 i] = z; }
+  b[:u64 0] = x;
+  s = 0;
+  off = 0;
+  while { more = off < T_PADDED; } (more) {
+    p = b;
+    t = _block(p[off : 64]);
+    s ^= t;
+    off += 64;
+  }
+  return s;
 }
