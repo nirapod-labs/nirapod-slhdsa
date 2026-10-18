@@ -454,3 +454,175 @@ split.
   by congr.
 by rewrite hm /ht_msg ifF 1:/#.
 qed.
+
+(* ------------------------------------------------------------------ *)
+(* _ht_verify (Algorithm 13)                                          *)
+
+(* Layer j's slice of SIG_HT, as _xmss_pk_from_sig receives it. *)
+lemma sub_slice (s : HtSig.t) o : 0 <= o => o + XmssSig.size <= HtSig.size =>
+  XmssSig.to_list (HtSigXmss.get_sub s o) = slice (HtSig.to_list s) o (o + XmssSig.size).
+proof.
+move=> ho hs; rewrite /slice; apply (eq_from_nth W8.zero).
++ by rewrite size_take ?size_drop ?HtSig.size_to_list ?XmssSig.size_to_list; smt(xsl_b xsl_size).
+move=> q; rewrite XmssSig.size_to_list => hq.
+rewrite nth_take 1,2:/# nth_drop 1,2:/# HtSig.get_to_list XmssSig.get_to_list.
+by rewrite HtSigXmss.get8_get_sub ifT 1:// addzC.
+qed.
+
+(* The node reached after layer j (ht_verifyE). *)
+op hvg (pk s : bytes) (it il : int) (node : bytes) (j : int) : bytes =
+  xmss_pkFromSig P (ht_leaf P it il j)
+    (slice s (j * xmss_sig_length P) ((j + 1) * xmss_sig_length P))
+    node pk (mk_adrs j (ht_tree P it j) 0 0 0 0).
+
+lemma or_eq0 (x y : W64.t) : (x `|` y = W64.zero) <=> (x = W64.zero /\ y = W64.zero).
+proof.
+split; last by move=> [-> ->]; rewrite W64.orw0.
+move=> hxy; split; apply W64.wordP => b hb; have := congr1 (fun w : W64.t => w.[b]) _ _ hxy;
+  smt(W64.orwE W64.zerowE).
+qed.
+
+lemma xor_eq0 (x y : W64.t) : (x `^` y = W64.zero) <=> (x = y).
+proof.
+split; last by move=> ->; apply W64.xorwK.
+move=> hxy; apply W64.wordP => b hb; have := congr1 (fun w : W64.t => w.[b]) _ _ hxy;
+  smt(W64.xorwE W64.zerowE).
+qed.
+
+(* On entry to layer j, node is the node reached from M through layers
+   0 .. j - 1. The last loop ORs together the XOR of node and PK.root word
+   by word, so diff is zero exactly when the two are equal. *)
+lemma ht_verify_h (pk : bytes) c0 :
+  (forall (s0 : XmssSig.t) (m0 : Node.t) (a0 : BArray32.t) (i0 : W32.t),
+   hoare [M._xmss_pk_from_sig :
+     sig = s0 /\ msg = m0 /\ ctx = c0 /\ adrs = a0 /\ idx = i0 ==>
+     Node.to_list res.`1 =
+       xmss_pkFromSig P (to_uint i0) (XmssSig.to_list s0) (Node.to_list m0) pk
+         (BArray32.to_list a0)]) =>
+  forall (s0 : HtSig.t) (m0 r0 : Node.t) (it0 : W64.t) (il0 : W32.t),
+  hoare [M._ht_verify :
+    sig = s0 /\ msg = m0 /\ pk_root = r0 /\ ctx = c0 /\ idx_tree = it0 /\ idx_leaf = il0 ==>
+    res.`1 = if ht_verify P (Node.to_list m0) (HtSig.to_list s0) pk (to_uint it0) (to_uint il0)
+                          (Node.to_list r0)
+             then W64.zero else W64.of_int (-1)].
+proof.
+move=> hp s0 m0 r0 it0 il0.
+have hb := xsl_b; have hd1 := d_ge1; have hd2 := d_lt; have hhs := htsig_size; have hxs := xsl_size.
+proc; wp.
+while (0 <= k <= inc /\ inc = P.`n %/ 8 /\
+       (diff = W64.zero <=> forall i, 0 <= i < k => Node.get64 node i = Node.get64 pk_root i)).
++ wp; skip => &m [#] hk0 hk1 hinc hd hlt /=.
+  do 2!(split; first smt()).
+  rewrite or_eq0 xor_eq0 hd; split => [[h1 h2] i hi | h].
+  + by case: (i = k{m}) => [-> // | hik]; apply h1; smt().
+  by split; [move=> i hi; apply h; smt() | apply h; smt()].
+wp.
+while (sig = s0 /\ pk_root = r0 /\ ctx = c0 /\ 0 <= to_uint j <= P.`d /\
+       more = (to_uint j < P.`d) /\
+       to_uint idx_tree = ht_tree P (to_uint it0) (to_uint j) /\
+       to_uint idx_leaf = ht_leaf P (to_uint it0) (to_uint il0) (to_uint j) /\
+       Node.to_list node =
+         foldl (hvg pk (HtSig.to_list s0) (to_uint it0) (to_uint il0)) (Node.to_list m0)
+               (range 0 (to_uint j)) /\
+       (forall x y, setTreeAddress (setLayerAddress (BArray32.to_list adrs) x) y = mk_adrs x y 0 0 0 0)).
++ inline M.__offset; wp.
+  ecall (node_copy_h next); wp.
+  ecall (hp (HtSigXmss.get_sub8 sig (W64.to_uint off)) node adrs leaf); wp.
+  ecall (tree_h adrs idx_tree); ecall (layer_h adrs j); wp; skip.
+  move=> &m [#] 3!-> hj0 hj1 hmore hit hlf hnode hadr hm ms1 a1 ha1 a2 ha2.
+  rewrite /SLH64.protect_ptr /SLH64.protect_64 /SLH64.protect_32 /=.
+  have hjd : to_uint j{m} < P.`d by rewrite -hmore.
+  have hA : BArray32.to_list a2 =
+            mk_adrs (to_uint j{m}) (ht_tree P (to_uint it0) (to_uint j{m})) 0 0 0 0.
+  + by rewrite ha2 ha1 hit hadr.
+  have hjX0 : 0 <= to_uint j{m} * xmss_sig_length P by apply StdOrder.IntOrder.mulr_ge0; smt().
+  have hJX : to_uint j{m} * xmss_sig_length P + xmss_sig_length P <= P.`d * xmss_sig_length P.
+  + by have := StdOrder.IntOrder.ler_wpmul2r (xmss_sig_length P) _ (to_uint j{m} + 1) P.`d _; smt().
+  rewrite (layer_off j{m} _ _ hjd).
+  + by rewrite /xmss_sig_length /len len1_val len2_val n_val hp_val.
+  rewrite sub_slice 1:// 1:-hxs 1:hhs 1:/#.
+  move=> [r ms2] /= hr _ ->.
+  have hj32 := inc32 j{m} P.`d _ _; 1,2: smt().
+  rewrite (d_ult _ _ _); first by rewrite d_val.
+  rewrite (tree_up _ _ _); first by rewrite hp_val.
+  rewrite (leaf_up _ _ _); first by rewrite hp_val.
+  rewrite hj32 hit ht_treeS 1:hp_val // /ht_leaf ifF 1:/#.
+  have -> /= : to_uint j{m} + 1 - 1 = to_uint j{m} by ring.
+  split; first smt().
+  split.
+  + rewrite hr rangeSr 1:/# foldl_rcons -hnode /hvg -hxs hA -hlf.
+    by have -> : (to_uint j{m} + 1) * xmss_sig_length P =
+                 to_uint j{m} * xmss_sig_length P + xmss_sig_length P by ring.
+  by move=> x y; rewrite hA setLayerAddressE setTreeAddressE.
+wp; ecall (zero_h adrs); wp; ecall (node_copy_h msg); wp; skip => &m [#] 6!-> /= r1 -> a0 ha0.
+split.
++ rewrite /ht_tree /ht_leaf /= ?expr0 ?divz1 range_geq //=.
+  do 2!(split; first smt()).
+  by move=> x y; rewrite ha0 mk_adrs0 setLayerAddressE setTreeAddressE.
+move=> a1 c1 l1 t1 j1 m1 n1 sg1 hm [#] _ _ hj0 hj1 hjd _ _ hn _.
+have hjD : to_uint j1 = P.`d by smt().
+rewrite /SLH64.protect_ptr /SLH64.protect_64 /=.
+split; first smt(n_val).
+move=> d1 k1 hk [#] hk0 hk1 hinc hd.
+have hv : ht_verify P (Node.to_list m0) (HtSig.to_list s0) pk (to_uint it0) (to_uint il0)
+            (Node.to_list r0) = (n1 = r0).
++ move: hn; rewrite /hvg hjD => hn.
+  rewrite ht_verifyE 1:P_in -hn eq_iff; split => [h | -> //].
+  by apply Node.to_list_inj.
+rewrite hv; case: (n1 = r0) => [heq | hne] /=.
++ by have -> : d1 = W64.zero by rewrite hd heq.
+have -> // : d1 <> W64.zero.
+apply/negP => h0; apply hne; apply Node.ext_eq64 => x hx.
+by move/hd: h0 => h0; apply h0; smt(n_val).
+qed.
+
+lemma ht_verify_ll c0 :
+  phoare [M._xmss_pk_from_sig : ctx = c0 ==> true] = 1%r =>
+  phoare [M._ht_verify : ctx = c0 ==> true] = 1%r.
+proof.
+move=> hpl; have hd1 := d_ge1; have hd2 := d_lt.
+proc; wp.
+while true (inc - k); first by auto => /#.
+wp.
+while (ctx = c0 /\ 0 <= to_uint j <= P.`d /\ more = (to_uint j < P.`d)) (P.`d - to_uint j).
++ move=> v; inline M.__offset; wp; call node_copy_ll; wp; call hpl; wp.
+  call set_tree_ll; call set_layer_ll; wp; skip.
+  move=> &m [#] -> hj0 hj1 -> hjd hv /= *.
+  have hj32 := inc32 j{m} P.`d _ _; 1,2: smt().
+  rewrite /SLH64.protect_32 (d_ult _ _ _); first by rewrite d_val.
+  rewrite hj32; smt().
+wp; call adrs_zero_ll; call node_copy_ll; wp; skip => &m -> /=.
+split; first smt(d_ult d_val).
+move=> *; smt().
+qed.
+
+lemma ht_verify_correct (pk : bytes) c0 :
+  (forall (x0 : Node.t) (a0 : BArray32.t),
+     phoare [M._thash_f : x = x0 /\ ctx = c0 /\ adrs = a0 ==>
+       Node.to_list res.`1 = F P pk (BArray32.to_list a0) (Node.to_list x0)] = 1%r) =>
+  (forall (m0 : TLenIn.t) (a0 : BArray32.t),
+     phoare [M._thash_t_len : in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
+       Node.to_list res.`1 = T_l P pk (BArray32.to_list a0) (TLenIn.to_list m0)] = 1%r) =>
+  (forall (x0 : Node2.t) (a0 : BArray32.t),
+     phoare [M._thash_h : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
+       Node.to_list res.`1 = H P pk (BArray32.to_list a0) (Node2.to_list x0)] = 1%r) =>
+  forall (s0 : HtSig.t) (m0 r0 : Node.t) (it0 : W64.t) (il0 : W32.t),
+  phoare [M._ht_verify :
+    sig = s0 /\ msg = m0 /\ pk_root = r0 /\ ctx = c0 /\ idx_tree = it0 /\ idx_leaf = il0 ==>
+    res.`1 = if ht_verify P (Node.to_list m0) (HtSig.to_list s0) pk (to_uint it0) (to_uint il0)
+                          (Node.to_list r0)
+             then W64.zero else W64.of_int (-1)] = 1%r.
+proof.
+move=> hf htl hh s0 m0 r0 it0 il0.
+have hpc := xmss_pk_from_sig_correct pk c0 hf htl hh.
+have hpl : phoare [M._xmss_pk_from_sig : ctx = c0 ==> true] = 1%r.
++ by proc*; exlim sig, msg, adrs, idx => s1 m1 a1 i1; call (hpc s1 m1 a1 i1); auto.
+have hp : forall (s1 : XmssSig.t) (m1 : Node.t) (a1 : BArray32.t) (i1 : W32.t),
+  hoare [M._xmss_pk_from_sig :
+    sig = s1 /\ msg = m1 /\ ctx = c0 /\ adrs = a1 /\ idx = i1 ==>
+    Node.to_list res.`1 =
+      xmss_pkFromSig P (to_uint i1) (XmssSig.to_list s1) (Node.to_list m1) pk
+        (BArray32.to_list a1)].
++ by move=> s1 m1 a1 i1; conseq (hpc s1 m1 a1 i1).
+by conseq (ht_verify_ll c0 hpl) (ht_verify_h pk c0 hp s0 m0 r0 it0 il0).
+qed.
