@@ -1,0 +1,25 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * doit-aarch64.jazz
+ * =================
+ *
+ * Negative control of jasmin-ct --doit on AArch64 (analysis/ct/ct.mk): a
+ * secret operand to #protect. After the slhlowering pass it is the
+ * compiler's protect operator, emitted as ORR and a CSDB barrier, which
+ * the compiler does not mark data-independent-time. The only other
+ * unmarked instructions with a data operand are the divisions, which
+ * jasmin-ct rejects on a secret even without --doit, so they could not
+ * show what --doit adds. jasmin-ct must accept this file; jasmin-ct
+ * --doit must reject it.
+ */
+
+#[ct = "secret → secret"]
+export fn doit_control(reg u64 x) -> reg u64
+{
+  reg u64 r ms;
+  ms = #init_msf();
+  r = #protect(x, ms);
+  return r;
+}

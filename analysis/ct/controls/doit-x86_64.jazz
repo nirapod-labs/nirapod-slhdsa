@@ -1,0 +1,21 @@
+/*
+ * SPDX-FileCopyrightText: nirapod-slhdsa contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * doit-x86_64.jazz
+ * ================
+ *
+ * Negative control of jasmin-ct --doit on x86-64 (analysis/ct/ct.mk): a
+ * secret operand to POPCNT, which the compiler does not mark
+ * data-operand-independent. jasmin-ct must accept this file, since no
+ * branch or address depends on the secret; jasmin-ct --doit must reject
+ * it.
+ */
+
+#[ct = "secret → secret"]
+export fn doit_control(reg u64 x) -> reg u64
+{
+  reg u64 r;
+  ?{}, r = #POPCNT(x);
+  return r;
+}

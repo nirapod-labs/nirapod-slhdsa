@@ -52,12 +52,14 @@ class Counts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             os.makedirs(os.path.join(d, "aarch64-elf", "ct"))
             for i in range(24):
-                for ext in ("ok", "ct.log", "sct.log"):
+                for ext in ("ok", "ct.log", "sct.log", "doit.log"):
                     open(os.path.join(d, "aarch64-elf", "ct", f"u{i}.{ext}"), "w").close()
             rules = counts.load(os.path.join(ROOT, "ci/rules/analysis-units.toml"), "ct")
             self.assertEqual(counts.check(rules, "ct", d, "aarch64-elf", "aarch64")[0], 0)
             os.remove(os.path.join(d, "aarch64-elf", "ct", "u3.sct.log"))
             self.assertEqual(counts.check(rules, "ct", d, "aarch64-elf", "aarch64")[0], 1)
+            os.remove(os.path.join(d, "aarch64-elf", "ct", "u5.doit.log"))
+            self.assertEqual(counts.check(rules, "ct", d, "aarch64-elf", "aarch64")[0], 2)
 
     def test_every_rules_file_loads(self):
         for f in os.listdir(os.path.join(ROOT, "ci/rules")):
