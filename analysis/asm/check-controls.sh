@@ -97,9 +97,19 @@ case $arch in
     control mrs  "$trap" '\tmrs\tx1, s3_3_c4_c2_5'
     control blr  "$indirect" '\tblr\tx3'
     control br   "$indirect" '\tbr\tx3'
+    # Timing: an instruction Arm does not list as data-independent-time
+    # (FMUL), a listed mnemonic in a form that is not (LDR literal), a
+    # branch form outside the accepted ones, a MOVK on a non-constant.
+    dit='instruction outside the data-independent-time list \(.*\)'
+    movk='movk on a register that does not hold a constant \(.*\)'
+    control fmul    "$dit"  '\tfmul\td0, d1, d2'
+    control literal "$dit"  '\tldr\tx1, Lc\nLc:\n\t.quad\t1'
+    control retreg  "$dit"  '\tret\tx3'
+    control movk    "$movk" '\tmov\tx1, x2\n\tmovk\tx1, #1, lsl #16'
     e=Lnirapod_slhdsa_jz_sha2_128f_scalar__keygen
     template="_nirapod_slhdsa_jz_sha2_128f_scalar__keygen:
 \tstr\tx30, [sp, #-16]!\n\tdsb\tsy\n\tisb\n\tbl\tLf\$1
+\tmovz\tx4, #1\n\tmovk\tx4, #2, lsl #16\n\tmovk\tx4, #3, lsl #32
 \tmov\tx2, sp\n\tmovz\tx3, #64\n\tand\tx12, x2, #18446744073709551600
 \tmov\tsp, x12\n\tsub\tsp, sp, x3\n\tmov\tx12, #0\n$e\$2:
 \tsubs\tx3, x3, #8\n\tstr\tx12, [sp, x3]\n\tb.ne\t$e\$2
@@ -128,6 +138,9 @@ s/^Lf.1:$/'"$e"'$9:\
 	b	'"$e"'$2/'
     mutant fence       "$fence" '/^.dsb/d'
     mutant extcall     'branch or call to _memcpy outside the unit' 's/bl.Lf.1$/bl	_memcpy/'
+    mutant movk-chain  "$movk" '/^.movz.x4/d'
+    mutant movk-label  "$movk" 's/^.movk.x4, #3/Lk:\
+&/'
     ;;
   x86_64)
     control divq  'division instruction' '\tdivq\t%rcx'

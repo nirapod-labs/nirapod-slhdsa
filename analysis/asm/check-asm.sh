@@ -15,6 +15,9 @@
 #     x18       AArch64: the platform register is never written or read
 #     x29       AArch64: the frame-pointer register (fp) is never written or
 #               read, so a frame-chain walk during a call stays valid
+#     timing    AArch64: every instruction is a data-independent-time
+#               instruction of the Arm architecture, or a form that reads
+#               no secret by construction (analysis/asm/dit.awk)
 #     branches, traps, fence, leave, data
 #               the rules of analysis/asm/exports.awk: no branch or call
 #               leaves the unit or is indirect; no trap or system-register
@@ -55,6 +58,8 @@ for f in "$@"; do
       if grep -Eq '^[[:space:]]+[us]div[[:space:]]' "$f"; then echo "$f: division instruction"; bad=1; fi
       if grep -Eq '\b[xw]18\b' "$f"; then echo "$f: uses x18"; bad=1; fi
       if grep -Eq '\b([xw]29|fp)\b' "$f"; then echo "$f: uses x29"; bad=1; fi
+      timing=$(awk -f "$here/dit.awk" "$f")
+      if [ -n "$timing" ]; then echo "$timing"; bad=1; fi
       ;;
     x86_64)
       if grep -Eq '^[[:space:]]+i?div[bwlq]?[[:space:]]' "$f"; then echo "$f: division instruction"; bad=1; fi
