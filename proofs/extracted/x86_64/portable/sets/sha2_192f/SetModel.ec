@@ -104,7 +104,7 @@
 
 require import AllCore.
 require FIPS205_Params.
-require BArray24 BArray42 BArray48 BArray51 BArray96 BArray132 BArray216 BArray792 BArray896 BArray1224 BArray1280 BArray1296 BArray4896 BArray7128 BArray28512 BArray35664 SBArray48_24 SBArray96_24 SBArray216_24 SBArray792_24 SBArray896_64 SBArray896_128 SBArray1224_24 SBArray1280_64 SBArray1280_128 SBArray1296_24 SBArray1296_1224 SBArray7128_24 SBArray28512_1296.
+require BArray24 BArray42 BArray48 BArray51 BArray72 BArray96 BArray132 BArray216 BArray332 BArray792 BArray896 BArray1224 BArray1280 BArray1296 BArray4896 BArray7128 BArray28512 BArray35664 SBArray48_24 SBArray96_24 SBArray96_48 SBArray216_24 SBArray792_24 SBArray896_64 SBArray896_128 SBArray1224_24 SBArray1280_64 SBArray1280_128 SBArray1296_24 SBArray1296_1224 SBArray7128_24 SBArray28512_1296 SBArray35664_24 SBArray35664_7128 SBArray35664_28512.
 
 op P : FIPS205_Params.params = FIPS205_Params.slh_dsa_sha2_192f.
 
@@ -165,6 +165,26 @@ theory Sig = BArray35664.
 theory HtSig = BArray28512.
 (* the XMSS signature slots of an HtSig *)
 theory HtSigXmss = SBArray28512_1296.SBArray28512_1296.
+(* the n-byte slots of a Sig, the first of which is R *)
+theory SigR = SBArray35664_24.SBArray35664_24.
+(* the FORS signature slot of a Sig *)
+theory SigFors = SBArray35664_7128.SBArray35664_7128.
+(* the hypertree signature slot of a Sig *)
+theory SigHt = SBArray35664_28512.SBArray35664_28512.
+(* a secret key: SK.seed, SK.prf, PK.seed, PK.root (u8[4n]) *)
+theory SK = BArray96.
+(* the n-byte fields of an SK *)
+theory SkNode = SBArray96_24.SBArray96_24.
+(* the 2n-byte halves of an SK, the second of which is the public key *)
+theory SkPk = SBArray96_48.SBArray96_48.
+(* a public key: PK.seed, PK.root (u8[2n]) *)
+theory PK = BArray48.
+(* the n-byte fields of a PK *)
+theory PkNode = SBArray48_24.SBArray48_24.
+(* the key generation seeds: SK.seed, SK.prf, PK.seed (u8[3n]) *)
+theory Seeds = BArray72.
+(* the buffer of the bytes that precede the message in M (u8[SLH_PREFIX_MAX]) *)
+theory Prefix = BArray332.
 (* the T_len work buffer *)
 theory TLenBuf = BArray1280.
 (* its 64-byte SHA-256 blocks *)

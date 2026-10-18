@@ -92,6 +92,23 @@ ROLES = [
      "a hypertree signature: d XMSS signatures (u8[d (len + hp) n])"),
     ("HtSigXmss", ("SLH_HT_SIG_BYTES", "SLH_XMSS_SIG_BYTES"),
      "the XMSS signature slots of an HtSig"),
+    ("SigR", ("SLH_SIG_BYTES", "SLH_N"),
+     "the n-byte slots of a Sig, the first of which is R"),
+    ("SigFors", ("SLH_SIG_BYTES", "SLH_FORS_SIG_BYTES"),
+     "the FORS signature slot of a Sig"),
+    ("SigHt", ("SLH_SIG_BYTES", "SLH_HT_SIG_BYTES"),
+     "the hypertree signature slot of a Sig"),
+    ("SK", ("SLH_SK_BYTES",),
+     "a secret key: SK.seed, SK.prf, PK.seed, PK.root (u8[4n])"),
+    ("SkNode", ("SLH_SK_BYTES", "SLH_N"), "the n-byte fields of an SK"),
+    ("SkPk", ("SLH_SK_BYTES", "SLH_PK_BYTES"),
+     "the 2n-byte halves of an SK, the second of which is the public key"),
+    ("PK", ("SLH_PK_BYTES",), "a public key: PK.seed, PK.root (u8[2n])"),
+    ("PkNode", ("SLH_PK_BYTES", "SLH_N"), "the n-byte fields of a PK"),
+    ("Seeds", ("3 * SLH_N",),
+     "the key generation seeds: SK.seed, SK.prf, PK.seed (u8[3n])"),
+    ("Prefix", ("SLH_PREFIX_MAX",),
+     "the buffer of the bytes that precede the message in M (u8[SLH_PREFIX_MAX])"),
 ]
 
 # The SHA2 T_l and T_k hash their input in a work buffer of whole SHA-512

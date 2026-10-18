@@ -104,7 +104,7 @@
 
 require import AllCore.
 require FIPS205_Params.
-require BArray24 BArray39 BArray48 BArray51 BArray68 BArray96 BArray360 BArray408 BArray1224 BArray1440 BArray4896 BArray6120 BArray10080 BArray16224 SBArray48_24 SBArray96_24 SBArray360_24 SBArray408_24 SBArray1224_24 SBArray1440_24 SBArray1440_1224 SBArray6120_24 SBArray10080_1440.
+require BArray24 BArray39 BArray48 BArray51 BArray68 BArray72 BArray96 BArray332 BArray360 BArray408 BArray1224 BArray1440 BArray4896 BArray6120 BArray10080 BArray16224 SBArray48_24 SBArray96_24 SBArray96_48 SBArray360_24 SBArray408_24 SBArray1224_24 SBArray1440_24 SBArray1440_1224 SBArray6120_24 SBArray10080_1440 SBArray16224_24 SBArray16224_6120 SBArray16224_10080.
 
 op P : FIPS205_Params.params = FIPS205_Params.slh_dsa_shake_192s.
 
@@ -165,3 +165,23 @@ theory Sig = BArray16224.
 theory HtSig = BArray10080.
 (* the XMSS signature slots of an HtSig *)
 theory HtSigXmss = SBArray10080_1440.SBArray10080_1440.
+(* the n-byte slots of a Sig, the first of which is R *)
+theory SigR = SBArray16224_24.SBArray16224_24.
+(* the FORS signature slot of a Sig *)
+theory SigFors = SBArray16224_6120.SBArray16224_6120.
+(* the hypertree signature slot of a Sig *)
+theory SigHt = SBArray16224_10080.SBArray16224_10080.
+(* a secret key: SK.seed, SK.prf, PK.seed, PK.root (u8[4n]) *)
+theory SK = BArray96.
+(* the n-byte fields of an SK *)
+theory SkNode = SBArray96_24.SBArray96_24.
+(* the 2n-byte halves of an SK, the second of which is the public key *)
+theory SkPk = SBArray96_48.SBArray96_48.
+(* a public key: PK.seed, PK.root (u8[2n]) *)
+theory PK = BArray48.
+(* the n-byte fields of a PK *)
+theory PkNode = SBArray48_24.SBArray48_24.
+(* the key generation seeds: SK.seed, SK.prf, PK.seed (u8[3n]) *)
+theory Seeds = BArray72.
+(* the buffer of the bytes that precede the message in M (u8[SLH_PREFIX_MAX]) *)
+theory Prefix = BArray332.
