@@ -104,7 +104,7 @@
 
 require import AllCore.
 require FIPS205_Params.
-require BArray24 BArray42 BArray48 BArray51 BArray72 BArray96 BArray132 BArray216 BArray332 BArray792 BArray896 BArray1224 BArray1280 BArray1296 BArray4896 BArray7128 BArray28512 BArray35664 SBArray48_24 SBArray96_24 SBArray96_48 SBArray216_24 SBArray792_24 SBArray896_64 SBArray896_128 SBArray1224_24 SBArray1280_64 SBArray1280_128 SBArray1296_24 SBArray1296_1224 SBArray7128_24 SBArray28512_1296 SBArray35664_24 SBArray35664_7128 SBArray35664_28512.
+require BArray24 BArray42 BArray48 BArray51 BArray72 BArray96 BArray112 BArray132 BArray216 BArray320 BArray332 BArray792 BArray896 BArray1224 BArray1280 BArray1296 BArray4896 BArray7128 BArray28512 BArray35664 SBArray48_24 SBArray96_24 SBArray96_48 SBArray216_24 SBArray320_64 SBArray320_128 SBArray792_24 SBArray896_64 SBArray896_128 SBArray1224_24 SBArray1280_64 SBArray1280_128 SBArray1296_24 SBArray1296_1224 SBArray7128_24 SBArray28512_1296 SBArray35664_24 SBArray35664_7128 SBArray35664_28512.
 
 op P : FIPS205_Params.params = FIPS205_Params.slh_dsa_sha2_192f.
 
@@ -197,3 +197,11 @@ theory TKBuf = BArray896.
 theory TKBlk256 = SBArray896_64.SBArray896_64.
 (* its 128-byte SHA-512 blocks *)
 theory TKBlk512 = SBArray896_128.SBArray896_128.
+(* the MGF1 seed of H_msg: R, PK.seed, X(...) (u8[2n + |X|]) *)
+theory MgfSeed = BArray112.
+(* the MGF1 buffer of the padded seed and counter *)
+theory MgfBuf = BArray320.
+(* its 64-byte SHA-256 blocks *)
+theory MgfBlk256 = SBArray320_64.SBArray320_64.
+(* its 128-byte SHA-512 blocks *)
+theory MgfBlk512 = SBArray320_128.SBArray320_128.

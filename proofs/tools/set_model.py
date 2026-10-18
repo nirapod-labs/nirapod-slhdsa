@@ -117,6 +117,14 @@ ROLES = [
 # 128-byte SHA-512 blocks.
 TLEN_BUF = "128 * ((22 + SLH_LEN * SLH_N + 144) / 128)"
 TK_BUF = "128 * ((22 + SLH_K * SLH_N + 144) / 128)"
+
+# H_msg ends with MGF1 of R || PK.seed || X(...), X the SHA-256 digest in
+# category 1 and SHA-512 in categories 3 and 5 (thash_sha2.jinc,
+# MGF1_SEED_LEN = 2 * SLH_N + SHA2_X_DIGEST). MGF1 pads the seed and its
+# counter in a buffer of whole SHA-512 blocks and 64 more bytes, which
+# holds the SHA-256 padding too (mgf1.jinc, MGF1_BUF_LEN).
+MGF_SEED = "2 * SLH_N + 32 * (1 + (SLH_CATEGORY + 1) / 4)"
+MGF_BUF = f"128 * (({MGF_SEED} + 4 + 1 + 16 + 127) / 128) + 64"
 THASH_ROLES = {
     "thash_sha2.jinc": [
         ("TLenBuf", (TLEN_BUF,), "the T_len work buffer"),
@@ -125,6 +133,10 @@ THASH_ROLES = {
         ("TKBuf", (TK_BUF,), "the T_k work buffer"),
         ("TKBlk256", (TK_BUF, "64"), "its 64-byte SHA-256 blocks"),
         ("TKBlk512", (TK_BUF, "128"), "its 128-byte SHA-512 blocks"),
+        ("MgfSeed", (MGF_SEED,), "the MGF1 seed of H_msg: R, PK.seed, X(...) (u8[2n + |X|])"),
+        ("MgfBuf", (MGF_BUF,), "the MGF1 buffer of the padded seed and counter"),
+        ("MgfBlk256", (MGF_BUF, "64"), "its 64-byte SHA-256 blocks"),
+        ("MgfBlk512", (MGF_BUF, "128"), "its 128-byte SHA-512 blocks"),
     ],
 }
 

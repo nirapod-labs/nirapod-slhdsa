@@ -104,7 +104,7 @@
 
 require import AllCore.
 require FIPS205_Params.
-require BArray16 BArray32 BArray34 BArray35 BArray48 BArray64 BArray96 BArray112 BArray132 BArray332 BArray528 BArray560 BArray608 BArray640 BArray2240 BArray3696 BArray13376 BArray17088 SBArray32_16 SBArray64_16 SBArray64_32 SBArray112_16 SBArray528_16 SBArray560_16 SBArray608_16 SBArray608_560 SBArray640_64 SBArray640_128 SBArray3696_16 SBArray13376_608 SBArray17088_16 SBArray17088_3696 SBArray17088_13376.
+require BArray16 BArray32 BArray34 BArray35 BArray48 BArray64 BArray96 BArray112 BArray132 BArray192 BArray332 BArray528 BArray560 BArray608 BArray640 BArray2240 BArray3696 BArray13376 BArray17088 SBArray32_16 SBArray64_16 SBArray64_32 SBArray112_16 SBArray192_64 SBArray192_128 SBArray528_16 SBArray560_16 SBArray608_16 SBArray608_560 SBArray640_64 SBArray640_128 SBArray3696_16 SBArray13376_608 SBArray17088_16 SBArray17088_3696 SBArray17088_13376.
 
 op P : FIPS205_Params.params = FIPS205_Params.slh_dsa_sha2_128f.
 
@@ -197,3 +197,11 @@ theory TKBuf = BArray640.
 theory TKBlk256 = SBArray640_64.SBArray640_64.
 (* its 128-byte SHA-512 blocks *)
 theory TKBlk512 = SBArray640_128.SBArray640_128.
+(* the MGF1 seed of H_msg: R, PK.seed, X(...) (u8[2n + |X|]) *)
+theory MgfSeed = BArray64.
+(* the MGF1 buffer of the padded seed and counter *)
+theory MgfBuf = BArray192.
+(* its 64-byte SHA-256 blocks *)
+theory MgfBlk256 = SBArray192_64.SBArray192_64.
+(* its 128-byte SHA-512 blocks *)
+theory MgfBlk512 = SBArray192_128.SBArray192_128.
