@@ -43,7 +43,8 @@ Scope and limits:
 ## Stack depth and residue (`tests/abi/test_stack.c`)
 
 Run by `make check`. The test paints the stack below the caller, calls each
-export, and measures the depth it reached and the bytes it left behind that
+of the five exports of every unit, the internal signing and verification
+included, and measures the depth it reached and the bytes it left behind that
 are neither the paint nor zero. A second binary built from two units compiled
 without stack zeroization is the negative control: it must report residue,
 otherwise the probe could not detect any. A second scan runs the public
@@ -54,16 +55,46 @@ runs that scan on the application library alone (`test_stack_production`),
 so that it judges the code applications link. The method and its limits are
 in the test's header.
 
+## Secret-dependent residue (`tests/abi/test_clearing.c`)
+
+Run by `make check`. Each secret-reading operation runs twice from the same
+stack depth, on two inputs that differ only in SK.seed, SK.prf and opt_rand,
+on a painted stack and through the register capture of
+`tests/abi/call_dump.h`, which stores the caller-saved registers the moment
+the library function returns. PASS means: no byte below the stack pointer at
+the call, C frames and Jasmin frames alike, and no stored register differs
+between the two runs, so no value that differs between two secret inputs is
+left there, derived values included. A secret-dependent value that happens
+to be equal for both inputs is not seen. On the application library the two
+inputs differ in PK.seed too (its keys come from key generation), which can
+only add differences. It runs key
+generation, every signing path (given, deterministic, hedged and pre-hash
+opt_rand, the fault check on and off, a signature the check withholds) and
+internal signing, for every set and every variant the CPU runs, on the
+testing library, and the public functions on the application library. Each
+build must find a copy of SK.prf the test leaves in a frame, and copies that
+functions called like the library leave in one register each (AArch64 x8,
+x9, v16 and, on Linux, x18; x86-64 r11, r10, xmm15) before returning to a
+caller that stores its status. Two negative controls must find residue in
+every operation they run: the testing library with `capi/clear.c` replaced
+by `tests/abi/clear_skip.c`, which clears nothing, and the two units
+compiled without stack zeroization (the latter when the Jasmin compiler is
+available). Not inspected: the flags, x18 on macOS, the AVX-512 state on
+x86-64 (upper zmm halves, zmm16-zmm31, mask registers), and memory outside
+the probed region.
+
 ## Registers after return (`tests/abi/test_registers.c`)
 
 Run by `make check`. An assembly trampoline fills the caller-saved registers
-with a pattern, calls, and stores them before any compiler-generated code
-runs. PASS means: the register-clearing routine of `capi/clear.c` zeroes
+with a pattern, and the capture of `tests/abi/call_dump.h` stores them the
+moment the library function returns, before any compiler-generated code of
+the test runs. PASS means: the register-clearing routine of `capi/clear.c` zeroes
 every register it lists; key generation and every signing path of the C
 layer, run on stub exports that leave a marker in every register a callee
 may change, return with no register holding it, while a stub called
 directly leaves it; no caller-saved register holds 8 consecutive bytes of
-SK.seed or SK.prf after key generation or signing through the public API.
+SK.seed or SK.prf after key generation or signing through the public API,
+while the copies the controls leave in single registers are found.
 On AArch64 with FEAT_DIT, stub exports also record PSTATE.DIT: set during
 key generation, signing and the check of the new signature, the caller's
 value during verification and after every call. On x86-64 CPUs that report
@@ -101,7 +132,15 @@ make asm-policy [JASMINC=...]
 checks the assembly the library is built from (`asm/check-asm.sh`): every
 global symbol is one of the unit's five exports, no division instruction
 appears (its timing depends on its operands), and on AArch64 neither the
-platform register x18 nor the frame-pointer register x29 is used. Each rule has
+platform register x18 nor the frame-pointer register x29 is used. The
+control-flow rules of `asm/exports.awk` add: every branch and call targets a
+label of the unit, none is indirect, and nothing calls out of it; no trap,
+system call or, on AArch64, system-register instruction appears, so the
+timing mode stays with the C layer; every export runs its speculation
+barrier before its first call, and reaches its return only through the
+compiler's stack-zeroing epilogue. That epilogue's size covering the frame
+is the compiler's computation, measured by the residue scan of
+`tests/abi/test_stack.c`. Each rule has
 negative controls (`asm/check-controls.sh`), files with a single violation of
 that rule, and each must be rejected by that rule, or the target fails. These
 are textual checks of the emitted code; they complement, and do not replace,

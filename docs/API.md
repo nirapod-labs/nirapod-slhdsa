@@ -262,17 +262,17 @@ starts; the table gives the larger.
 
 | Copy | Where | Cleared by | Checked by |
 |---|---|---|---|
-| SK.seed, SK.prf, PK.seed drawn for key generation | `buf` in `nirapod_slhdsa_keygen_env` (C stack) | `nirapod_slhdsa_clear` before return | `tests/abi/test_stack.c` secret scan, below |
-| opt_rand of hedged or deterministic signing | `opt_rand` in `nirapod_slhdsa_sign_framed` (C stack) | `nirapod_slhdsa_clear` before return | `tests/abi/test_stack.c` secret scan, below |
-| Working state of the Jasmin code: hash states, chain values, tree nodes, copies of secret-key parts | the export's stack frames | the compiler's stack zeroization (`jasminc -stack-zero loop -stack-zero-size u64`) at export return | `tests/abi/test_stack.c` residue scan, below |
-| Register contents after an export that reads the secret key (keygen, sign and the check of the new signature) | caller-saved registers | `nirapod_slhdsa_clear_registers` (`capi/clear.c` lists the registers) | `tests/abi/test_registers.c`, below |
+| SK.seed, SK.prf, PK.seed drawn for key generation | `buf` in `nirapod_slhdsa_keygen_env` (C stack) | `nirapod_slhdsa_clear` before return | `tests/abi/test_stack.c` secret scan; `tests/abi/test_clearing.c`, below |
+| opt_rand of hedged or deterministic signing | `opt_rand` in `nirapod_slhdsa_sign_framed` (C stack) | `nirapod_slhdsa_clear` before return | `tests/abi/test_stack.c` secret scan; `tests/abi/test_clearing.c`, below |
+| Working state of the Jasmin code: hash states, chain values, tree nodes, copies of secret-key parts | the export's stack frames | the compiler's stack zeroization (`jasminc -stack-zero loop -stack-zero-size u64`) at export return | `tests/abi/test_stack.c` residue scan; `tests/abi/test_clearing.c`; `make asm-policy`, below |
+| Register contents after an export that reads the secret key (keygen, sign and the check of the new signature) | caller-saved registers | `nirapod_slhdsa_clear_registers` (`capi/clear.c` lists the registers) | `tests/abi/test_registers.c`; `tests/abi/test_clearing.c`, below |
 
 What the checks establish, on the host and build they run on:
 
-- Residue scan: after each Jasmin export returns, the stack below the caller
-  holds no byte that is neither the paint nor zero, outside the return address
-  and the registers the export saves on entry (the top 56 bytes on x86-64, 16
-  on AArch64). A build without stack zeroization run through the same scan
+- Residue scan: after each Jasmin export returns, internal signing and
+  verification included, the stack below the caller holds no byte that is
+  neither the paint nor zero, outside the return address and the registers
+  the export saves on entry (the top 56 bytes on x86-64, 16 on AArch64). A build without stack zeroization run through the same scan
   must show residue, so the scan can see it.
 - Secret scan: after keygen and each signing function through the public API,
   no 8 consecutive bytes of SK.seed or SK.prf remain anywhere in the 512 KiB
@@ -287,12 +287,40 @@ What the checks establish, on the host and build they run on:
   called directly does. After keygen, sign and deterministic hash_sign
   through the public API, no caller-saved register holds 8 consecutive bytes
   of SK.seed or SK.prf.
+- Residue comparison: key generation, every signing path (given,
+  deterministic, hedged and pre-hash opt_rand, the fault check on and off, a
+  signature the check withholds) and internal signing run twice on inputs
+  that differ only in SK.seed, SK.prf and opt_rand, for every set and every
+  variant the host runs, and the public functions once more on the
+  application library. The registers are stored the moment the library
+  function returns, before any code of the test runs. No byte of the stack
+  below the call and no stored register may differ between the two runs, so
+  no value that differs between two secret inputs is left there, values
+  derived from them included, in the C frames as in the Jasmin frames. The
+  stored registers are x0-x17 and v0-v31 on AArch64, with x18 on Linux, and
+  rax, rcx, rdx, rsi, rdi, r8-r11 and xmm0-xmm15 (ymm0-ymm15 with AVX) on
+  x86-64. A secret-dependent value that happens to be equal for the two
+  inputs is not seen. On the application library the two keys come from
+  key generation, so the inputs differ in PK.seed too, which can only add
+  differences. The same test with the clearing removed from the C layer,
+  and on units built without stack zeroization, must find residue, as must
+  a copy of SK.prf the test leaves in a frame, and one a function leaves in
+  each of three registers (four on Linux AArch64) before returning to a
+  caller that stores its status.
+- Epilogue check: `make asm-policy` checks on the assembly that every export
+  has one RET and reaches it only through the compiler's stack-zeroing loop
+  ([analysis](../analysis/README.md#assembly-policy-asm)).
 
-The stack scans look for the seeds and opt_rand themselves, not for values
-derived from them; within the Jasmin frames the residue scan covers derived
-values too. Not covered: the caller's own buffers (the secret key, the
+The secret scan looks for the seeds and opt_rand themselves; the residue
+scan and the residue comparison cover values derived from them. Not
+covered: the caller's own buffers (the secret key, the
 message), copies the operating system or a debugger makes (swap, core dumps,
-registers saved on a context switch), and the flags register.
+registers saved on a context switch), the flags register, x18 on macOS (the
+platform's register, which the library never writes), and on x86-64 CPUs
+with AVX-512 the upper halves of the zmm registers, zmm16-zmm31 and the mask
+registers. The Jasmin code does not use those; the C library's memory
+routines may, and the testing library copies the seeds it is given with
+`memcpy`, so a copy there is neither cleared nor seen.
 
 ## Timing mode
 

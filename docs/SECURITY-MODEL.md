@@ -76,8 +76,12 @@ The checks above treat arithmetic as constant-time.
   caller relies on the CPU executing these instructions in time independent of
   their operands.
 
-The emitted code contains no division instruction (`make asm-policy`). The stricter
-`--doit` policy of `jasmin-ct` has not been run.
+The emitted code contains no division instruction and, on AArch64, no
+system-register access, so only the C layer sets and restores the timing mode
+(`make asm-policy`). Two questions are open: whether every instruction the
+AArch64 units emit is one the Arm architecture lists as data-independent-time
+under DIT has not been checked, and the stricter `--doit` policy of `jasmin-ct`
+has not been run.
 
 ## Memory safety
 
@@ -99,8 +103,13 @@ The library keeps nothing between calls. Within a call, the wrapper clears its o
 copies of seeds and `opt_rand`, the compiler zeroes each export's stack frame on
 return, and caller-saved registers are cleared after every export that reads the
 secret key. [API](API.md#what-is-cleared) lists every copy and the test that checks
-it. The caller's buffers, and copies made by the operating system or a debugger,
-are outside it.
+it. `tests/abi/test_clearing.c` runs every operation that reads a secret twice, on
+inputs that differ only in the secrets, and finds no difference on the stack below
+the call or in the caller-saved registers, stored the moment the library function
+returns, on every variant of the host. A secret-dependent value that is equal for
+the two inputs would not show. The caller's buffers, copies made by the operating
+system or a debugger, the flags, and on x86-64 the AVX-512 register state are
+outside it ([API](API.md#what-is-cleared)).
 
 ## Faults
 
@@ -113,6 +122,12 @@ injects such faults and shows the signature withheld.
 Not covered: a fault that still yields a valid signature, a fault in the check or
 one that skips it, and faults during key generation.
 [API](API.md#fault-check) gives the details and the cost.
+
+The check is the only countermeasure. Beyond what it detects, fault injection is
+outside the threat model, whether physical (voltage or clock glitches,
+electromagnetic or laser pulses) or induced from software (memory disturbance such
+as Rowhammer, or misuse of frequency and voltage controls), and so are the physical
+side channels of [Observer](#observer).
 
 ## Platform hardening
 
