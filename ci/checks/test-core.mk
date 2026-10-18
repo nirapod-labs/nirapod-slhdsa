@@ -7,7 +7,7 @@
 # transcript for agree: its line count is a coverage minimum here, its
 # content is compared across the platforms. Then the fill check (make
 # fill-check), whose site count the rules hold, and on one platform its
-# controls (make fill-check-controls): one build per filled buffer, eleven
+# controls (make fill-check-controls): one build per filled buffer, fifteen
 # library builds, so not repeated on every platform. They fail if the
 # fill check ever stops building from the rewritten sources.
 

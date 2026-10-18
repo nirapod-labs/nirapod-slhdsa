@@ -19,12 +19,12 @@ minimum = 84
 [[fill-check.line]]
 what = "fill sites rewritten with 0xa5 bytes"
 pattern = '^fill-check: sites=(\d+)$'
-exactly = 7
+exactly = 11
 
 # The fill check's controls (linux-aarch64 only), one per filled buffer:
 # every one detected.
 [fill-controls]
 [[fill-controls.line]]
 what = "filled buffers whose control the fill check detected"
-pattern = '^fill-check controls: detected=(\d+) of 11$'
-exactly = 11
+pattern = '^fill-check controls: detected=(\d+) of 15$'
+exactly = 15

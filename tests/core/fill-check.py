@@ -41,7 +41,9 @@
 # matches no text, fails the script before anything is built. The hash
 # layer (src/hash) is copied unchanged and not scanned: `fill` there is a
 # buffer's fill level, and its own safety fills are checked by
-# tests/hash/tools/fill_check.sh.
+# tests/hash/tools/fill_check.sh. The prefix absorbers of
+# slhdsa/thash_sha2.jinc use `fill` in that sense too; they never write
+# `fill = 0;`, so they hold no site.
 #
 # Usage: python3 -I tests/core/fill-check.py prepare <jasmin src> <copy dir>
 #        python3 -I tests/core/fill-check.py controls <jasmin src> <work dir> <target> <subset>
@@ -64,6 +66,7 @@ SITES = {
     "slhdsa/fors.jinc": 3,      # nodes, auth and selected in _fors_tree,
                                 # roots in _fors_sign and _fors_pk_from_sig
     "slhdsa/external.jinc": 1,  # prefix in _slh_frame
+    "slhdsa/thash_sha2.jinc": 4,  # buf and buf512 in _prf_msg and _h_msg
 }
 
 # A constant-index zero store written without the `fill` register.
@@ -138,6 +141,24 @@ CONTROLS = {
     "prefix": [("slhdsa/external.jinc",
                 "    prefix[0] = (8u) t;\n",
                 "    end = (64u) prefix[0];\n    t ^= end;\n    prefix[0] = (8u) t;\n")],
+    # The SHA-2 block buffers: the head of the first block is XORed in
+    # instead of written.
+    "prf_buf": [("slhdsa/thash_sha2.jinc",
+                 "      t = opt_rand[:u64 i];\n      buf[:u64 i] = t;\n",
+                 "      t = opt_rand[:u64 i];\n      z = buf[:u64 i];\n"
+                 "      t ^= z;\n      buf[:u64 i] = t;\n")],
+    "prf_buf512": [("slhdsa/thash_sha2.jinc",
+                    "      t = opt_rand[:u64 i];\n      buf512[:u64 i] = t;\n",
+                    "      t = opt_rand[:u64 i];\n      z = buf512[:u64 i];\n"
+                    "      t ^= z;\n      buf512[:u64 i] = t;\n")],
+    "hmsg_buf": [("slhdsa/thash_sha2.jinc",
+                  "      t = head[:u64 i];\n      buf[:u64 i] = t;\n",
+                  "      t = head[:u64 i];\n      total = buf[:u64 i];\n"
+                  "      t ^= total;\n      buf[:u64 i] = t;\n")],
+    "hmsg_buf512": [("slhdsa/thash_sha2.jinc",
+                     "      t = head[:u64 i];\n      buf512[:u64 i] = t;\n",
+                     "      t = head[:u64 i];\n      total = buf512[:u64 i];\n"
+                     "      t ^= total;\n      buf512[:u64 i] = t;\n")],
 }
 
 

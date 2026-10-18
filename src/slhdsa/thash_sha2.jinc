@@ -620,7 +620,7 @@ fn _prf_msg(
   stack u64[8] inner512 outer512;
   stack u8[32] tag;
   stack u8[64] tag512;
-  reg u64 t z total;
+  reg u64 t z total fill;
   inline int i;
 
   z = 0;
@@ -637,6 +637,23 @@ fn _prf_msg(
   #[inline]
   if (SHA2_WIDE == 0) {
     inner, outer, ms = __hmac_sha256_init(inner, outer, k0[0 : 64], ms);
+
+    /*
+     * Safety-checker workaround: the block buffer is filled at run-time
+     * offsets (the prefix byte by byte, then the hash layer's absorb and
+     * padding), and every compression reads it whole, so the checker
+     * reports is_init there. Each compression reads only bytes written
+     * since the previous one: a block is compressed only when it is
+     * complete, and the padding writes every byte it leaves. The fill
+     * check covers this site too. Here `fill` is the register holding
+     * the fill value; in the prefix absorbers above, a variable of the
+     * same name is the buffer's fill level, which the fill check neither
+     * counts nor rewrites.
+     */
+    fill = 0;
+    for i = 0 to 8 {
+      buf[:u64 i] = fill;
+    }
 
     /* opt_rand opens the inner message: n < 64 bytes, no block completes. */
     #unspill(opt_rand);
@@ -658,6 +675,12 @@ fn _prf_msg(
     }
   } else {
     inner512, outer512, ms = __hmac_sha512_init(inner512, outer512, k0, ms);
+
+    /* The same workaround for the SHA-512 block buffer. */
+    fill = 0;
+    for i = 0 to 16 {
+      buf512[:u64 i] = fill;
+    }
 
     /* opt_rand opens the inner message: n < 128 bytes, no block completes. */
     #unspill(opt_rand);
@@ -710,7 +733,7 @@ fn _h_msg(
   stack u64[8] h512;
   stack u8[32] d256;
   stack u8[64] d512;
-  reg u64 t total;
+  reg u64 t total fill;
   inline int i;
 
   /* head = R || PK.seed || PK.root; seed starts R || PK.seed. */
@@ -735,6 +758,12 @@ fn _h_msg(
   if (SHA2_WIDE == 0) {
     h = __sha256_init(h);
 
+    /* The block buffer workaround of _prf_msg. */
+    fill = 0;
+    for i = 0 to 8 {
+      buf[:u64 i] = fill;
+    }
+
     /* R || PK.seed || PK.root: 3n = 48 < 64 bytes, no block completes. */
     for i = 0 to 3 * SLH_N / 8 {
       t = head[:u64 i];
@@ -751,6 +780,12 @@ fn _h_msg(
     }
   } else {
     h512 = __sha512_init(h512);
+
+    /* The block buffer workaround of _prf_msg. */
+    fill = 0;
+    for i = 0 to 16 {
+      buf512[:u64 i] = fill;
+    }
 
     /* R || PK.seed || PK.root: 3n <= 96 < 128 bytes, no block completes. */
     for i = 0 to 3 * SLH_N / 8 {
