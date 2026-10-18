@@ -418,6 +418,16 @@ fn _slh_frame(
       pos = #protect(pos, ms);
 
       /*
+       * Safety-checker workaround: len is 28, 32, 48 or 64 on every
+       * branch of _prehash, so the clamp never changes it. It puts the
+       * bound len <= SLH_PH_MAX_BYTES here, where the copy below needs
+       * it, rather than in the contract of _prehash.
+       */
+
+      cap = SLH_PH_MAX_BYTES;
+      len = len >= cap ? cap : len;
+
+      /*
        * PH(M) goes to prefix[pos + i] for i < len, with pos fixed: each
        * store address is the base plus the loop counter, which the loop
        * test bounds (pos <= 2 + 255 + 11 and len <= 64). It is the copy

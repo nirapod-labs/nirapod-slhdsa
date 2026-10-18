@@ -40,10 +40,11 @@
  *                               cleared, not only the blocks (the SHA-2
  *                               T_l / T_k message buffer, __t_layout)
  *
- * The clamp of prefix_len in _slh_frame (external.jinc) has no pair, so
- * make checker-repro does not re-check it. It restates, where the callers
- * that read prefix[0 : prefix_len] can see it, a bound that holds by
- * construction in the framing arithmetic.
+ * Two clamps in _slh_frame (external.jinc) have no pair, so make
+ * checker-repro does not re-check them: of the pre-hash length len, a
+ * bound that holds on every branch of _prehash, and of prefix_len, a bound
+ * that holds by construction in the framing arithmetic. Each restates its
+ * bound where the code that relies on it can see it.
  *
  * The constants are those of SLH-DSA-SHA2-128f (n = 16, a = 6, len = 35,
  * k = 33); the shapes do not depend on them.
