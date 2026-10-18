@@ -122,7 +122,10 @@ assembly for its target (`-arch armv8a` or `-arch x86-64`, Mach-O or ELF). The
 build emits the assembly, assembles it with the platform's assembler and links it
 with the wrapper; this tree does not ship generated assembly, so building needs the
 compiler. `make gen` writes the assembly of all three targets with a manifest,
-and `make gen-check` regenerates it and fails on any byte difference.
+and `make gen-check` regenerates it and fails on any byte difference. Each
+generated file opens with a comment block that names its licence, unit and
+target, the CPU features the unit needs and how to regenerate it; the block
+depends on nothing but the unit and the target.
 
 The compiler zeroes each export's stack frame before it returns
 (`-stack-zero loop`). On x86-64 its register allocation uses rbp as a general
