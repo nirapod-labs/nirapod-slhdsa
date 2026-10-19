@@ -69,13 +69,13 @@ Co-authored-by: orvenweb3 <orvenweb3@gmail.com>
  compiler/tests/success/armv8a/simd_moves.jazz | 117 +++++++++
  .../advanced/armv8a_register_model.md         |  46 ++++
  eclib/JModel_armv8a.ec                        |   9 +
- proofs/compiler/armv8a_decl.v                 | 125 +++++++++-
+ proofs/compiler/armv8a_decl.v                 | 127 +++++++++-
  proofs/compiler/armv8a_instr_decl.v           | 233 +++++++++++++++++-
  proofs/compiler/armv8a_lowering.v             |  27 +-
  proofs/compiler/armv8a_lowering_proof.v       |  64 ++++-
  proofs/compiler/armv8a_params.v               |  51 ++--
  proofs/compiler/armv8a_params_proof.v         |  44 +++-
- 25 files changed, 1047 insertions(+), 59 deletions(-)
+ 25 files changed, 1048 insertions(+), 60 deletions(-)
  create mode 100644 compiler/tests/fail/asmgen/armv8a/vldr_index_scale16.jazz
  create mode 100644 compiler/tests/fail/asmgen/armv8a/vldr_offset_neg257.jazz
  create mode 100644 compiler/tests/fail/asmgen/armv8a/vldr_offset_range.jazz
@@ -869,7 +869,7 @@ index 37656be9..c7290d52 100644
 +
 +op VSTR (x: W128.t) : W128.t = x.
 diff --git a/proofs/compiler/armv8a_decl.v b/proofs/compiler/armv8a_decl.v
-index 46705998..3afe2bca 100644
+index 28db61b5..07c50571 100644
 --- a/proofs/compiler/armv8a_decl.v
 +++ b/proofs/compiler/armv8a_decl.v
 @@ -1,8 +1,11 @@
@@ -1028,7 +1028,7 @@ index 46705998..3afe2bca 100644
    ; toS_f     := rflag_toS
    ; reg_size_neq_xreg_size := refl_equal
    ; ad_rsp := RSP
-@@ -369,18 +459,33 @@ Instance armv8a_decl : arch_decl register register_ext xregister rflag condt :=
+@@ -369,13 +459,28 @@ Instance armv8a_decl : arch_decl register register_ext xregister rflag condt :=
     x18 (reserved on Windows, on Apple platforms and under
     shadow-call-stack Linux), and it is excluded from the register file
     altogether (see the [register] declaration above), so this convention
@@ -1050,12 +1050,18 @@ index 46705998..3afe2bca 100644
 +   ([syscall_preserved], arch_decl.v). *)
  
  Definition armv8a_call_conv : calling_convention :=
-   {| callee_saved :=
-       map ARReg [:: R19; R20; R21; R22; R23; R24; R25; R26; R27; R28
-                   ; R29; RSP ]
-+      ++ map AXReg [:: V8; V9; V10; V11; V12; V13; V14; V15 ]
+   let saved_regs :=
+     map ARReg [:: R19; R20; R21; R22; R23; R24; R25; R26; R27; R28
+                 ; R29; RSP ] in
+-  {| callee_saved := saved_regs
++  {| callee_saved :=
++      saved_regs ++ map AXReg [:: V8; V9; V10; V11; V12; V13; V14; V15 ]
     ; callee_saved_not_bool := erefl true
     ; callee_saved_has_rsp  := erefl true
+      (* No vector register: AAPCS64 only preserves the low 64 bits of
+@@ -383,9 +488,9 @@ Definition armv8a_call_conv : calling_convention :=
+    ; syscall_preserved := saved_regs
+    ; syscall_preserved_subset := erefl true
     ; call_reg_args  := [:: R0; R1; R2; R3; R4; R5; R6; R7 ]
 -   ; call_xreg_args := [::]
 +   ; call_xreg_args := [:: V0; V1; V2; V3; V4; V5; V6; V7 ]
@@ -1065,7 +1071,7 @@ index 46705998..3afe2bca 100644
     ; call_reg_ret_uniq := erefl true
     |}.
  
-@@ -394,6 +499,6 @@ Definition armv8a_internal_call_conv : internal_calling_convention :=
+@@ -399,6 +504,6 @@ Definition armv8a_internal_call_conv : internal_calling_convention :=
            R19; R20; R21; R22; R23; R24;
            R25; R26; R27; R28 ]
     ; icall_regx  := [::]

@@ -505,7 +505,7 @@ index 631883ba..a4d5b887 100644
 +op VUMOV_2u64 (n: W128.t) (i: W8.t) : W64.t =
 +  n \bits64 (to_uint i).
 diff --git a/proofs/compiler/armv8a_decl.v b/proofs/compiler/armv8a_decl.v
-index 57a0a087..e21971bd 100644
+index b6d2db94..67624fec 100644
 --- a/proofs/compiler/armv8a_decl.v
 +++ b/proofs/compiler/armv8a_decl.v
 @@ -343,7 +343,12 @@ Notation xregister := vregister.

@@ -15,22 +15,35 @@ fill them in for AArch64 and add the instructions.
 
 ## Series
 
-The seven patches are the commits of jasmin-lang/jasmin pull request #1643,
-at its head `06eae3de97487e0ac8bd4e0847dddaa7c9ac5d44`, which is based on
-upstream `main` at `b1a56f315`. The pull request is open, not merged (head
-checked on 2026-10-19). They need two upstream changes that are
-merged but not in the pin: the shared BIC recogniser of #1633 and the
-save-slot test of #1639, carried as `patches/0021` and `patches/0029`.
+The eight patches come from two jasmin-lang/jasmin pull requests, both
+based on upstream `main` at `b1a56f315`:
+
+- 0001-0002 are the two commits of #1640, at its head
+  `ec30c0af391ee9884a2e7380b6c7f306ad8dca0d`: the system-call fix that the
+  vector registers need, and its changelog entry. Upstream merged #1640 on
+  2026-10-19 as `b413b9b27`, a squash whose tree equals that head. It is
+  not in the pin, so it stays carried until the pin moves past
+  `b413b9b27`.
+- 0003-0008 are the commits of #1643, open, at its head
+  `06eae3de97487e0ac8bd4e0847dddaa7c9ac5d44`, after its first. That first
+  commit is an earlier form of the same fix, which upstream asked to be
+  resubmitted as a field of the calling convention; that is #1640, so 0001
+  takes its place.
+
+They need two upstream changes that are merged but not in the pin: the
+shared BIC recogniser of #1633 and the save-slot test of #1639, carried as
+`patches/0021` and `patches/0029`.
 
 | Patch | Content | Proof status |
 |---|---|---|
 | 0001 | system calls no longer assumed to preserve the vector registers, on every architecture | model of system calls and register allocation's kill set changed; compiler theorem proved again |
-| 0002 | SIMD&FP registers V0-V31 as 128-bit vector registers; calling convention; MOV (vector), LDR and STR of a Q register; lowering of u128 moves, loads and stores; saving of callee-saved vector registers; `reg u256` rejected on ARMv8-A | lowering, linearization and assembly generation proved; instruction semantics trusted |
-| 0003 | AND, BIC, ORR, EOR, NOT, ADD, SUB, SHL, USHR, SSHR, SRI, SLI, MOVI; lowering of the u128 bitwise operators, element-wise addition and subtraction, shifts by a constant and the constant zero | lowering proved; instruction semantics trusted |
-| 0004 | EXT, REV32, REV64, TRN1, TRN2, ZIP1, ZIP2, UZP1, UZP2, DUP (general and element), INS (general and element), UMOV | instruction semantics trusted; element operands printed by the trusted printer |
-| 0005 | SHA256H, SHA256H2, SHA256SU0, SHA256SU1, SHA512H, SHA512H2, SHA512SU0, SHA512SU1; lemmas relating them to FIPS 180-4; a known-answer test | instruction semantics trusted; the FIPS 180-4 lemmas are proved about those semantics |
-| 0006 | EOR3, BCAX, RAX1, XAR; a lemma relating XAR to the ρ rotation of FIPS 202 | instruction semantics trusted; the lemma is proved about the semantics |
-| 0007 | changelog entries | none |
+| 0002 | changelog entry for 0001 | none |
+| 0003 | SIMD&FP registers V0-V31 as 128-bit vector registers; calling convention; MOV (vector), LDR and STR of a Q register; lowering of u128 moves, loads and stores; saving of callee-saved vector registers; `reg u256` rejected on ARMv8-A | lowering, linearization and assembly generation proved; instruction semantics trusted |
+| 0004 | AND, BIC, ORR, EOR, NOT, ADD, SUB, SHL, USHR, SSHR, SRI, SLI, MOVI; lowering of the u128 bitwise operators, element-wise addition and subtraction, shifts by a constant and the constant zero | lowering proved; instruction semantics trusted |
+| 0005 | EXT, REV32, REV64, TRN1, TRN2, ZIP1, ZIP2, UZP1, UZP2, DUP (general and element), INS (general and element), UMOV | instruction semantics trusted; element operands printed by the trusted printer |
+| 0006 | SHA256H, SHA256H2, SHA256SU0, SHA256SU1, SHA512H, SHA512H2, SHA512SU0, SHA512SU1; lemmas relating them to FIPS 180-4; a known-answer test | instruction semantics trusted; the FIPS 180-4 lemmas are proved about those semantics |
+| 0007 | EOR3, BCAX, RAX1, XAR; a lemma relating XAR to the ρ rotation of FIPS 202 | instruction semantics trusted; the lemma is proved about the semantics |
+| 0008 | changelog entries | none |
 
 Intrinsic names: the bitwise instructions, moves and Q-register loads and
 stores are `V` followed by the mnemonic, with no suffix (`#VEOR`, `#VLDR`);
@@ -54,35 +67,48 @@ remains a compile error.
 
 ### Adaptations to the pin
 
-The pull request is based on a later upstream `main` than the pin. Against
-its commits, the changed lines of the patches differ in three places, and
-nowhere else (`git range-diff`). Each adaptation sits in the commit that
-needs it, so that every commit of the series builds and passes its tests on
-the pin; a separate fix-up patch would leave commits that do not:
+The pull requests are based on a later upstream `main` than the pin, and
+#1643 on the earlier form of the fix. Against their commits, the changed
+lines of the patches differ in four places, and nowhere else
+(`git range-diff`). Author, date and message are those of the pull
+requests, and 0002 and 0008 are identical to their commits (`git patch-id
+--stable`).
+Each adaptation sits in the commit that needs it, so that every commit of
+the series builds and passes its tests on the pin; a separate fix-up patch
+would leave commits that do not:
 
 - `compiler/tests/negative.expected` records a `Compile:` count for the
   negative tests that ran before each test it lists. The patches of
   `patches/` add negative tests before this series, so the count each patch
-  changes is ten higher than in the pull request (247 to 248 in 0001, then
-  257, 263, 268, and 269 in 0006). The count is generated by the test
+  changes is ten higher than in the pull requests (247 to 248 in 0001, then
+  257, 263, 268, and 269 in 0007). The count is generated by the test
   runner; the negative test suite checks it.
-- 0002 adds VLDR to `armv8a_is_load` in a list that, on this pin, also
+- 0003 adds VLDR to `armv8a_is_load` in a list that, on this pin, also
   holds LDRW (`patches/0023`).
-- 0002 gives the vector register type to the ARMv8-A safety checker
+- 0003 gives the vector register type to the ARMv8-A safety checker
   (`compiler/safetylib/armv8a_safety.ml`, `patches/0018`), which upstream
   does not have; without it the compiler does not build.
+- 0003 adds V8-V15 to the callee-saved registers of `armv8a_call_conv`. In
+  #1643 they are appended to the list of general-purpose registers; after
+  0001 that list is named `saved_regs`, so they are appended to
+  `saved_regs`, and `syscall_preserved` stays `saved_regs`. Both lists are
+  the ones the earlier form of the fix gave, so the compiler behaves the
+  same.
 
 ### Syscalls and the vector registers
 
 Before 0001, a system call such as `#randombytes` was assumed to preserve
 every callee-saved register in full. AAPCS64 requires only the low 64 bits
 of V8-V15 to be preserved, and the Microsoft x64 ABI makes the upper half
-of YMM6-YMM15 volatile. 0001 assumes that a system call preserves only the
-callee-saved registers that are not vector registers (`syscall_preserved`
-in `arch_decl.v`), in the semantics and in register allocation. On ARMv8-A,
-an export function that issues a system call therefore saves and restores
-q8-q15 (16 instructions and 128 bytes of frame), and a u128 value cannot
-stay in a register across the call. `callee_saved` is unchanged.
+of YMM6-YMM15 volatile. 0001 gives each calling convention the list of
+registers that a system call is assumed to preserve (`syscall_preserved`,
+with a proof that it is a subset of `callee_saved`), and the semantics and
+register allocation use it. Each convention lists its general-purpose
+callee-saved registers; Windows x64 leaves out XMM6-XMM15, and with 0003
+ARMv8-A leaves out V8-V15. On ARMv8-A, an export function that issues a
+system call therefore saves and restores q8-q15 (16 instructions and 128
+bytes of frame), and a u128 value cannot stay in a register across the
+call. `callee_saved` is unchanged.
 
 ### Register allocation
 
@@ -203,22 +229,22 @@ In the Jasmin tree:
 
 - 0001: `compiler/tests/success/windows/x86-64/syscall.jazz` and
   `fail/windows/x86-64/syscall_live_u256.jazz`;
-- 0002: `success/armv8a/simd_moves.jazz`,
+- 0003: `success/armv8a/simd_moves.jazz`,
   `success/armv8a/large_stack/save_slot_offset_q.jazz`, seven programs
   under `fail/asmgen/armv8a/` with a Q-register address that cannot be
   encoded, and `fail/register_allocation/armv8a/syscall_live_u128.jazz` and
   `u256_reg.jazz`;
-- 0003: `success/armv8a/simd_ops.jazz`, `bic_lowering.jazz` extended to
+- 0004: `success/armv8a/simd_ops.jazz`, `bic_lowering.jazz` extended to
   vectors, and six programs under `fail/asmgen/armv8a/` with a shift amount
   out of range or a nonzero MOVI immediate;
-- 0004: `success/armv8a/simd_permute.jazz` and five programs under
+- 0005: `success/armv8a/simd_permute.jazz` and five programs under
   `fail/asmgen/armv8a/` with an element index or EXT position out of range;
-- 0005: `success/armv8a/simd_sha2_kat.jazz` and `simd_exec.jazz`, evaluated
+- 0006: `success/armv8a/simd_sha2_kat.jazz` and `simd_exec.jazz`, evaluated
   with the semantics of the compiler by `compiler/tests/exec/exec_armv8a.ml`:
   the SHA-256 and SHA-512 digests of "abc", computed with the SHA-2
   instructions, must equal the published ones, and the permutations and
   element moves must give the values of `exec_armv8a.expected`;
-- 0006: `success/armv8a/simd_sha3.jazz`, `fail/asmgen/armv8a/xar_rotation_range.jazz`,
+- 0007: `success/armv8a/simd_sha3.jazz`, `fail/asmgen/armv8a/xar_rotation_range.jazz`,
   and the SHA-3 instructions of `simd_exec.jazz` in the same
   evaluation.
 
@@ -267,5 +293,7 @@ of this repository:
   normal, CT and CTG modes and EasyCrypt checks the result.
 
 These runs used upstream `main` at `b1a56f315` with the seven commits of
-the pull request, not this pin; on this pin the patches differ only by the
-three adaptations above.
+#1643, not this pin. On this pin the patches differ from them by the
+adaptations above and by 0001, the later form of the system-call fix, which
+gives every calling convention the same registers to preserve across a
+system call as the earlier form did.

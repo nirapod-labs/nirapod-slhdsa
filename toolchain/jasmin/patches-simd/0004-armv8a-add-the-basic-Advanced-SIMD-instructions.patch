@@ -446,7 +446,7 @@ index a10d6fc4..4c59902f 100644
  compiler/armv8a_instr_decl.v
  compiler/armv8a_lowering.v
 diff --git a/proofs/compiler/armv8a_decl.v b/proofs/compiler/armv8a_decl.v
-index 3afe2bca..57a0a087 100644
+index 07c50571..b6d2db94 100644
 --- a/proofs/compiler/armv8a_decl.v
 +++ b/proofs/compiler/armv8a_decl.v
 @@ -320,7 +320,10 @@ Notation xregister := vregister.

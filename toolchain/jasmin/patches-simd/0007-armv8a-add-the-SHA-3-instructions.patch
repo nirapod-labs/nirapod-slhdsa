@@ -210,7 +210,7 @@ index d3487ca4..9aad20a6 100644
 +op XAR (n m: W128.t) (imm: W8.t) : W128.t =
 +  W2u64.map (fun (e: W64.t) => e `|>>>|` to_uint imm) (n +^ m).
 diff --git a/proofs/compiler/armv8a_decl.v b/proofs/compiler/armv8a_decl.v
-index e21971bd..33cbd643 100644
+index 67624fec..12d049c3 100644
 --- a/proofs/compiler/armv8a_decl.v
 +++ b/proofs/compiler/armv8a_decl.v
 @@ -323,7 +323,8 @@ Notation xregister := vregister.

@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Mon, 19 Oct 2026 18:01:42 +0600
+Subject: [PATCH] Changelog entry for the system call vector register fix
+
+---
+ changes/02-bugfix/1640-syscall-vector-registers.md | 5 +++++
+ 1 file changed, 5 insertions(+)
+ create mode 100644 changes/02-bugfix/1640-syscall-vector-registers.md
+
+diff --git a/changes/02-bugfix/1640-syscall-vector-registers.md b/changes/02-bugfix/1640-syscall-vector-registers.md
+new file mode 100644
+index 00000000..ebda7134
+--- /dev/null
++++ b/changes/02-bugfix/1640-syscall-vector-registers.md
+@@ -0,0 +1,5 @@
++- System calls (e.g., `#randombytes`) are no longer assumed to preserve the
++  vector registers. Under `-call-conv windows`, an export function that issues
++  a system call now saves and restores `ymm6` to `ymm15`, and a vector value
++  can no longer stay in a register across a system call
++  ([PR #1640](https://github.com/jasmin-lang/jasmin/pull/1640)).
