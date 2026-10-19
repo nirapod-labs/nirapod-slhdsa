@@ -32,11 +32,13 @@
  * above 12 it returns status all ones and both lengths 0, and the
  * exports neither sign nor accept.
  *
- * Pre-hash premise. _prehash computes PH(M) with the hash layer's SHA-2
- * and Keccak code: the premise hph states that its first len bytes are
- * ph_apply (ph_of sel) M, in the shape of the message hash premises of
- * Internal.ec. Nothing is assumed of len: the frame clamps it to 64, the
- * buffer size, and a digest is never longer.
+ * Pre-hash premises. _prehash computes PH(M) with the hash layer's SHA-2
+ * and Keccak code (PreHash.ec): the premises state that it terminates
+ * and that, for a selector 1 .. 12 and M in ph_dom, its first len bytes
+ * are ph_apply (ph_of sel) M. ph_dom is the domain the SHA-2 one-shots
+ * are proved for: for the selectors 1 .. 6, M is under 2^61 bytes and
+ * its buffer ends below 2^64. Nothing is assumed of len: the frame
+ * clamps it to 64, the buffer size, and a digest is never longer.
  *
  * Exports. sign and verify call _slh_frame, then _slh_sign or
  * _slh_verify on (prefix, prefix_len, msg, msg_len'), whose message
@@ -45,7 +47,14 @@
  * lines 1 to 3 is the C layer's, as is the choice of opt_rand (fresh
  * entropy for hedged signing, PK.seed for deterministic signing,
  * Internal.sign_deterministic). sign_internal and verify_internal are the
- * FIPS 205 section 9 functions on M with no prefix.
+ * FIPS 205 section 9 functions on M with no prefix. Each export theorem
+ * takes as premise the theorem of the internal function it calls, in the
+ * form Internal.ec proves it; Theorems.ec of each hash family discharges
+ * them.
+ *
+ * Domains. sign and verify take M in msg_dom with the longest prefix
+ * (the SHA-2 message-hash domain, Internal.ec) and in ph_dom; the section
+ * 9 exports take M in msg_dom with no prefix.
  *
  * Model. As Internal.ec: this file is checked once against the model of
  * each parameter set, and names the set only through SetModel.
@@ -86,6 +95,13 @@ op ph_of (s : int) : prehash =
 
 (* M = mem[msg : msg + msg_len]. *)
 op m_of (mem : global_mem_t) (m ml : W64.t) : bytes = JWordList.memread mem (to_uint m) (to_uint ml).
+
+(* The caller's domain of the pre-hash input. For the SHA-2 selectors
+   (1 .. 6) the one-shot kernels hash M under the FIPS 180-4 length bound
+   they are proved for, M under 2^61 bytes, from a buffer that ends below
+   2^64. For the other selectors it is no condition. *)
+op ph_dom (s : int) (m ml : W64.t) : bool =
+  1 <= s <= 6 => to_uint m + to_uint ml < W64.modulus /\ to_uint ml < 2 ^ 61.
 
 (* The prefix of M' that _slh_frame writes. *)
 op frame (d : BArray257.t) (M : bytes) : bytes =
@@ -267,18 +283,17 @@ proof. by rewrite /hash_slh_verify dctx_size ifF //; smt(dlen_lt). qed.
 
 lemma slh_frame_h :
   (forall (s m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._prehash :
+     hoare [M._prehash :
        sel = s /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\
-       1 <= to_uint s <= 12 /\ to_uint m + to_uint ml <= W64.modulus ==>
-       take (to_uint res.`2) (BArray64.to_list res.`1) = ph_apply (ph_of (to_uint s)) (m_of mem0 m ml)]
-     = 1%r) =>
-  forall (d0 : BArray257.t) (m ml : W64.t) (mem0 : global_mem_t),
+       1 <= to_uint s <= 12 /\ to_uint m + to_uint ml <= W64.modulus /\ ph_dom (to_uint s) m ml ==>
+       take (to_uint res.`2) (BArray64.to_list res.`1) = ph_apply (ph_of (to_uint s)) (m_of mem0 m ml)]) =>
+  forall (d0 : BArray257.t) (m ml : W64.t) (mem0 : global_mem_t), ph_dom (dsel d0) m ml =>
   hoare [M._slh_frame :
     domain = d0 /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\
     to_uint m + to_uint ml <= W64.modulus ==>
     frame_out d0 (m_of mem0 m ml) ml res /\ (dsel d0 = 0 => Glob.mem = mem0)].
 proof.
-move=> hph d0 m ml mem0.
+move=> hph d0 m ml mem0 hpd.
 have hl := dlen_lt d0; have hr := dsel_rng d0.
 have hs0 : to_uint (zeroextu64 (BArray257.get8 d0 0)) = dsel d0 by rewrite to_uint_zeroextu64.
 have hs1 : to_uint (zeroextu64 (BArray257.get8 d0 1)) = dlen d0 by rewrite to_uint_zeroextu64.
@@ -372,7 +387,8 @@ seq 3 : (to_uint pos = 13 + dlen d0 /\
             1 <= to_uint (zeroextu64 (BArray257.get8 d0 0)) <= 12 /\ to_uint m + to_uint ml <= W64.modulus ==>
             take (to_uint res.`2) (BArray64.to_list res.`1) =
               ph_apply (ph_of (to_uint (zeroextu64 (BArray257.get8 d0 0)))) (m_of mem0 m ml)).
-  + by conseq (hph (zeroextu64 (BArray257.get8 d0 0)) m ml mem0).
+  + conseq (hph (zeroextu64 (BArray257.get8 d0 0)) m ml mem0) => &hr [#] -> -> -> -> h1 h2 hb.
+    by rewrite h1 h2 hb hs0 hpd.
   auto => /> &hr hm hp hj; rewrite hs0; split; first smt().
   move=> _ _ r hr'.
   have hp1 : to_uint (pos{hr} + W64.one) = 13 + dlen d0
@@ -424,30 +440,13 @@ qed.
 lemma clamp64_le (x : W64.t) : to_uint ((W64.of_int 64 \ule x) ? W64.of_int 64 : x) <= 64.
 proof. by rewrite uleE W64.of_uintK /=; case: (64 <= to_uint x) => /#. qed.
 
-lemma prehash_ll :
-  (forall (s m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._prehash :
-       sel = s /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\
-       1 <= to_uint s <= 12 /\ to_uint m + to_uint ml <= W64.modulus ==>
-       take (to_uint res.`2) (BArray64.to_list res.`1) = ph_apply (ph_of (to_uint s)) (m_of mem0 m ml)]
-     = 1%r) =>
-  phoare [M._prehash : 1 <= to_uint sel <= 12 /\ to_uint msg + to_uint msg_len <= W64.modulus ==> true]
-  = 1%r.
-proof.
-move=> hph; proc*; exlim sel, msg, msg_len, Glob.mem => s m ml mem0.
-by call (hph s m ml mem0); auto.
-qed.
-
 lemma slh_frame_ll :
-  (forall (s m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._prehash :
-       sel = s /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\
-       1 <= to_uint s <= 12 /\ to_uint m + to_uint ml <= W64.modulus ==>
-       take (to_uint res.`2) (BArray64.to_list res.`1) = ph_apply (ph_of (to_uint s)) (m_of mem0 m ml)]
-     = 1%r) =>
+  islossless M._prehash =>
   phoare [M._slh_frame : to_uint msg + to_uint msg_len <= W64.modulus ==> true] = 1%r.
 proof.
-move=> hph; have hpl := prehash_ll hph.
+move=> hphl.
+have hpl : phoare [M._prehash : 1 <= to_uint sel <= 12 /\ to_uint msg + to_uint msg_len <= W64.modulus ==>
+                   true] = 1%r by conseq hphl.
 proc.
 seq 13 : (to_uint msg + to_uint msg_len <= W64.modulus /\
           sel = zeroextu64 (BArray257.get8 domain 0) /\ ctx_len = zeroextu64 (BArray257.get8 domain 1) /\
@@ -502,20 +501,20 @@ seq 13 : (to_uint msg + to_uint msg_len <= W64.modulus /\
 qed.
 
 lemma slh_frame_correct :
+  islossless M._prehash =>
   (forall (s m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._prehash :
+     hoare [M._prehash :
        sel = s /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\
-       1 <= to_uint s <= 12 /\ to_uint m + to_uint ml <= W64.modulus ==>
-       take (to_uint res.`2) (BArray64.to_list res.`1) = ph_apply (ph_of (to_uint s)) (m_of mem0 m ml)]
-     = 1%r) =>
-  forall (d0 : BArray257.t) (m ml : W64.t) (mem0 : global_mem_t),
+       1 <= to_uint s <= 12 /\ to_uint m + to_uint ml <= W64.modulus /\ ph_dom (to_uint s) m ml ==>
+       take (to_uint res.`2) (BArray64.to_list res.`1) = ph_apply (ph_of (to_uint s)) (m_of mem0 m ml)]) =>
+  forall (d0 : BArray257.t) (m ml : W64.t) (mem0 : global_mem_t), ph_dom (dsel d0) m ml =>
   phoare [M._slh_frame :
     domain = d0 /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\
     to_uint m + to_uint ml <= W64.modulus ==>
     frame_out d0 (m_of mem0 m ml) ml res /\ (dsel d0 = 0 => Glob.mem = mem0)] = 1%r.
 proof.
-move=> hph d0 m ml mem0.
-by conseq (slh_frame_ll hph) (slh_frame_h hph d0 m ml mem0) => /#.
+move=> hphl hph d0 m ml mem0 hpd.
+by conseq (slh_frame_ll hphl) (slh_frame_h hph d0 m ml mem0 hpd) => /#.
 qed.
 
 (* ------------------------------------------------------------------ *)
@@ -573,59 +572,32 @@ qed.
 
 (* Algorithms 22 and 23 (hedged with opt_rand fresh, deterministic with
    opt_rand = PK.seed, Internal.sign_deterministic). *)
-lemma sign_correct (ok : bytes -> Ctx.t -> bool) :
+lemma sign_correct :
+  islossless M._prehash =>
   (forall (s m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._prehash :
+     hoare [M._prehash :
        sel = s /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\
-       1 <= to_uint s <= 12 /\ to_uint m + to_uint ml <= W64.modulus ==>
-       take (to_uint res.`2) (BArray64.to_list res.`1) = ph_apply (ph_of (to_uint s)) (m_of mem0 m ml)]
-     = 1%r) =>
-  (forall (p0 : Node.t),
-     phoare [M._thash_ctx_init : pk_seed = p0 ==> ok (Node.to_list p0) res.`1] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (k0 : Node.t) (a0 : BArray128.t),
-     phoare [M._thash_prf_x4 : sk_seed = k0 /\ ctx = c0 /\ adrs = a0 ==>
-       forall k, 0 <= k < 4 => lane P.`n k (Node4.to_list res.`1) =
-         PRF P pk (Node.to_list k0) (lane 32 k (BArray128.to_list a0))] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (x0 : Node4.t) (a0 : BArray128.t),
-     phoare [M._thash_f_x4 : x = x0 /\ ctx = c0 /\ adrs = a0 ==>
-       forall k, 0 <= k < 4 => lane P.`n k (Node4.to_list res.`1) =
-         F P pk (lane 32 k (BArray128.to_list a0)) (lane P.`n k (Node4.to_list x0))] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (m0 : TLenIn4.t) (a0 : BArray128.t),
-     phoare [M._thash_t_len_x4 : in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
-       forall k, 0 <= k < 4 => lane P.`n k (Node4.to_list res.`1) =
-         T_l P pk (lane 32 k (BArray128.to_list a0))
-             (lane (len P * P.`n) k (TLenIn4.to_list m0))] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (x0 : Node2.t) (a0 : BArray32.t),
-     phoare [M._thash_h : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = H P pk (BArray32.to_list a0) (Node2.to_list x0)] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (m0 : TKIn.t) (a0 : BArray32.t),
-     phoare [M._thash_t_k : in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = T_l P pk (BArray32.to_list a0) (TKIn.to_list m0)] = 1%r) =>
-  (forall (k0 o0 : Node.t) (x0 : Prefix.t) (pl m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._prf_msg :
-       sk_prf = k0 /\ opt_rand = o0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\
-       msg_len = ml /\ Glob.mem = mem0 /\ msg_ok pl m ml ==>
-       Node.to_list res.`1 = PRF_msg P (Node.to_list k0) (Node.to_list o0) (slh_msg mem0 x0 pl m ml)]
-     = 1%r) =>
-  (forall (r0 : Node.t) (p0 : PK.t) (x0 : Prefix.t) (pl m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._h_msg :
-       r = r0 /\ pk = p0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\
-       msg_len = ml /\ Glob.mem = mem0 /\ msg_ok pl m ml ==>
-       Digest.to_list res.`1 =
-         H_msg P (Node.to_list r0) (slice (PK.to_list p0) 0 P.`n)
-           (slice (PK.to_list p0) P.`n (2 * P.`n)) (slh_msg mem0 x0 pl m ml)] = 1%r) =>
+       1 <= to_uint s <= 12 /\ to_uint m + to_uint ml <= W64.modulus /\ ph_dom (to_uint s) m ml ==>
+       take (to_uint res.`2) (BArray64.to_list res.`1) = ph_apply (ph_of (to_uint s)) (m_of mem0 m ml)]) =>
+  (forall (s0 : Sig.t) (x0 : Prefix.t) (pl m ml : W64.t) (k0 : SK.t) (o0 : Node.t) (mem0 : global_mem_t),
+     phoare [M._slh_sign :
+       sig = s0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len = ml /\ sk = k0 /\
+       opt_rand = o0 /\ Glob.mem = mem0 /\ msg_ok pl m ml ==>
+       Sig.to_list res.`1 =
+         slh_sign_internal P (slh_msg mem0 x0 pl m ml) (SK.to_list k0) (Some (Node.to_list o0))] = 1%r) =>
   forall (s0 : Sig.t) (m ml : W64.t) (d0 : BArray257.t) (k0 : SK.t) (o0 : Node.t)
          (mem0 : global_mem_t),
   phoare [M.sign :
     sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ sk = k0 /\ opt_rand = o0 /\
-    Glob.mem = mem0 /\ msg_dom (W64.of_int Prefix.size) m ml ==>
+    Glob.mem = mem0 /\ msg_dom (W64.of_int Prefix.size) m ml /\ ph_dom (dsel d0) m ml ==>
     if dsel d0 <= 12
     then res.`2 = W64.zero /\
          ext_sign d0 (m_of mem0 m ml) (SK.to_list k0) (Some (Node.to_list o0)) = Some (Sig.to_list res.`1)
     else res.`2 = W64.of_int (-1) /\ res.`1 = s0 /\
          ext_sign d0 (m_of mem0 m ml) (SK.to_list k0) (Some (Node.to_list o0)) = None] = 1%r.
 proof.
-move=> hph hctx hprf hf htl hh htk hpm hhm s0 m ml d0 k0 o0 mem0.
+move=> hphl hph hsign s0 m ml d0 k0 o0 mem0.
+case: (ph_dom (dsel d0) m ml) => hpd; last by conseq (_ : false ==> _) => // &hr [#] *; smt().
 proc.
 seq 8 : (sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ sk = k0 /\ opt_rand = o0 /\
          Glob.mem = mem0 /\ msg_dom (W64.of_int Prefix.size) m ml) 1%r 1%r 0%r _ => //.
@@ -633,13 +605,13 @@ seq 8 : (sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ sk = k0 /\ opt_ra
 + seq 1 : (sig = s0 /\ msg = m /\ sk = k0 /\ opt_rand = o0 /\ msg_dom (W64.of_int Prefix.size) m ml /\
            frame_out d0 (m_of mem0 m ml) ml (prefix, prefix_len, msg_len, status, ms) /\
            (dsel d0 = 0 => Glob.mem = mem0)) 1%r 1%r 0%r _ => //.
-  + call (slh_frame_correct hph d0 m ml mem0); auto => /> hm.
+  + call (slh_frame_correct hphl hph d0 m ml mem0 hpd); auto => /> hm.
     split; [exact (msg_dom_end _ _ _ hm) | move=> _ r; rewrite /frame_out].
     by case: (dsel d0 <= 12) => //= _ [#] -> -> ->; rewrite -(W64.of_int_mod (-1)).
   + exlim prefix, prefix_len, msg_len, Glob.mem => x pl ml' mem1.
     have [hs | hs] : dsel d0 <= 12 \/ !(dsel d0 <= 12) by rewrite orbN.
     + rcondt 6; first by auto => /> &hr; rewrite /frame_out hs => /#.
-      wp; call (slh_sign_correct ok hctx hprf hf htl hh htk hpm hhm s0 x pl m ml' k0 o0 mem1).
+      wp; call (hsign s0 x pl m ml' k0 o0 mem1).
       auto => /> &hr hm hfo hmem.
       have := frame_msg_ok (x, pl, ml', status{hr}, ms{hr}) d0 _ m ml hs hfo hm.
       rewrite /msg_ok /= => [#] hpl hml; split; first by [].
@@ -649,49 +621,35 @@ seq 8 : (sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ sk = k0 /\ opt_ra
     rcondf 6; first by auto => /> &hr; rewrite /frame_out hs /= => _ [#] -> _ _ _; apply ones_nz.
     auto => /> &hr hm; rewrite /frame_out hs /= => [#] -> _ _ _.
     by rewrite /ext_sign ifF 1:/# ifF 1:/#.
-  + hoare; call (slh_frame_h hph d0 m ml mem0); auto => /> hm.
+  + hoare; call (slh_frame_h hph d0 m ml mem0 hpd); auto => /> hm.
     split; [exact (msg_dom_end _ _ _ hm) | move=> _ r; rewrite /frame_out].
     by case: (dsel d0 <= 12) => //= _ [#] -> -> ->; rewrite -(W64.of_int_mod (-1)).
 + by hoare; auto.
 qed.
 
 (* Algorithms 24 and 25. *)
-lemma verify_correct (ok : bytes -> Ctx.t -> bool) :
+lemma verify_correct :
+  islossless M._prehash =>
   (forall (s m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._prehash :
+     hoare [M._prehash :
        sel = s /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\
-       1 <= to_uint s <= 12 /\ to_uint m + to_uint ml <= W64.modulus ==>
-       take (to_uint res.`2) (BArray64.to_list res.`1) = ph_apply (ph_of (to_uint s)) (m_of mem0 m ml)]
-     = 1%r) =>
-  (forall (p0 : Node.t),
-     phoare [M._thash_ctx_init : pk_seed = p0 ==> ok (Node.to_list p0) res.`1] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (x0 : Node.t) (a0 : BArray32.t),
-     phoare [M._thash_f : x = x0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = F P pk (BArray32.to_list a0) (Node.to_list x0)] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (m0 : TLenIn.t) (a0 : BArray32.t),
-     phoare [M._thash_t_len : in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = T_l P pk (BArray32.to_list a0) (TLenIn.to_list m0)] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (x0 : Node2.t) (a0 : BArray32.t),
-     phoare [M._thash_h : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = H P pk (BArray32.to_list a0) (Node2.to_list x0)] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (m0 : TKIn.t) (a0 : BArray32.t),
-     phoare [M._thash_t_k : in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = T_l P pk (BArray32.to_list a0) (TKIn.to_list m0)] = 1%r) =>
-  (forall (r0 : Node.t) (p0 : PK.t) (x0 : Prefix.t) (pl m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._h_msg :
-       r = r0 /\ pk = p0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\
-       msg_len = ml /\ Glob.mem = mem0 /\ msg_ok pl m ml ==>
-       Digest.to_list res.`1 =
-         H_msg P (Node.to_list r0) (slice (PK.to_list p0) 0 P.`n)
-           (slice (PK.to_list p0) P.`n (2 * P.`n)) (slh_msg mem0 x0 pl m ml)] = 1%r) =>
+       1 <= to_uint s <= 12 /\ to_uint m + to_uint ml <= W64.modulus /\ ph_dom (to_uint s) m ml ==>
+       take (to_uint res.`2) (BArray64.to_list res.`1) = ph_apply (ph_of (to_uint s)) (m_of mem0 m ml)]) =>
+  (forall (s0 : Sig.t) (x0 : Prefix.t) (pl m ml : W64.t) (p0 : PK.t) (mem0 : global_mem_t),
+     phoare [M._slh_verify :
+       sig = s0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len = ml /\ pk = p0 /\
+       Glob.mem = mem0 /\ msg_ok pl m ml ==>
+       res.`1 = if slh_verify_internal P (slh_msg mem0 x0 pl m ml) (Sig.to_list s0) (PK.to_list p0)
+                then W64.zero else W64.of_int (-1)] = 1%r) =>
   forall (s0 : Sig.t) (m ml : W64.t) (d0 : BArray257.t) (p0 : PK.t) (mem0 : global_mem_t),
   phoare [M.verify :
     sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ pk = p0 /\ Glob.mem = mem0 /\
-    msg_dom (W64.of_int Prefix.size) m ml ==>
+    msg_dom (W64.of_int Prefix.size) m ml /\ ph_dom (dsel d0) m ml ==>
     res = if ext_verify d0 (m_of mem0 m ml) (Sig.to_list s0) (PK.to_list p0)
           then W64.zero else W64.of_int (-1)] = 1%r.
 proof.
-move=> hph hctx hf htl hh htk hhm s0 m ml d0 p0 mem0.
+move=> hphl hph hverify s0 m ml d0 p0 mem0.
+case: (ph_dom (dsel d0) m ml) => hpd; last by conseq (_ : false ==> _) => // &hr [#] *; smt().
 proc.
 seq 7 : (sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ pk = p0 /\
          Glob.mem = mem0 /\ msg_dom (W64.of_int Prefix.size) m ml) 1%r 1%r 0%r _ => //.
@@ -699,13 +657,13 @@ seq 7 : (sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ pk = p0 /\
 + seq 1 : (sig = s0 /\ msg = m /\ pk = p0 /\ msg_dom (W64.of_int Prefix.size) m ml /\
            frame_out d0 (m_of mem0 m ml) ml (prefix, prefix_len, msg_len, status, ms) /\
            (dsel d0 = 0 => Glob.mem = mem0)) 1%r 1%r 0%r _ => //.
-  + call (slh_frame_correct hph d0 m ml mem0); auto => /> hm.
+  + call (slh_frame_correct hphl hph d0 m ml mem0 hpd); auto => /> hm.
     split; [exact (msg_dom_end _ _ _ hm) | move=> _ r; rewrite /frame_out].
     by case: (dsel d0 <= 12) => //= _ [#] -> -> ->; rewrite -(W64.of_int_mod (-1)).
   + exlim prefix, prefix_len, msg_len, Glob.mem => x pl ml' mem1.
     have [hs | hs] : dsel d0 <= 12 \/ !(dsel d0 <= 12) by rewrite orbN.
     + rcondt 6; first by auto => /> &hr; rewrite /frame_out hs => /#.
-      wp; call (slh_verify_correct ok hctx hf htl hh htk hhm s0 x pl m ml' p0 mem1).
+      wp; call (hverify s0 x pl m ml' p0 mem1).
       auto => /> &hr hm hfo hmem.
       have := frame_msg_ok (x, pl, ml', status{hr}, ms{hr}) d0 _ m ml hs hfo hm.
       rewrite /msg_ok /= => [#] hpl hml; split; first by [].
@@ -717,40 +675,28 @@ seq 7 : (sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ pk = p0 /\
     have hv : !ext_verify d0 (m_of mem0 m ml) (Sig.to_list s0) (PK.to_list p0)
       by rewrite /ext_verify ifF 1:/# ifF 1:/#.
     by rewrite hv.
-  + hoare; call (slh_frame_h hph d0 m ml mem0); auto => /> hm.
+  + hoare; call (slh_frame_h hph d0 m ml mem0 hpd); auto => /> hm.
     split; [exact (msg_dom_end _ _ _ hm) | move=> _ r; rewrite /frame_out].
     by case: (dsel d0 <= 12) => //= _ [#] -> -> ->; rewrite -(W64.of_int_mod (-1)).
 + by hoare; auto.
 qed.
 
 (* Algorithm 21 from line 4: the seeds are the caller's entropy draw. *)
-lemma keygen_correct (ok : bytes -> Ctx.t -> bool) :
-  (forall (p0 : Node.t),
-     phoare [M._thash_ctx_init : pk_seed = p0 ==> ok (Node.to_list p0) res.`1] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (k0 : Node.t) (a0 : BArray128.t),
-     phoare [M._thash_prf_x4 : sk_seed = k0 /\ ctx = c0 /\ adrs = a0 ==>
-       forall k, 0 <= k < 4 => lane P.`n k (Node4.to_list res.`1) =
-         PRF P pk (Node.to_list k0) (lane 32 k (BArray128.to_list a0))] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (x0 : Node4.t) (a0 : BArray128.t),
-     phoare [M._thash_f_x4 : x = x0 /\ ctx = c0 /\ adrs = a0 ==>
-       forall k, 0 <= k < 4 => lane P.`n k (Node4.to_list res.`1) =
-         F P pk (lane 32 k (BArray128.to_list a0)) (lane P.`n k (Node4.to_list x0))] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (m0 : TLenIn4.t) (a0 : BArray128.t),
-     phoare [M._thash_t_len_x4 : in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
-       forall k, 0 <= k < 4 => lane P.`n k (Node4.to_list res.`1) =
-         T_l P pk (lane 32 k (BArray128.to_list a0))
-             (lane (len P * P.`n) k (TLenIn4.to_list m0))] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (x0 : Node2.t) (a0 : BArray32.t),
-     phoare [M._thash_h : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = H P pk (BArray32.to_list a0) (Node2.to_list x0)] = 1%r) =>
+lemma keygen_correct :
+  (forall (e0 : Seeds.t),
+     phoare [M._slh_keygen : seeds = e0 ==>
+       (SK.to_list res.`2, PK.to_list res.`1) =
+         slh_keygen_internal P (slice (Seeds.to_list e0) 0 P.`n)
+           (slice (Seeds.to_list e0) P.`n (2 * P.`n)) (slice (Seeds.to_list e0) (2 * P.`n) (3 * P.`n))]
+     = 1%r) =>
   forall (e0 : Seeds.t),
   phoare [M.keygen : seeds = e0 ==>
     (SK.to_list res.`2, PK.to_list res.`1) =
       slh_keygen P (slice (Seeds.to_list e0) 0 P.`n)
         (slice (Seeds.to_list e0) P.`n (2 * P.`n)) (slice (Seeds.to_list e0) (2 * P.`n) (3 * P.`n))] = 1%r.
 proof.
-move=> hctx hprf hf htl hh e0; proc.
-by call (slh_keygen_correct ok hctx hprf hf htl hh e0); auto.
+move=> hkeygen e0; proc.
+by call (hkeygen e0); auto.
 qed.
 
 (* Section 9: slh_sign_internal and slh_verify_internal on M itself. *)
@@ -758,74 +704,31 @@ lemma msg_none (mem : global_mem_t) (x : Prefix.t) (m ml : W64.t) :
   slh_msg mem x W64.zero m ml = m_of mem m ml.
 proof. by rewrite /slh_msg /m_of /= take0. qed.
 
-lemma sign_internal_correct (ok : bytes -> Ctx.t -> bool) :
-  (forall (p0 : Node.t),
-     phoare [M._thash_ctx_init : pk_seed = p0 ==> ok (Node.to_list p0) res.`1] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (k0 : Node.t) (a0 : BArray128.t),
-     phoare [M._thash_prf_x4 : sk_seed = k0 /\ ctx = c0 /\ adrs = a0 ==>
-       forall k, 0 <= k < 4 => lane P.`n k (Node4.to_list res.`1) =
-         PRF P pk (Node.to_list k0) (lane 32 k (BArray128.to_list a0))] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (x0 : Node4.t) (a0 : BArray128.t),
-     phoare [M._thash_f_x4 : x = x0 /\ ctx = c0 /\ adrs = a0 ==>
-       forall k, 0 <= k < 4 => lane P.`n k (Node4.to_list res.`1) =
-         F P pk (lane 32 k (BArray128.to_list a0)) (lane P.`n k (Node4.to_list x0))] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (m0 : TLenIn4.t) (a0 : BArray128.t),
-     phoare [M._thash_t_len_x4 : in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
-       forall k, 0 <= k < 4 => lane P.`n k (Node4.to_list res.`1) =
-         T_l P pk (lane 32 k (BArray128.to_list a0))
-             (lane (len P * P.`n) k (TLenIn4.to_list m0))] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (x0 : Node2.t) (a0 : BArray32.t),
-     phoare [M._thash_h : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = H P pk (BArray32.to_list a0) (Node2.to_list x0)] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (m0 : TKIn.t) (a0 : BArray32.t),
-     phoare [M._thash_t_k : in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = T_l P pk (BArray32.to_list a0) (TKIn.to_list m0)] = 1%r) =>
-  (forall (k0 o0 : Node.t) (x0 : Prefix.t) (pl m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._prf_msg :
-       sk_prf = k0 /\ opt_rand = o0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\
-       msg_len = ml /\ Glob.mem = mem0 /\ msg_ok pl m ml ==>
-       Node.to_list res.`1 = PRF_msg P (Node.to_list k0) (Node.to_list o0) (slh_msg mem0 x0 pl m ml)]
-     = 1%r) =>
-  (forall (r0 : Node.t) (p0 : PK.t) (x0 : Prefix.t) (pl m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._h_msg :
-       r = r0 /\ pk = p0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\
-       msg_len = ml /\ Glob.mem = mem0 /\ msg_ok pl m ml ==>
-       Digest.to_list res.`1 =
-         H_msg P (Node.to_list r0) (slice (PK.to_list p0) 0 P.`n)
-           (slice (PK.to_list p0) P.`n (2 * P.`n)) (slh_msg mem0 x0 pl m ml)] = 1%r) =>
+lemma sign_internal_correct :
+  (forall (s0 : Sig.t) (x0 : Prefix.t) (pl m ml : W64.t) (k0 : SK.t) (o0 : Node.t) (mem0 : global_mem_t),
+     phoare [M._slh_sign :
+       sig = s0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len = ml /\ sk = k0 /\
+       opt_rand = o0 /\ Glob.mem = mem0 /\ msg_ok pl m ml ==>
+       Sig.to_list res.`1 =
+         slh_sign_internal P (slh_msg mem0 x0 pl m ml) (SK.to_list k0) (Some (Node.to_list o0))] = 1%r) =>
   forall (s0 : Sig.t) (m ml : W64.t) (k0 : SK.t) (o0 : Node.t) (mem0 : global_mem_t),
   phoare [M.sign_internal :
     sig = s0 /\ msg = m /\ msg_len = ml /\ sk = k0 /\ opt_rand = o0 /\ Glob.mem = mem0 /\
     msg_dom W64.zero m ml ==>
     Sig.to_list res = slh_sign_internal P (m_of mem0 m ml) (SK.to_list k0) (Some (Node.to_list o0))] = 1%r.
 proof.
-move=> hctx hprf hf htl hh htk hpm hhm s0 m ml k0 o0 mem0; proc.
-call (slh_sign_correct ok hctx hprf hf htl hh htk hpm hhm s0 witness W64.zero m ml k0 o0 mem0).
+move=> hsign s0 m ml k0 o0 mem0; proc.
+call (hsign s0 witness W64.zero m ml k0 o0 mem0).
 by auto => />; rewrite msg_none.
 qed.
 
-lemma verify_internal_correct (ok : bytes -> Ctx.t -> bool) :
-  (forall (p0 : Node.t),
-     phoare [M._thash_ctx_init : pk_seed = p0 ==> ok (Node.to_list p0) res.`1] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (x0 : Node.t) (a0 : BArray32.t),
-     phoare [M._thash_f : x = x0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = F P pk (BArray32.to_list a0) (Node.to_list x0)] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (m0 : TLenIn.t) (a0 : BArray32.t),
-     phoare [M._thash_t_len : in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = T_l P pk (BArray32.to_list a0) (TLenIn.to_list m0)] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (x0 : Node2.t) (a0 : BArray32.t),
-     phoare [M._thash_h : in_0 = x0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = H P pk (BArray32.to_list a0) (Node2.to_list x0)] = 1%r) =>
-  (forall pk c0, ok pk c0 => forall (m0 : TKIn.t) (a0 : BArray32.t),
-     phoare [M._thash_t_k : in_0 = m0 /\ ctx = c0 /\ adrs = a0 ==>
-       Node.to_list res.`1 = T_l P pk (BArray32.to_list a0) (TKIn.to_list m0)] = 1%r) =>
-  (forall (r0 : Node.t) (p0 : PK.t) (x0 : Prefix.t) (pl m ml : W64.t) (mem0 : global_mem_t),
-     phoare [M._h_msg :
-       r = r0 /\ pk = p0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\
-       msg_len = ml /\ Glob.mem = mem0 /\ msg_ok pl m ml ==>
-       Digest.to_list res.`1 =
-         H_msg P (Node.to_list r0) (slice (PK.to_list p0) 0 P.`n)
-           (slice (PK.to_list p0) P.`n (2 * P.`n)) (slh_msg mem0 x0 pl m ml)] = 1%r) =>
+lemma verify_internal_correct :
+  (forall (s0 : Sig.t) (x0 : Prefix.t) (pl m ml : W64.t) (p0 : PK.t) (mem0 : global_mem_t),
+     phoare [M._slh_verify :
+       sig = s0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len = ml /\ pk = p0 /\
+       Glob.mem = mem0 /\ msg_ok pl m ml ==>
+       res.`1 = if slh_verify_internal P (slh_msg mem0 x0 pl m ml) (Sig.to_list s0) (PK.to_list p0)
+                then W64.zero else W64.of_int (-1)] = 1%r) =>
   forall (s0 : Sig.t) (m ml : W64.t) (p0 : PK.t) (mem0 : global_mem_t),
   phoare [M.verify_internal :
     sig = s0 /\ msg = m /\ msg_len = ml /\ pk = p0 /\ Glob.mem = mem0 /\
@@ -833,7 +736,7 @@ lemma verify_internal_correct (ok : bytes -> Ctx.t -> bool) :
     res = if slh_verify_internal P (m_of mem0 m ml) (Sig.to_list s0) (PK.to_list p0)
           then W64.zero else W64.of_int (-1)] = 1%r.
 proof.
-move=> hctx hf htl hh htk hhm s0 m ml p0 mem0; proc.
-call (slh_verify_correct ok hctx hf htl hh htk hhm s0 witness W64.zero m ml p0 mem0).
+move=> hverify s0 m ml p0 mem0; proc.
+call (hverify s0 witness W64.zero m ml p0 mem0).
 by auto => />; rewrite msg_none.
 qed.
