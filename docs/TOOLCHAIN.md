@@ -48,9 +48,12 @@ The build needs opam 2.6.0 exactly. With the default root, everything the
 build produces is under `toolchain/work/`. The build also points `HOME`,
 the `XDG_*` directories and `TMPDIR` there, so no tool reads a
 configuration of the user's own, and it checks that every configuration
-file EasyCrypt reports, and Why3's, belongs to the switch. One build runs
-in a work directory at a time. The comments at the top of
-`toolchain/build.sh` say what each step checks and records.
+file EasyCrypt reports, and Why3's, belongs to the switch. On macOS it sets
+`ZERO_AR_DATE=1`, so that `ar` and `ld` record no file times in archives and
+in the debug map of the compiler binaries: the binaries do not depend on when
+the switch was built. One build runs in a work directory at a time. The
+comments at the top of `toolchain/build.sh` say what each step checks and
+records.
 
 Linux on AArch64 builds the compiler only, because several of the pinned
 SMT provers publish no binaries for it:

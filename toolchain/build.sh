@@ -82,7 +82,8 @@
 #
 # HOME, the XDG_* directories and TMPDIR point into $WORK, so no tool reads
 # a configuration of the user's own; the switch step checks that every
-# configuration file EasyCrypt reports, and Why3's, is the switch's.
+# configuration file EasyCrypt reports, and Why3's, is the switch's. On
+# macOS, ZERO_AR_DATE=1 keeps file times out of archives and executables.
 #
 # Platforms: macOS on AArch64, Linux on x86-64, and Linux on AArch64 with
 # --no-easycrypt.
@@ -168,6 +169,17 @@ export HOME="$WORK/home" TMPDIR="$WORK/tmp" \
        XDG_CONFIG_HOME="$WORK/xdg/config" XDG_DATA_HOME="$WORK/xdg/data" \
        XDG_CACHE_HOME="$WORK/xdg/cache" XDG_CONFIG_DIRS="$WORK/xdg/etc" \
        XDG_DATA_DIRS="$WORK/xdg/share"
+
+# On macOS, ar writes the modification time of each member into an archive,
+# and ld copies the time of every object with debug information into the
+# debug map of the executable (its N_OSO symbols): the C stubs of the OCaml
+# runtime and libraries put the time the switch was built into every
+# compiler binary, so the same inputs built again gave other binaries.
+# ZERO_AR_DATE=1 makes both tools write zero instead. The Linux builds
+# already give the same binaries from the same inputs.
+if [ "$OS" = macos ]; then
+  export ZERO_AR_DATE=1
+fi
 
 # `git am` creates the commits of the Jasmin tree with this fixed committer
 # and the author dates of the patches, so that the same series gives the
