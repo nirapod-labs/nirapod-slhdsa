@@ -22,7 +22,7 @@ SLH-DSA (FIPS 205) in [Jasmin](https://github.com/jasmin-lang/jasmin) for AArch6
 | [Constant time and speculative constant time](docs/SECURITY-MODEL.md) | **VERIFIED**<br>PASS | every Jasmin unit, both architectures; conditional on memory safety |
 | [Memory safety of the Jasmin code](docs/SECURITY-MODEL.md#memory-safety) | **UNKNOWN**<br>NOT RUN | the checker reaches no verdict on these exports yet |
 | [EUF-CMA security of the specification](docs/PROOFS.md#security-of-the-specification) | **PROVEN**<br>PASS | the EasyCrypt specification, 12 sets; not the Jasmin code |
-| [The code implements the specification](docs/PROOFS.md#the-code-against-the-specification) | **UNKNOWN** | open; proven: portable SHA-2 kernels and hashes, HMAC steps and MGF1 over them, scalar Keccak-f[1600], single-way Keccak sponge absorb, finalize and squeeze, one-shot SHA-3 and SHAKE, address setters; for 12 sets: core encodings, F, PRF and H given the hash kernels, WOTS+ chain given F, WOTS+ pkFromSig given F and T_l; SHAKE T_l and T_k given Keccak-f |
+| [The code implements the specification](docs/PROOFS.md#the-code-against-the-specification) | **UNKNOWN** | open; proven: portable SHA-2 kernels and hashes, HMAC steps and MGF1 over them, scalar Keccak-f[1600], single-way Keccak sponge absorb, finalize and squeeze, one-shot SHA-3 and SHAKE, address setters; on the scalar-variant models of both architectures, 12 sets: internal and external key generation, signing and verification (Algorithms 18 to 25) with every hash they call, for a message within the FIPS 180-4 length domain; not the SIMD and extension kernels, the C layer or entropy |
 | [The compiler preserves program semantics](docs/TOOLCHAIN.md#assurance-boundary-of-the-toolchain) | **PROVEN**<br>PASS | source to assembly syntax, in Rocq; printer, assembler, linker trusted |
 
 Results of CI run [38680243373](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38680243373) at `de27e6a`, 2026-10-15. Row *The compiler preserves program semantics*: run [38554446843](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38554446843) at `8646299`. Every set, interface and platform: [`docs/STATUS.md`](docs/STATUS.md).
@@ -87,13 +87,13 @@ flowchart TB
   api --> core --> hash
   hash -- "Jasmin compiler,<br/>proven in Rocq" --> asm
   sec -- "EUF-CMA, proven" --> spec
-  spec -. "open" .-> core
+  spec -. "in part" .-> core
   spec -. "in part" .-> hash
 ```
 
 Solid arrows are calls, compilation and proven results; dotted arrows are proofs
-that the code meets the specification, still open for the core and partial for the
-hash kernels. Each parameter set is compiled once per hash variant, and the C
+that the code meets the specification, partial for the core (its scalar variant)
+and for the hash kernels. Each parameter set is compiled once per hash variant, and the C
 wrapper picks the variant the CPU supports at each call.
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) walks through the layers.
 

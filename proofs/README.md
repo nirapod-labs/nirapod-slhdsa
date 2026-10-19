@@ -391,7 +391,7 @@ Theorems so far, each checked on every pair unless it says otherwise:
   address code is the same for all twelve parameter sets, so they hold
   for each.
 
-Per-set theorems, each checked against the 24 per-set models:
+Per-set theorems, each checked against the per-set models (`make check-sets`):
 
 - `node_copy_correct` (`correctness/core/Encoding.ec`): `__node_copy`
   of `src/slhdsa/encoding.jinc` returns its n-byte source;
@@ -412,15 +412,193 @@ Per-set theorems, each checked against the 24 per-set models:
   `__adrs_compress_into64` and `__adrs_compress_into128` of
   `src/slhdsa/thash_sha2.jinc` write ADRS^c, the 22-byte compressed
   address of FIPS 205 section 11.2, into the first 22 bytes of a hash
-  block and leave its other bytes unchanged.
-- `thash_f_correct`, `thash_prf_correct` and `thash_h_correct`
+  block and leave its other bytes unchanged;
+- `thash_ctx_init_correct`, `thash_f_correct`, `thash_prf_correct` and
+  `thash_h_correct` (`correctness/core/sha2/Thash.ec`, on the 12 SHA2
+  models): `_thash_ctx_init` of `src/slhdsa/thash_sha2.jinc` stores in
+  the context the chaining values after the PK.seed block (`ctx_ok`), and
+  `_thash_f`, `_thash_prf` and `_thash_h` return F, PRF and H of section
+  11.2 from a context with that layout, given the premise that the
+  model's SHA-256 and SHA-512 compression procedures meet the statements
+  the kernel proofs give for the kernel's own model (discharged in
+  `sha2/HashKernels.ec`, below);
+- `thash_f_correct`, `thash_prf_correct`, `thash_h_correct`,
+  `thash_t_len_correct` and `thash_t_k_correct`
   (`correctness/core/shake/Thash.ec`, on the 12 SHAKE models): `_thash_f`,
-  `_thash_prf` and `_thash_h` of `src/slhdsa/thash_shake.jinc` return F,
-  PRF and H of FIPS 205 section 11.1, given the premise that the model's
-  `_keccakf1600` computes Keccak-f[1600] on the lanes of its state.
+  `_thash_prf`, `_thash_h`, `_thash_t_len` and `_thash_t_k` of
+  `src/slhdsa/thash_shake.jinc` return F, PRF, H, T_len and T_k of FIPS 205
+  section 11.1; `shake_absorb_prefix_correct`: `_shake_absorb_prefix`
+  absorbs a prefix of up to 332 bytes (`SLH_PREFIX_MAX`) from any position
+  within the 136-byte rate; `keccak_finalize_correct`: `_keccak_finalize`
+  at rate 136 with domain byte 0x1F pads and permutes as SHAKE256 does
+  (FIPS 202, sections 5.1 and 6.2). All under the premise that the model's
+  `_keccakf1600` computes Keccak-f[1600] on the lanes of its state
+  (discharged in `shake/HashKernels.ec`, below).
+
+The theorems that follow take the tweakable hashes they call as premises,
+each in the form of the theorems above: for one fixed PK.seed and context,
+the procedure returns the section 11 hash of its arguments, with
+probability 1. The four-way procedures `_thash_prf_x4`, `_thash_f_x4` and
+`_thash_t_len_x4` enter in the same form, lane by lane. The hash theorems
+that discharge all of them, and the theorems that compose the two, follow
+this list.
+
+- `wots_chain_correct` (`correctness/core/WotsChain.ec`): `_wots_chain`
+  of `src/slhdsa/wots.jinc` computes chain of Algorithm 5 when start +
+  steps < 2^32, given F;
+- `wots_pk_from_sig_correct` (`correctness/core/WotsPk.ec`):
+  `_wots_pk_from_sig` computes wots_pkFromSig of Algorithm 8 for the
+  address the standard's caller passes, given F and T_len;
+- `wots_leaf_x4_correct` (`correctness/core/WotsLeaf.ec`): `_wots_leaf_x4`
+  returns, when kp0 + 3 < 2^32 and every digit is below 16, the WOTS+
+  public keys of key pairs kp0 to kp0 + 3 (Algorithm 6) and, for a lane
+  below 4, the chain values of Algorithm 7 for key pair kp0 + lane, given
+  the four-way PRF, F and T_len;
+- `xmss_pk_from_sig_correct` (`correctness/core/XmssPk.ec`):
+  `_xmss_pk_from_sig` of `src/slhdsa/xmss.jinc` computes xmss_pkFromSig
+  of Algorithm 11, given F, T_len and H;
+- `treehash_fold_correct` (`correctness/core/TreeFold.ec`):
+  `_treehash_fold` of `src/slhdsa/treehash.jinc` adds leaf i to the
+  pending nodes and the target's authentication nodes, for a tree of
+  height at most a whose first leaf index is a multiple of 2^height,
+  given H;
+- `xmss_node_correct` and `xmss_sign_correct` (`correctness/core/Xmss.ec`):
+  `_xmss_treehash` returns xmss_node of Algorithm 9 for the whole tree when
+  every digit is below 16, and, for a target leaf below 2^h' and the
+  digits of M, also xmss_sign of Algorithm 10, given the four-way PRF, F
+  and T_len and H;
+- `fors_pk_from_sig_correct` (`correctness/core/ForsPk.ec`):
+  `_fors_pk_from_sig` of `src/slhdsa/fors.jinc` computes fors_pkFromSig of
+  Algorithm 17 when its k indices are base_2b(md, a, k), given F, H and
+  T_k;
+- `fors_tree_correct` (`correctness/core/ForsTree.ec`): `_fors_tree`
+  returns, for tree t < k and a leaf below 2^a, the secret of that leaf
+  (Algorithm 14), its authentication path and the root of the tree
+  (fors_node, Algorithm 15), given the four-way PRF and F, and H;
+- `fors_sign_correct` (`correctness/core/ForsSign.ec`): `_fors_sign`
+  writes SIG_FORS of Algorithm 16 after the randomizer, leaves the other
+  bytes of the signature unchanged and returns fors_pkFromSig of that
+  signature, when its k indices are base_2b(md, a, k), given the premises
+  of `_fors_tree` and T_k;
+- `ht_sign_correct` and `ht_verify_correct`
+  (`correctness/core/Hypertree.ec`): `_ht_sign` of
+  `src/slhdsa/hypertree.jinc` writes ht_sign of Algorithm 12 after R and
+  SIG_FORS, for an idx_leaf below 2^h', given the premises of
+  `_xmss_treehash`; `_ht_verify` returns 0 when ht_verify of Algorithm 13
+  holds and -1 otherwise, given F, T_len and H;
+- `slh_sign_correct`, `slh_verify_correct` and `slh_keygen_correct`
+  (`correctness/core/Internal.ec`), for `src/slhdsa/internal.jinc`, with
+  M = prefix[0 : prefix_len] followed by the msg_len bytes at msg, for a
+  prefix_len of at most 332 and a message that does not wrap the address
+  space: `_slh_sign` returns slh_sign_internal(M, SK, opt_rand) of
+  Algorithm 19 (hedged; `sign_deterministic` states that the deterministic
+  variant is opt_rand = PK.seed), given that `_thash_ctx_init` returns a
+  context for which the hash premises hold, the premises of `_ht_sign`
+  and `_fors_sign`, and that `_prf_msg` and `_h_msg` compute PRF_msg and
+  H_msg of that M;
+  `_slh_verify` returns 0 when slh_verify_internal(M, SIG, PK) of
+  Algorithm 20 accepts and all ones otherwise, given F, T_len, H, T_k and
+  H_msg; `_slh_keygen` returns the SK and PK of slh_keygen_internal of
+  Algorithm 18 for the three seeds it is given, given the four-way PRF, F
+  and T_len and H;
+- `slh_frame_correct` (`correctness/core/External.ec`): `_slh_frame` of
+  `src/slhdsa/external.jinc` reads the caller's 257-byte domain block
+  (byte 0 the pre-hash selector, 0 for pure SLH-DSA and 1 to 12 for the
+  hash function with OID 2.16.840.1.101.3.4.2.s; byte 1 |ctx|; then ctx)
+  and, for a selector of at most 12, returns status 0 with the start of
+  M' of Algorithms 22 to 25 in the prefix: toByte(0, 1) || toByte(|ctx|,
+  1) || ctx, with the message to follow, or toByte(1, 1) || toByte(|ctx|,
+  1) || ctx || OID || PH(M), with nothing to follow; for a larger selector
+  it returns status all ones. A context of more than 255 bytes cannot be
+  written in the block: rejecting it is the C layer's part;
+- `sign_correct`, `verify_correct` and `keygen_correct`, for the exports
+  of `src/slhdsa/api.jinc`: `sign` returns slh_sign (Algorithm 22) or
+  hash_slh_sign (Algorithm 23) of M, ctx, SK and opt_rand, and leaves the
+  signature buffer unchanged and returns all ones for a selector above
+  12; `verify` returns 0 when slh_verify (Algorithm 24) or
+  hash_slh_verify (Algorithm 25) accepts and all ones otherwise; `keygen`
+  returns slh_keygen (Algorithm 21) for the seeds it is given, the draw of
+  lines 1 to 3 being the C layer's; `sign_internal_correct` and
+  `verify_internal_correct`: `sign_internal` and `verify_internal` are the
+  section 9 functions on M. Each takes as premise the theorem of the
+  internal function it calls, in the form `Internal.ec` proves it; sign
+  and verify also take that `_prehash` terminates and, for M in
+  `ph_dom`, returns PH(M) for the function of its selector. sign and
+  verify require M in `msg_dom` with the longest prefix (332 bytes) and
+  in `ph_dom`; the section 9 exports require M in `msg_dom` with no
+  prefix (both below, under Assumptions).
+
+The hash theorems below are the premises above, proved for the
+procedures of each set's model. Only those named in `SET_THEOREMS_<family>`
+(`Makefile`) are pinned in the inventories; the others reach the pinned
+`Theorems.*` through them, so their statements are checked as part of those.
+
+- `keccakf1600_correct`, `keccakf1600_ll` and `keccakf1600_total`
+  (`correctness/hash/<arch>/<variant>/Keccakf1600_Pair.ec`): the
+  Keccak-f[1600] theorems of the kernel each pair builds under one theory
+  name, so that the per-set proofs use them on every pair;
+- `sha256_compress_total`, `sha512_compress_total` and
+  `thash_ctx_init_total`, `thash_f_total`, `thash_prf_total`,
+  `thash_h_total` (`correctness/core/sha2/HashKernels.ec`): the set
+  model's compression procedures equal the hash model's, so the kernel
+  theorems hold for them, and with them the tweakable hashes of
+  `sha2/Thash.ec` hold with no premise;
+- `keccakf1600_total`, `thash_ctx_init_correct`, `thash_f_total`,
+  `thash_prf_total`, `thash_h_total`, `thash_t_len_total`,
+  `thash_t_k_total`, `shake_absorb_prefix_total` and
+  `keccak_finalize_total` (`correctness/core/shake/HashKernels.ec`): the
+  same for the SHAKE sets, from `Keccakf1600_Pair.ec`;
+- `prf_msg_correct` (`correctness/core/sha2/MsgHash.ec`): `_prf_msg`
+  returns PRF_msg of section 11.2, HMAC-SHA-256 or HMAC-SHA-512 keyed
+  with SK.prf, for M = prefix[0 : prefix_len] || mem[msg : msg + msg_len]
+  in `msg_dom`;
+- `mgf1_sha256_total` and `mgf1_sha512_total`
+  (`correctness/core/sha2/Mgf1.ec`): MGF1 of RFC 8017 for the seed and
+  output lengths of the set's H_msg;
+- `prf_msg_correct` and `h_msg_correct`
+  (`correctness/core/shake/MsgHash.ec`): `_prf_msg` and `_h_msg` return
+  PRF_msg and H_msg of section 11.1 for the same M;
+- `prehash_ll`, `prehash_h` and `prehash_total`
+  (`correctness/core/PreHash.ec`): `_prehash` of
+  `src/slhdsa/external.jinc` terminates on every input and, for a
+  selector s from 1 to 12 and M in `ph_dom`, the first len bytes of its
+  64-byte result are PH(M) for the function of s: the SHA-2 one-shots of
+  the hash layer for 1 to 6, and for 7 to 12 the sponge with the rate,
+  padding byte and output length of SHA3-224, SHA3-256, SHA3-384,
+  SHA3-512, SHAKE128 (256 bits) and SHAKE256 (512 bits);
+- `h_msg_correct` (`correctness/core/sha2/HMsg.ec`, on the 12 SHA2
+  models): `_h_msg` returns H_msg of FIPS 205 section 11.2 for M =
+  prefix[0 : prefix_len] || mem[msg : msg + msg_len] in `msg_dom`;
+- `thash_t_len_total` and `thash_t_k_total`
+  (`correctness/core/sha2/ThashT.ec`): `_thash_t_len` and `_thash_t_k`
+  return T_len and T_k of section 11.2 from a context with the layout of
+  `thash_ctx_init_correct`;
+- `thash_prf_x4_total`, `thash_f_x4_total` and `thash_t_len_x4_total`
+  (`correctness/core/sha2/ThashX4.ec`): lane k of the result of the
+  four-way PRF, F and T_len is the section 11.2 hash of lane k of the
+  inputs, for k < 4; these sets run the single-way SHA-2 code once per
+  lane;
+- `keccakf1600_x4_total`, `thash_prf_x4_total`, `thash_f_x4_total` and
+  `thash_t_len_x4_total` (`correctness/core/shake/ThashX4.ec`, on the 12
+  SHAKE models): the portable four-way `_keccakf1600_x4` applies
+  Keccak-f[1600] to each of its four instances, and lane k of the result
+  of the four-way PRF, F and T_len is the section 11.1 hash of lane k of
+  the inputs;
+- `slh_verify_total`, `slh_sign_total`, `slh_keygen_total`,
+  `sign_total`, `verify_total`, `keygen_total`, `sign_internal_total`
+  and `verify_internal_total` (`correctness/core/sha2/Theorems.ec` and
+  `correctness/core/shake/Theorems.ec`): the internal functions and the
+  exports above, with every premise discharged by the hash theorems of
+  the set's family and by `PreHash.ec`. They have no premise; their only
+  conditions are those on the caller's input named above.
 
 The per-set theorems are total-correctness statements about one
-procedure each, for every input.
+procedure each, for every input that meets the conditions stated above.
+Their hash premises are about the procedures of the set's model, and the
+`Theorems.ec` of each family discharges all of them, so the theorems of
+the exports hold for the set's model with no premise. They are about
+the extracted model of the scalar variant of each architecture
+(`CORE_PAIRS`).
 
 The SHA-2 and Keccak `_correct` theorems are partial-correctness (Hoare)
 statements about the extracted model: when the procedure returns, its
@@ -433,12 +611,13 @@ probability 1. Memory safety is a separate obligation.
 
 The address theorems are about the address procedures themselves. That
 the rest of the core passes them the values FIPS 205 prescribes is part of
-the proofs of the algorithms that call them, which do not exist yet.
+the per-set proofs of the algorithms that call them.
 
-Not proven yet: the multi-way functions, the four-way Keccak sponge among
-them; the HMAC key block from memory; the sponge forms over fixed-length
-arrays (`src/hash/keccak/sponge_array.jinc`); the four-way Keccak-f[1600]
-kernels (portable, AVX2 and A64 SHA-3) the multi-way code uses; the
+Not proven yet: the multi-way hash functions outside the four-way
+tweakable hashes above, the general four-way Keccak sponge among them;
+the HMAC key block from memory; the sponge forms over fixed-length
+arrays (`src/hash/keccak/sponge_array.jinc`); the four-way
+Keccak-f[1600] kernels on AVX2 and on the A64 SHA-3 instructions; the
 four-way SHA2 tweakable hashes on the multi-way SHA-2 kernels
 (`src/slhdsa/thash_sha2_x4/multi/`) and the AVX2 8-way SHA-256 and 4-way
 SHA-512 kernels under them, in the x86-64 `avx2` variant of the SHA2 sets;
@@ -522,7 +701,8 @@ of its own upstream project file.
 
 ## Assumptions
 
-Every axiom the proofs can use is listed in `inventory/`, per pair; the
+Every axiom the proofs can use is listed in `inventory/`, per pair, and
+per (pair, set) in `inventory/sets/` for the per-set models; the
 x86-64 list is longer only because the x86-64 instruction model loads the
 AES axioms and has two of its own. The specification, validation, security
 and correctness theories declare no axioms except these: the section
@@ -546,9 +726,33 @@ theories the extracted models clone; `../toolchain/jasmin/ECLIB_AXIOMS` and
 `../docs/TOOLCHAIN.md` describe the `eclib` ones. Both libraries belong to
 the trusted base together with EasyCrypt itself and its SMT provers.
 
+The theorems of the exports and of the internal functions hold for
+every input in their domain, which the theorems state as two conditions
+on the caller's message, not as assumptions about the code:
+
+- `msg_dom` (`Internal.ec`): the message buffer [msg, msg + msg_len)
+  does not wrap the 64-bit address space and, for the SHA2 sets, the
+  hashed message R || PK.seed || PK.root || M' is in the domain of
+  FIPS 180-4 and of the one-shot kernels: M' (prefix and message) under
+  2^61 - 256 bytes and msg + msg_len below 2^64;
+- `ph_dom` (`External.ec`): for the SHA-2 pre-hash selectors 1 to 6,
+  M is under 2^61 bytes and msg + msg_len is below 2^64, the domain the
+  SHA-2 one-shots are proved for (FIPS 180-4 allows SHA-384 and SHA-512
+  longer messages; the proofs stop at 2^61 bytes for all six). For the
+  other selectors it is no condition.
+
+No buffer on the supported targets comes near either bound. User
+address spaces are at most 57 bits wide, so a buffer is far shorter than
+2^61 bytes, and the address of its end is below 2^57; an AArch64 pointer
+may carry a tag in its top byte, but the address under the tag ends
+below 2^56, so start plus length still stays below 2^64. The library
+does not check the bounds at run time.
+
 The correctness theorems are about the models `jasmin2ec` extracts, so the
 extraction belongs to the trusted base too, and so do the `eclib` models
 of the instructions the kernels use: `BSWAP_32` and `BSWAP_64` in
-`JModel_x86`, `REV_32` and `REV_64` in `JModel_armv8a`. `ArchWord` proves
-these definitions to be byte reversal; that they match the compiler's
-semantics of the instructions is not proven here.
+`JModel_x86`, `REV_32`, `REV_64` and `BIC_64` in `JModel_armv8a`.
+`ArchWord` proves the byte swaps to be byte reversal, and the AArch64
+register kernel's `KernelSpec.ec` proves `BIC_64` to be and-not; that
+they match the compiler's semantics of the instructions is not proven
+here.

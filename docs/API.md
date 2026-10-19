@@ -367,3 +367,10 @@ mode itself, and whether the CPU honours it, stay as described above.
   AArch64, a program otherwise built with them loses BTI and GCS, and runs
   without branch target enforcement or a guarded control stack. `readelf -n`
   on the program shows its properties. macOS does not use these properties.
+- Message lengths are not checked against the input limit of SHA-2 (FIPS
+  180-4). The correctness proofs cover, for the SHA2 sets, signing and
+  verification of messages under 2^61 - 588 bytes, and for the SHA-2 pre-hash
+  functions messages under 2^61 bytes, each in a buffer that does not wrap
+  the address space ([PROOFS](PROOFS.md#the-code-against-the-specification),
+  Domain). No buffer a process on the supported targets can hold comes near
+  these lengths.

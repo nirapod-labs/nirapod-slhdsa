@@ -70,7 +70,7 @@ scope = "the EasyCrypt specification, 12 sets; not the Jasmin code"
 claim = "The code implements the specification"
 link = "docs/PROOFS.md#the-code-against-the-specification"
 evidence = "UNKNOWN"
-scope = "open; proven: portable SHA-2 kernels and hashes, HMAC steps and MGF1 over them, scalar Keccak-f[1600], single-way Keccak sponge absorb, finalize and squeeze, one-shot SHA-3 and SHAKE, address setters; for 12 sets: core encodings, F, PRF and H given the hash kernels, WOTS+ chain given F, WOTS+ pkFromSig given F and T_l; SHAKE T_l and T_k given Keccak-f"
+scope = "open; proven: portable SHA-2 kernels and hashes, HMAC steps and MGF1 over them, scalar Keccak-f[1600], single-way Keccak sponge absorb, finalize and squeeze, one-shot SHA-3 and SHAKE, address setters; on the scalar-variant models of both architectures, 12 sets: internal and external key generation, signing and verification (Algorithms 18 to 25) with every hash they call, for a message within the FIPS 180-4 length domain; not the SIMD and extension kernels, the C layer or entropy"
 
 [[summary]]
 claim = "The compiler preserves program semantics"

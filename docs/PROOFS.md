@@ -41,10 +41,14 @@ re-checks both.
 ## The code against the specification
 
 Open. Parts of the SLH-DSA core and of the hash layer are proved in EasyCrypt on
-the code `jasmin2ec` extracts. Of the FIPS 205 algorithms, only the WOTS+ chain
-(Algorithm 5) and the WOTS+ public key from a signature (Algorithm 8) are covered,
-and only given the tweakable hashes they call; key generation, signing and
-verification are not.
+the code `jasmin2ec` extracts. Of the FIPS 205 algorithms, those of WOTS+, XMSS,
+FORS and the hypertree (Algorithms 5 to 17), the internal key generation,
+signing and verification (Algorithms 18 to 20) and the external ones with
+their context and pre-hash framing (Algorithms 21 to 25) are covered. On the
+models of the scalar variant of each architecture, the exports are proved with
+every hash they call proved too, so their theorems have no premise; their only
+conditions are on the length and placement of the caller's message (Domain,
+below).
 
 Proven, on the x86-64 and AArch64 models, total correctness:
 
@@ -71,26 +75,31 @@ Proven, on the x86-64 and AArch64 models, total correctness:
   FIPS 202.
 - **SHAKE tweakable hashes.** For the six SHAKE sets, `_thash_f`, `_thash_prf`,
   `_thash_h`, `_thash_t_len` and `_thash_t_k` of `src/slhdsa/thash_shake.jinc`
-  compute F, PRF, H, T_len and T_k of section 11.1, for every input. The premise is
-  that the Keccak-f[1600] procedure of the set's model is correct; the Keccak
-  proofs above are about the kernel's own model, and joining the two is open.
-  Under the same premise, two sponge steps of the message hashes are proved for
-  every input: `_shake_absorb_prefix` (`src/slhdsa/thash_shake.jinc`) absorbs a
+  compute F, PRF, H, T_len and T_k of section 11.1, for every input, with the
+  Keccak-f[1600] theorem of the kernel's own model carried over to the set's model.
+  Two sponge steps of the message hashes are proved for every input: `_shake_absorb_prefix` (`src/slhdsa/thash_shake.jinc`) absorbs a
   prefix of up to 332 bytes from any position within the 136-byte rate, permuting
   at each full block, and `_keccak_finalize` (`src/hash/keccak/sponge.jinc`), at
   rate 136 with domain byte 0x1F, pads the absorbed message and permutes as
-  SHAKE256 does (FIPS 202, sections 5.1 and 6.2). PRF_msg and H_msg are not.
+  SHAKE256 does (FIPS 202, sections 5.1 and 6.2); with them, `_prf_msg` and
+  `_h_msg` compute PRF_msg and H_msg. The four-way `_thash_prf_x4`, `_thash_f_x4`
+  and `_thash_t_len_x4` compute PRF, F and T_len for each of their four lanes, on
+  the portable four-way Keccak-f[1600], which is proved to permute each of its four
+  instances.
 - **SHA2 tweakable hashes.** For the six SHA2 sets, in `src/slhdsa/thash_sha2.jinc`:
   - `_thash_ctx_init` compresses the PK.seed block once and stores the SHA-256
     chaining value (and, for n = 24 and 32, the SHA-512 one) in the context;
   - `_thash_f`, `_thash_prf` and `_thash_h` compute F, PRF and H of section 11.2
     from a context in that layout, which `_thash_ctx_init` establishes.
 
-  The premise is that the SHA-256 and SHA-512 compression procedures of the set's
-  model meet the statements the kernel proofs above give for the kernel's own
-  model; joining the two is open. The SHA2 T_len and T_k are not proved; lemmas
-  on the SHA-2 specification for their multi-block inputs are
-  (`proofs/correctness/core/sha2/ThashBlocks.ec`).
+  - `_thash_t_len` and `_thash_t_k` compute T_len and T_k of section 11.2 from that
+    context;
+  - the four-way `_thash_prf_x4`, `_thash_f_x4` and `_thash_t_len_x4`, which run
+    the single-way code once per lane, compute PRF, F and T_len for each lane;
+  - `_prf_msg` and `_h_msg` compute PRF_msg (HMAC) and H_msg (MGF1 over SHA-256
+    or SHA-512) of section 11.2 for a message in the SHA-2 domain (Domain, below).
+
+  The kernel theorems above are carried over to the set's model.
 
 - **Core encodings.** For each of the 12 parameter sets, on the models of that
   set (the core's code depends on the set, so it is extracted once per set and
@@ -113,8 +122,91 @@ Proven, on the x86-64 and AArch64 models, total correctness:
 
   Both take as premises that `_thash_f` (and, for Algorithm 8, `_thash_t_len`)
   compute F (T_len) for one fixed PK.seed and context: the form of the tweakable
-  hash theorems above, so for the SHAKE sets the two compose, and for the SHA2 sets
-  T_len is still open.
+  hash theorems above, which discharge them for both families.
+
+  `_wots_leaf_x4` computes, when kp0 + 3 < 2^32 and every digit is below 16, the
+  public keys of the four key pairs kp0 to kp0 + 3 (Algorithm 6) and, when its lane
+  argument is below 4, the chain values of Algorithm 7 for the caller's digits and
+  key pair kp0 + lane; for a lane of 4 or more it leaves the signature buffer
+  unchanged. Its premises are that `_thash_prf_x4`, `_thash_f_x4` and
+  `_thash_t_len_x4` compute PRF, F and T_len lane by lane, for one fixed PK.seed
+  and context, which the four-way theorems above discharge for both families.
+- **XMSS.** For each of the 12 parameter sets, in `src/slhdsa/xmss.jinc` and
+  `src/slhdsa/treehash.jinc`:
+  - `_xmss_pk_from_sig` computes xmss_pkFromSig of Algorithm 11, given F, T_len
+    and H in the form of the WOTS+ premises;
+  - `_treehash_fold` adds one leaf to the treehash fold: from the pending nodes and
+    the target's authentication nodes after the leaves before i, it establishes them
+    after leaf i, given H, for a tree of height t <= a whose nodes are H of their two
+    children and whose first leaf index is a multiple of 2^t (XMSS and FORS trees);
+  - `_xmss_treehash` returns xmss_node(SK.seed, 0, h', PK.seed, ADRS) of
+    Algorithm 9 when every digit is below 16, and leaves the signature buffer
+    unchanged for a target of 2^h' or more; for a target below 2^h' and the digits
+    of M (Algorithm 7, lines 1 to 7) it also returns xmss_sign of Algorithm 10.
+    Its premises are the four-way PRF, F and T_len of `_wots_leaf_x4`, and H.
+- **FORS.** For each of the 12 parameter sets, in `src/slhdsa/fors.jinc`:
+  - `_fors_tree` returns, for tree t < k and a selected leaf tg < 2^a, the secret of
+    leaf t 2^a + tg (Algorithm 14), its authentication path and the root of the tree,
+    fors_node of Algorithm 15, given the four-way PRF and F of `_wots_leaf_x4`, and H;
+  - `_fors_sign` writes SIG_FORS of Algorithm 16 after the randomizer, leaving the
+    other bytes of the signature buffer unchanged, and returns fors_pkFromSig of that
+    signature, when the k indices it is given are base_2b(md, a, k), given the same
+    premises and T_k;
+  - `_fors_pk_from_sig` computes fors_pkFromSig of Algorithm 17, when the k indices
+    it is given are base_2b(md, a, k), given F, H and T_k in the same form.
+- **Hypertree.** For each of the 12 parameter sets, in `src/slhdsa/hypertree.jinc`:
+  - `_ht_sign` writes ht_sign of Algorithm 12 after R and SIG_FORS, for an idx_leaf
+    below 2^h', and returns the root of the top tree, given the premises of
+    `_xmss_treehash`;
+  - `_ht_verify` returns 0 when ht_verify of Algorithm 13 holds and -1 otherwise,
+    given F, T_len and H in the form of the WOTS+ premises.
+- **Internal functions.** For each of the 12 parameter sets, in
+  `src/slhdsa/internal.jinc`, for the message M = prefix[0 : prefix_len] followed
+  by the msg_len bytes at msg, with prefix_len at most 332 and a message that does
+  not wrap the address space:
+  - `_slh_sign` returns slh_sign_internal(M, SK, opt_rand) of Algorithm 19; the
+    deterministic variant is opt_rand = PK.seed;
+  - `_slh_verify` returns 0 when slh_verify_internal(M, SIG, PK) of Algorithm 20
+    accepts and all ones otherwise;
+  - `_slh_keygen` returns the SK and PK of slh_keygen_internal of Algorithm 18 for
+    the seeds SK.seed, SK.prf and PK.seed it is given.
+
+  The premises are that `_thash_ctx_init` returns a context for which the
+  tweakable hashes compute their section 11 functions in the form above (the
+  four-way PRF, F and T_len, and H and T_k, for signing and key generation; F,
+  T_len, H and T_k for verification), and that `_prf_msg` and `_h_msg` compute
+  PRF_msg and H_msg of M. The hash theorems above discharge all of them: the three
+  functions are proved with no premise.
+- **External functions.** For each of the 12 parameter sets, in
+  `src/slhdsa/external.jinc` and the exports of `src/slhdsa/api.jinc`, with the
+  caller's 257-byte domain block (pre-hash selector, |ctx|, ctx):
+  - `_slh_frame` returns M' of Algorithms 22 to 25 for a selector of at most 12
+    (pure SLH-DSA or one of the 12 pre-hash functions), and status all ones
+    otherwise; a context of more than 255 bytes cannot be written in the block,
+    and rejecting it is the C layer's part;
+  - `sign` returns slh_sign (Algorithm 22) or hash_slh_sign (Algorithm 23);
+    `verify` returns 0 when slh_verify (Algorithm 24) or hash_slh_verify
+    (Algorithm 25) accepts and all ones otherwise; `keygen` returns slh_keygen
+    (Algorithm 21) for the seeds it is given; `sign_internal` and
+    `verify_internal` are the section 9 functions.
+
+  The premises are the theorems of the internal functions, and that `_prehash`
+  terminates and returns PH(M) for the function of its selector. `_prehash` is
+  proved for all 12 functions: the six SHA-2 one-shots, and the sponge with the
+  parameters of SHA3-224, SHA3-256, SHA3-384, SHA3-512, SHAKE128 (256 bits) and
+  SHAKE256 (512 bits). With these, the exports are proved with no premise.
+
+- **Domain.** The theorems of the internal functions and of the exports hold for
+  every input that meets two conditions on the caller's message: its buffer does
+  not wrap the 64-bit address space, and the SHA-2 hashes stay in the domain they
+  are proved for, which is that of FIPS 180-4. For the SHA2 sets, 332 + |M| is
+  under 2^61 - 256 for `sign` and `verify` (332 bytes being the most framing M'
+  puts before M), and |M| is under 2^61 - 256 for `sign_internal` and
+  `verify_internal`. For the SHA-2 pre-hash functions, M is under 2^61 bytes
+  (FIPS 180-4 allows SHA-384 and SHA-512 longer messages; the proofs stop at 2^61
+  bytes). In both cases the buffer ends below 2^64. No buffer that a process on
+  the supported targets can hold comes near these bounds, and the library does not
+  check them.
 
 Not proven:
 
@@ -126,10 +218,17 @@ Not proven:
   (`src/slhdsa/thash_sha2_x4/multi/`) and the AVX2 8-way SHA-256 and 4-way
   SHA-512 kernels under them;
 - the single-way and four-way kernels on the A64 SHA-3 instructions (AArch64 `sha3`
-  variant), and the portable and AVX2 four-way kernels;
-- the sponge forms over fixed-length arrays and the four-way sponge;
-- the SHAKE PRF_msg and H_msg, and the SHA2 T_len, T_k, PRF_msg and H_msg;
-- every FIPS 205 algorithm other than Algorithms 5 and 8; the rest is open.
+  variant), and the AVX2 four-way kernel;
+- the sponge forms over fixed-length arrays and the general four-way sponge;
+- the FIPS 205 algorithms other than 5 and 8 to 25 on their own: Algorithms 1 to 4
+  only as the proven ones use them (base_2b in `__fors_indices`, the digits of
+  Algorithm 7 in `__wots_digits`), and Algorithms 6 and 7 only as `_wots_leaf_x4`
+  computes them;
+- the C layer (`capi/`): its checks of sizes, NULL pointers, overlapping buffers
+  and |ctx| at most 255, the variant dispatch, and the entropy draw of
+  Algorithm 21. The theorems take the signature, keys and domain block of an
+  export as values apart from the message in memory; for a call through the C
+  API, its overlap check is what makes that so.
 
 `capi/dispatch.c` selects a set's `shani`, `avx2`, `sha2` or `sha3` variant
 wherever the CPU has the extensions it needs, so on such CPUs the library runs
@@ -152,12 +251,13 @@ outside the theorem. Its assumptions are printed by every build and must equal
 
 ## Assumptions and trusted base
 
-Every axiom a proof can use is listed per (architecture, variant) in
-`proofs/inventory/`, together with each claimed theorem statement and every
-definition it relies on; `make check-inventory` fails when any of them changes
-without a reviewed update. The trusted base of the EasyCrypt results is EasyCrypt,
+Every axiom a proof can use is listed per (architecture, variant), and per
+parameter set for the per-set models, in `proofs/inventory/`, together with each
+claimed theorem statement and every definition it relies on; `make
+check-inventory` fails when any of them changes without a reviewed update. The trusted base of the EasyCrypt results is EasyCrypt,
 Why3 and the pinned SMT provers, the Jasmin EasyCrypt library and its instruction
-models, and `jasmin2ec` itself. No proof contains an admitted step: the proof-hole
+models, and `jasmin2ec` itself; for calls through the C API, the C layer as
+well (Not proven, above). No proof contains an admitted step: the proof-hole
 scan rejects `admit`, `admitted` and the commands that would let a file pass
 unchecked.
 
