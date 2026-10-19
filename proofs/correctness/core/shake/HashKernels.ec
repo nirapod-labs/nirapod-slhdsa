@@ -93,32 +93,37 @@ qed.
 lemma keccak_finalize_ll : islossless M._keccak_finalize.
 proof. by proc; call keccakf1600_ll; auto. qed.
 
-(* The prefix absorb keeps the sponge position inside the block. *)
+(* One loop step of the prefix absorb: the counter moves by one and stays within len. *)
+lemma prefix_step (i len : W64.t) (z : int) :
+  to_uint i < to_uint len => to_uint len - to_uint i = z =>
+  ((i + W64.one \ult len) <=> to_uint (i + W64.one) < to_uint len)
+  /\ to_uint (i + W64.one) <= to_uint len /\ to_uint len - to_uint (i + W64.one) < z.
+proof.
+move=> hlt hz; have hi := Thash.w64_inc_bound i (to_uint len) hlt _.
++ by case: (W64.to_uint_cmp len).
+by rewrite W64.ultE hi; smt().
+qed.
+
+(* The prefix absorb returns a position inside the block: the clamp after the loop bounds it
+   whatever the loop did, so the loop invariant only has to give termination. *)
 lemma shake_absorb_prefix_pos :
   phoare [M._shake_absorb_prefix : to_uint pos < 136 ==> to_uint res.`2 < 136] = 1%r.
 proof.
 proc; wp.
-while (to_uint pos < 136 /\ (more <=> to_uint i < to_uint len) /\ to_uint i <= to_uint len)
-      (to_uint len - to_uint i).
+while ((more <=> to_uint i < to_uint len) /\ to_uint i <= to_uint len) (to_uint len - to_uint i).
 + move=> z.
   sp; if.
-  + wp; call keccakf1600_ll; wp; skip => &m [] [p0 s0 m0] [#] _ _ _ _ _ _ hp hmore h1 hm hz hf r /=.
-    have hlt : to_uint i{m} < to_uint len{m} by rewrite -hmore.
-    have hi := Thash.w64_inc_bound i{m} (to_uint len{m}) hlt _; first by case: (W64.to_uint_cmp len{m}).
-    rewrite /protect_64 /= W64.ultE hi.
-    by move: hlt hz; pose u := to_uint i{m}; pose v := to_uint len{m}; smt().
-  wp; skip => &m [] [p0 s0 m0] [#] e1 e2 e3 e4 e5 e6 hp hmore h1 hm hz hf /=.
-  have hlt : to_uint i{m} < to_uint len{m} by rewrite -hmore.
-  have hi := Thash.w64_inc_bound i{m} (to_uint len{m}) hlt _; first by case: (W64.to_uint_cmp len{m}).
-  rewrite W64.ultE hi.
-  have hq : to_uint pos{m} < 136.
-  + have hp1 := Thash.w64_inc_bound p0 136 hp _; first done.
-    have h136 : to_uint (W64.of_int 136) = 136 by rewrite W64.of_uintK.
-    by smt(W64.to_uint_eq).
-  by move: hlt hz; pose u := to_uint i{m}; pose v := to_uint len{m}; smt().
-wp; skip => &m /= hp; split.
-+ by rewrite hp W64.ultE /=; case: (W64.to_uint_cmp len{m}).
-by move=> i1 l1 m1 p1; pose u := to_uint i1; pose v := to_uint l1; smt().
+  + wp; call keccakf1600_ll; wp; skip => &m [[st0 p0 m0] [#] _ _ _ _ _ _ _ hmore hle hm hz] _.
+    rewrite /protect_64 /=; move: (prefix_step i{m} len{m} z _ hz); first by rewrite -hmore.
+    by move=> [#] -> -> ->.
+  wp; skip => &m [[st0 p0 m0] [#] _ _ _ _ _ _ _ hmore hle hm hz] _ /=.
+  move: (prefix_step i{m} len{m} z _ hz); first by rewrite -hmore.
+  by move=> [#] -> -> ->.
+wp; skip => &m /= _; split.
++ by rewrite W64.ultE /=; case: (W64.to_uint_cmp len{m}).
+move=> i1 l1 m1 p1; split; first smt().
+move=> _ _ /=; rewrite W64.uleE W64.of_uintK /=.
+by case: (136 <= to_uint p1) => h /=; smt(W64.of_uintK).
 qed.
 
 (* ------------------------------------------------------------------ *)
