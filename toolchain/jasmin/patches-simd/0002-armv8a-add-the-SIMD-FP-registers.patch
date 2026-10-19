@@ -1,0 +1,1696 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Sun, 18 Oct 2026 13:04:25 +0600
+Subject: [PATCH] armv8a: add the SIMD&FP registers
+
+On armv8a, xreg_size is U128 but there are no xregisters, so a u128
+value can't live in a register. The 32 SIMD&FP registers v0-v31 now
+form the xreg class, modeled at their full 128 bits.
+
+They're allocatable and part of the calling convention, as in AAPCS64:
+arguments go in v0-v7, results in v0-v3, and v8-v15 are callee-saved.
+AAPCS64 only requires the low 64 bits of v8-v15 to be preserved, but
+they're saved and restored as whole Q registers, so each register has
+one size. MOV (vector) and LDR and STR of a Q register are added, and
+u128 moves, loads and stores are lowered to them. The intrinsics are
+named V followed by the assembly mnemonic (#VMOV, #VLDR, #VSTR). All
+three are data-independent-time instructions (DDI 0487 M.d, C5.2.4).
+
+A Q load or store takes an immediate offset that is a multiple of 16
+from 0 to 65520 or lies in [-256, 255], or an unshifted register. The
+to-save check already requires Q save slots to be 16-byte aligned, so
+the save-slot offset test stays conservative for them, and an
+X17-relative offset that can't be encoded is rejected at assembly
+generation.
+
+armv8a_lloads gets a branch that is never taken: restoring SP from a
+128-bit variable. The generic lloads specification covers any rspi
+whose type passes lip_check_ws, which now includes U128, so the
+definition needs that case, but the only caller passes the stack
+pointer.
+
+On the C side, a u128 argument is a short vector type such as
+uint8x16_t, not __int128, which AAPCS64 passes in a pair of X
+registers.
+
+Since the previous commit, system calls aren't assumed to preserve the
+vector registers. So an export that issues #randombytes now saves and
+restores q8-q15 in full, which costs 16 instructions and 128 bytes of
+frame, and a u128 can't stay in a register across the call. There are
+no D, S, H or B views of the registers, and no #protect for u128.
+#[callee_saved = n] can be rejected when X and Q registers are mixed,
+a problem the hint already has on main. A reg u256 is rejected before
+allocation by a new generic check, whose error says that the vector
+bank has no register of that type. Without it, the u256 would be given
+a Q register and fail later with an internal error.
+
+The 32 new registers shift the identifiers of the variables created
+after them, so register allocation can break ties differently on every
+architecture. The resulting allocations are equivalent.
+
+Co-authored-by: orvenweb3 <orvenweb3@gmail.com>
+---
+ compiler/safetylib/armv8a_safety.ml           |   4 +-
+ compiler/src/armv8a_arch_full.ml              |   7 +-
+ compiler/src/coreArchFactory.mli              |   2 +-
+ compiler/src/pp_arm_v8a.ml                    |  29 ++-
+ compiler/src/regalloc.ml                      |  17 ++
+ .../asmgen/armv8a/vldr_index_scale16.jazz     |  11 +
+ .../asmgen/armv8a/vldr_offset_neg257.jazz     |   7 +
+ .../fail/asmgen/armv8a/vldr_offset_range.jazz |   7 +
+ .../asmgen/armv8a/vldr_offset_unaligned.jazz  |   7 +
+ .../asmgen/armv8a/vldr_scaled_index4.jazz     |   7 +
+ .../fail/asmgen/armv8a/vstr_scaled_index.jazz |   7 +
+ .../asmgen/armv8a/vstr_scaled_index2.jazz     |   7 +
+ .../armv8a/syscall_live_u128.jazz             |  13 +
+ .../register_allocation/armv8a/u256_reg.jazz  |   7 +
+ compiler/tests/negative.expected              |  79 +++++-
+ .../large_stack/save_slot_offset_q.jazz       | 179 ++++++++++++++
+ compiler/tests/success/armv8a/simd_moves.jazz | 117 +++++++++
+ .../advanced/armv8a_register_model.md         |  46 ++++
+ eclib/JModel_armv8a.ec                        |   9 +
+ proofs/compiler/armv8a_decl.v                 | 125 +++++++++-
+ proofs/compiler/armv8a_instr_decl.v           | 233 +++++++++++++++++-
+ proofs/compiler/armv8a_lowering.v             |  27 +-
+ proofs/compiler/armv8a_lowering_proof.v       |  64 ++++-
+ proofs/compiler/armv8a_params.v               |  51 ++--
+ proofs/compiler/armv8a_params_proof.v         |  44 +++-
+ 25 files changed, 1047 insertions(+), 59 deletions(-)
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vldr_index_scale16.jazz
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vldr_offset_neg257.jazz
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vldr_offset_range.jazz
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vldr_offset_unaligned.jazz
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vldr_scaled_index4.jazz
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vstr_scaled_index.jazz
+ create mode 100644 compiler/tests/fail/asmgen/armv8a/vstr_scaled_index2.jazz
+ create mode 100644 compiler/tests/fail/register_allocation/armv8a/syscall_live_u128.jazz
+ create mode 100644 compiler/tests/fail/register_allocation/armv8a/u256_reg.jazz
+ create mode 100644 compiler/tests/success/armv8a/large_stack/save_slot_offset_q.jazz
+ create mode 100644 compiler/tests/success/armv8a/simd_moves.jazz
+
+diff --git a/compiler/safetylib/armv8a_safety.ml b/compiler/safetylib/armv8a_safety.ml
+index 386d9e17..00749d67 100644
+--- a/compiler/safetylib/armv8a_safety.ml
++++ b/compiler/safetylib/armv8a_safety.ml
+@@ -12,7 +12,7 @@ module Armv8a_safety
+   (A: Arch_full.Arch
+       with type reg = Armv8a_decl.register
+        and type regx = Arch_utils.empty
+-       and type xreg = Arch_utils.empty
++       and type xreg = Armv8a_decl.vregister
+        and type rflag = Arm_common.rflag
+        and type cond = Arm_common.condt
+        and type asm_op = Armv8a_instr_decl.armv8a_asm_op
+@@ -20,7 +20,7 @@ module Armv8a_safety
+   : SafetyArch
+     with type reg = Armv8a_decl.register
+      and type regx = Arch_utils.empty
+-     and type xreg = Arch_utils.empty
++     and type xreg = Armv8a_decl.vregister
+      and type rflag = Arm_common.rflag
+      and type cond = Arm_common.condt
+      and type asm_op = Armv8a_instr_decl.armv8a_asm_op
+diff --git a/compiler/src/armv8a_arch_full.ml b/compiler/src/armv8a_arch_full.ml
+index a5b1b089..9d632e84 100644
+--- a/compiler/src/armv8a_arch_full.ml
++++ b/compiler/src/armv8a_arch_full.ml
+@@ -2,7 +2,7 @@
+ open Arch_decl
+ 
+ module type Armv8a_input = sig
+-  val call_conv : (Armv8a_decl.register, Arch_utils.empty, Arch_utils.empty, Arm_common.rflag, Arm_common.condt) calling_convention
++  val call_conv : (Armv8a_decl.register, Arch_utils.empty, Armv8a_decl.vregister, Arm_common.rflag, Arm_common.condt) calling_convention
+ end
+ 
+ (* Create arch_toIdent for ARMv8A *)
+@@ -21,7 +21,7 @@ module Armv8a (Lowering_params : Armv8a_input) = struct
+ 
+   type reg = AD.register
+   type regx = Arch_utils.empty
+-  type xreg = Arch_utils.empty
++  type xreg = AD.vregister
+   type nonrec rflag = Arm_common.rflag
+   type cond = Arm_common.condt
+   type asm_op = Armv8a_instr_decl.armv8a_asm_op
+@@ -55,7 +55,8 @@ module Armv8a (Lowering_params : Armv8a_input) = struct
+      DDI0487M.a, D1.4.10.2 (see also the AAPCS64 stack constraints). *)
+   let sp_min_align = Wsize.U128
+ 
+-  (* One X-register store; SIMD (NEON) stores would raise this to u128. *)
++  (* One X-register store. Stack zeroization stores XZR; clearing with
++     128-bit stores would need a zeroed SIMD&FP register. *)
+   let max_store_size = Wsize.U64
+ 
+   let internal_call_conv = Armv8a_decl.armv8a_internal_call_conv
+diff --git a/compiler/src/coreArchFactory.mli b/compiler/src/coreArchFactory.mli
+index 0a21d11d..c1885cf2 100644
+--- a/compiler/src/coreArchFactory.mli
++++ b/compiler/src/coreArchFactory.mli
+@@ -19,7 +19,7 @@ module Core_arch_RISCV : Arch_full.Core_arch
+ module Core_arch_ARMV8A : Arch_full.Core_arch
+   with type reg = Armv8a_decl.register
+    and type regx = Arch_utils.empty
+-   and type xreg = Arch_utils.empty
++   and type xreg = Armv8a_decl.vregister
+    and type rflag = Arm_common.rflag
+    and type cond = Arm_common.condt
+    and type asm_op = Armv8a_instr_decl.armv8a_asm_op
+diff --git a/compiler/src/pp_arm_v8a.ml b/compiler/src/pp_arm_v8a.ml
+index 0c9df36d..63a95e7e 100644
+--- a/compiler/src/pp_arm_v8a.ml
++++ b/compiler/src/pp_arm_v8a.ml
+@@ -62,10 +62,29 @@ let pp_reg_address addr =
+ 
+ let pp_condt = hash_to_string string_of_condt
+ 
++(* A SIMD&FP register operand. The width paired with it in the instruction
++   description is the element size of its arrangement ([U8] for 16B, [U16]
++   for 8H, [U32] for 4S, [U64] for 2D), or [U128] for the Q name of the
++   register. *)
++let pp_vregister_name = hash_to_string vregister_to_string
++
++let pp_vregister (sz : Wsize.wsize) (r : vregister) =
++  let v = pp_vregister_name r in
++  let n = String.sub v 1 (String.length v - 1) in
++  match sz with
++  | Wsize.U8 -> v ^ ".16b"
++  | Wsize.U16 -> v ^ ".8h"
++  | Wsize.U32 -> v ^ ".4s"
++  | Wsize.U64 -> v ^ ".2d"
++  | Wsize.U128 -> "q" ^ n
++  | Wsize.U256 ->
++      hierror ~loc:Lnone ~kind:"assembly printing" ~internal:true
++        "no 256-bit view of a SIMD&FP register"
++
+ (* A64 has no conditional execution: a condition is always a proper operand
+    (CSEL, CSET, ...), declared last in the argument list, so it is printed
+    in place like any other operand. *)
+-let pp_asm_arg ?(wform = false) (arg : (register, Arch_utils.empty, Arch_utils.empty, rflag, condt) asm_arg) =
++let pp_asm_arg ?(wform = false) ?(vsz = Wsize.U128) (arg : (register, Arch_utils.empty, vregister, rflag, condt) asm_arg) =
+   match arg with
+   | Condt ct -> pp_condt ct
+   | Imm (ws, w) -> pp_imm (Conv.z_unsigned_of_word ws w)
+@@ -80,7 +99,7 @@ let pp_asm_arg ?(wform = false) (arg : (register, Arch_utils.empty, Arch_utils.e
+         ~internal:true
+         "memory operand relative to the instruction pointer"
+   | ImmRip _ -> assert false (* Only on ARMv7-M. *)
+-  | XReg _ -> .
++  | XReg r -> pp_vregister vsz r
+ 
+ (* -------------------------------------------------------------------- *)
+ 
+@@ -132,7 +151,7 @@ let pp_ADR dst p =
+ module Armv8aTarget : AsmTargetBuilder.AsmTarget with
+   type reg = Armv8a_decl.register
+   and type regx = Arch_utils.empty
+-  and type xreg = Arch_utils.empty
++  and type xreg = Armv8a_decl.vregister
+   and type rflag = Arm_common.rflag
+   and type cond = Arm_common.condt
+   and type asm_op = armv8a_asm_op
+@@ -140,7 +159,7 @@ module Armv8aTarget : AsmTargetBuilder.AsmTarget with
+ 
+   type reg = Armv8a_decl.register
+   type regx = Arch_utils.empty
+-  type xreg = Arch_utils.empty
++  type xreg = Armv8a_decl.vregister
+   type rflag = Arm_common.rflag
+   type cond = Arm_common.condt
+   type asm_op = armv8a_asm_op
+@@ -229,7 +248,7 @@ module Armv8aTarget : AsmTargetBuilder.AsmTarget with
+                declaration pairs them with a width of at most [U32]. *)
+             let pargs =
+               List.map
+-                (fun (sz, a) -> pp_asm_arg ~wform:(Wsize.size_8_32 sz) a)
++                (fun (sz, a) -> pp_asm_arg ~wform:(Wsize.size_8_32 sz) ~vsz:sz a)
+                 pp.pp_aop_args
+             in
+             let pargs =
+diff --git a/compiler/src/regalloc.ml b/compiler/src/regalloc.ml
+index c882ed81..32681309 100644
+--- a/compiler/src/regalloc.ml
++++ b/compiler/src/regalloc.ml
+@@ -1452,6 +1452,23 @@ let global_allocation return_addresses (funcs: ('info, 'asm) func list) :
+     let add_conflicts x = Sv.fold (conflicts_add_one Arch.pointer_data Arch.reg_size Arch.asmOp vars tr Lnone x) Arch.syscall_kill in
+     Hashtbl.fold (fun _o live cnf -> cnf |> Sv.fold add_conflicts live) slive conflicts in
+ 
++  (* Give a specific error message if a variable of the vector bank is larger
++     than the registers of that bank: no choice of register can be valid. An
++     empty bank is reported by [two_phase_coloring]. *)
++  begin match Arch.xmm_allocatable_vars with
++  | { v_ty = Bty (U rsz); _ } :: _ ->
++      Hv.iter (fun x _ ->
++          match x.v_ty with
++          | Bty (U sz) when Wsize.wsize_cmp sz rsz = Datatypes.Gt ->
++              hierror_reg ~loc:Lnone "unable to allocate %a: bank “%s” has no register of type %a on this architecture"
++                (Printer.pp_dvar ~debug:(debug())) x
++                (string_of_kind Vector)
++                PrintCommon.pp_ty x.v_ty
++          | _ -> ())
++        vars
++  | _ -> ()
++  end;
++
+   let a = A.empty nv in
+ 
+   (* Allocate all_vars *)
+diff --git a/compiler/tests/fail/asmgen/armv8a/vldr_index_scale16.jazz b/compiler/tests/fail/asmgen/armv8a/vldr_index_scale16.jazz
+new file mode 100644
+index 00000000..7de82b2d
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vldr_index_scale16.jazz
+@@ -0,0 +1,11 @@
++/* A u128 array indexed by a register: LDR <Qt> could shift the index by 4,
++   but assembly generation has no scale of 16. */
++export
++fn vldr_index_scale16(reg u64 p i) {
++    stack u128[4] s;
++    reg u128 a;
++    a = [:u128 p];
++    s[0] = a; s[1] = a; s[2] = a; s[3] = a;
++    a = s[i];
++    [:u128 p] = a;
++}
+diff --git a/compiler/tests/fail/asmgen/armv8a/vldr_offset_neg257.jazz b/compiler/tests/fail/asmgen/armv8a/vldr_offset_neg257.jazz
+new file mode 100644
+index 00000000..97599463
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vldr_offset_neg257.jazz
+@@ -0,0 +1,7 @@
++/* The LDUR <Qt> offset is below the signed 9-bit range. */
++export
++fn vldr_offset_neg257(reg u64 p) {
++    reg u128 a;
++    a = [:u128 p - 257];
++    [:u128 p] = a;
++}
+diff --git a/compiler/tests/fail/asmgen/armv8a/vldr_offset_range.jazz b/compiler/tests/fail/asmgen/armv8a/vldr_offset_range.jazz
+new file mode 100644
+index 00000000..bff011d4
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vldr_offset_range.jazz
+@@ -0,0 +1,7 @@
++/* The LDR <Qt> offset is above the unsigned 12-bit range scaled by 16. */
++export
++fn vldr_offset_range(reg u64 p) {
++    reg u128 a;
++    a = [:u128 p + 65536];
++    [:u128 p] = a;
++}
+diff --git a/compiler/tests/fail/asmgen/armv8a/vldr_offset_unaligned.jazz b/compiler/tests/fail/asmgen/armv8a/vldr_offset_unaligned.jazz
+new file mode 100644
+index 00000000..48672579
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vldr_offset_unaligned.jazz
+@@ -0,0 +1,7 @@
++/* The LDR <Qt> offset is outside the unscaled 9-bit range and not a multiple of 16. */
++export
++fn vldr_offset_unaligned(reg u64 p) {
++    reg u128 a;
++    a = [:u128 p + 264];
++    [:u128 p] = a;
++}
+diff --git a/compiler/tests/fail/asmgen/armv8a/vldr_scaled_index4.jazz b/compiler/tests/fail/asmgen/armv8a/vldr_scaled_index4.jazz
+new file mode 100644
+index 00000000..e33ab732
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vldr_scaled_index4.jazz
+@@ -0,0 +1,7 @@
++/* LDR/STR <Qt> only shift the register offset by 4: a scale of 4 is unencodable. */
++export
++fn vldr_scaled_index4(reg u64 p i) {
++    reg u128 a;
++    a = [:u128 p + 4 * i];
++    [:u128 p] = a;
++}
+diff --git a/compiler/tests/fail/asmgen/armv8a/vstr_scaled_index.jazz b/compiler/tests/fail/asmgen/armv8a/vstr_scaled_index.jazz
+new file mode 100644
+index 00000000..f2efdcf4
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vstr_scaled_index.jazz
+@@ -0,0 +1,7 @@
++/* LDR/STR <Qt> only shift the register offset by 4: a scale of 8 is unencodable. */
++export
++fn vstr_scaled_index(reg u64 p i) {
++    reg u128 a;
++    a = [:u128 p];
++    [:u128 p + 8 * i] = a;
++}
+diff --git a/compiler/tests/fail/asmgen/armv8a/vstr_scaled_index2.jazz b/compiler/tests/fail/asmgen/armv8a/vstr_scaled_index2.jazz
+new file mode 100644
+index 00000000..3dc287b2
+--- /dev/null
++++ b/compiler/tests/fail/asmgen/armv8a/vstr_scaled_index2.jazz
+@@ -0,0 +1,7 @@
++/* LDR/STR <Qt> only shift the register offset by 4: a scale of 2 is unencodable. */
++export
++fn vstr_scaled_index2(reg u64 p i) {
++    reg u128 a;
++    a = [:u128 p];
++    [:u128 p + 2 * i] = a;
++}
+diff --git a/compiler/tests/fail/register_allocation/armv8a/syscall_live_u128.jazz b/compiler/tests/fail/register_allocation/armv8a/syscall_live_u128.jazz
+new file mode 100644
+index 00000000..66e32ccd
+--- /dev/null
++++ b/compiler/tests/fail/register_allocation/armv8a/syscall_live_u128.jazz
+@@ -0,0 +1,13 @@
++/* A syscall is not assumed to preserve the vector registers: [a] cannot stay
++   in v8-v15 across it (AAPCS64 preserves only their low 64 bits), and there
++   is no other register for it. */
++export fn syscall_live_u128(reg ptr u8[48] io) -> reg ptr u8[48] {
++  stack u8[16] r;
++  reg u128 a b;
++  a = io[:u128 0];
++  r = #randombytes(r);
++  b = r[:u128 0];
++  io[:u128 1] = a;
++  io[:u128 2] = b;
++  return io;
++}
+diff --git a/compiler/tests/fail/register_allocation/armv8a/u256_reg.jazz b/compiler/tests/fail/register_allocation/armv8a/u256_reg.jazz
+new file mode 100644
+index 00000000..00804d54
+--- /dev/null
++++ b/compiler/tests/fail/register_allocation/armv8a/u256_reg.jazz
+@@ -0,0 +1,7 @@
++/* The SIMD&FP registers hold 128 bits: a 256-bit register variable cannot be
++   allocated. */
++export fn u256_reg(reg u64 p) {
++  reg u256 x;
++  x = [:u256 p];
++  [:u256 p] = x;
++}
+diff --git a/compiler/tests/negative.expected b/compiler/tests/negative.expected
+index 01f40c84..8432d4fc 100644
+--- a/compiler/tests/negative.expected
++++ b/compiler/tests/negative.expected
+@@ -585,6 +585,73 @@ Allowed args compatible with the input (except on immediate sizes and address sh
+ All allowed args (regardless of the input) are:
+   [[reg]; [reg]; [mem (glob not allowed) [Xn|SP, #imm], imm a multiple of 8 in [-512, 504]]]
+ 
++fail/asmgen/armv8a/vldr_index_scale16.jazz:
++
++"fail/asmgen/armv8a/vldr_index_scale16.jazz", line 9 (4-13):
++compilation error in function vldr_index_scale16:
++asmgen: Invalid address:  sp +64u ((64u) 16 *64u x1 +64u (64u) 0)
++        Invalid scale: 16 (should be 1, 2, 4, or 8)
++
++fail/asmgen/armv8a/vldr_offset_neg257.jazz:
++
++"fail/asmgen/armv8a/vldr_offset_neg257.jazz", line 5 (4-24):
++compilation error in function vldr_offset_neg257:
++asmgen: instruction VLDR is given at least one too large immediate or unencodable address as an argument.
++Allowed args compatible with the input (except on immediate sizes and address shapes) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++
++fail/asmgen/armv8a/vldr_offset_range.jazz:
++
++"fail/asmgen/armv8a/vldr_offset_range.jazz", line 5 (4-26):
++compilation error in function vldr_offset_range:
++asmgen: instruction VLDR is given at least one too large immediate or unencodable address as an argument.
++Allowed args compatible with the input (except on immediate sizes and address shapes) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++
++fail/asmgen/armv8a/vldr_offset_unaligned.jazz:
++
++"fail/asmgen/armv8a/vldr_offset_unaligned.jazz", line 5 (4-24):
++compilation error in function vldr_offset_unaligned:
++asmgen: instruction VLDR is given at least one too large immediate or unencodable address as an argument.
++Allowed args compatible with the input (except on immediate sizes and address shapes) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++
++fail/asmgen/armv8a/vldr_scaled_index4.jazz:
++
++"fail/asmgen/armv8a/vldr_scaled_index4.jazz", line 5 (4-26):
++compilation error in function vldr_scaled_index4:
++asmgen: instruction VLDR is given at least one too large immediate or unencodable address as an argument.
++Allowed args compatible with the input (except on immediate sizes and address shapes) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++
++fail/asmgen/armv8a/vstr_scaled_index.jazz:
++
++"fail/asmgen/armv8a/vstr_scaled_index.jazz", line 6 (4-26):
++compilation error in function vstr_scaled_index:
++asmgen: instruction VSTR is given at least one too large immediate or unencodable address as an argument.
++Allowed args compatible with the input (except on immediate sizes and address shapes) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++
++fail/asmgen/armv8a/vstr_scaled_index2.jazz:
++
++"fail/asmgen/armv8a/vstr_scaled_index2.jazz", line 6 (4-26):
++compilation error in function vstr_scaled_index2:
++asmgen: instruction VSTR is given at least one too large immediate or unencodable address as an argument.
++Allowed args compatible with the input (except on immediate sizes and address shapes) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++All allowed args (regardless of the input) are:
++  [[xreg]; [mem (glob not allowed) [Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]]]
++
+ fail/asmgen/x86-64/incompatible_args.jazz:
+ 
+ "fail/asmgen/x86-64/incompatible_args.jazz", line 4 (2-14):
+@@ -1205,6 +1272,16 @@ fail/register_allocation/arm-m4/too_many_ret.jazz:
+ compilation error in function too_many_ret:
+ register allocation: too many return values according to the ABI (only 2 available on this architecture)
+ 
++fail/register_allocation/armv8a/syscall_live_u128.jazz:
++
++compilation error:
++register allocation: cannot solve the register allocation problem.
++
++fail/register_allocation/armv8a/u256_reg.jazz:
++
++compilation error:
++register allocation: unable to allocate x (defined at "fail/register_allocation/armv8a/u256_reg.jazz", line 5 (2-3)): bank “vector” has no register of type u256 on this architecture
++
+ fail/register_allocation/x86-64/already_allocated.jazz:
+ 
+ "fail/register_allocation/x86-64/already_allocated.jazz", line 10 (0-22):
+@@ -2094,4 +2171,4 @@ Statistics:
+ 	Pretyping:  65
+ 	Parsing:     5
+ 	Typing:      5
+-	Compile:   248
++	Compile:   257
+diff --git a/compiler/tests/success/armv8a/large_stack/save_slot_offset_q.jazz b/compiler/tests/success/armv8a/large_stack/save_slot_offset_q.jazz
+new file mode 100644
+index 00000000..8b1383c1
+--- /dev/null
++++ b/compiler/tests/success/armv8a/large_stack/save_slot_offset_q.jazz
+@@ -0,0 +1,179 @@
++/* One callee-saved SIMD&FP register (v8) whose save slot is at SP + 65536:
++   a multiple of 4096 (an ADD immediate) but out of the range of LDR and
++   STR of a Q register (a multiple of 16 up to 65520). The 25 vectors live
++   across the loop outnumber the 24 caller-saved SIMD&FP registers. */
++export fn one_saved_q(reg u64 p) -> reg u64 {
++  stack u8[65536] buf;
++  reg u128 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 a22 a23 a24;
++  reg u64 i lim;
++  a0 = [:u128 p + 0];
++  a1 = [:u128 p + 16];
++  a2 = [:u128 p + 32];
++  a3 = [:u128 p + 48];
++  a4 = [:u128 p + 64];
++  a5 = [:u128 p + 80];
++  a6 = [:u128 p + 96];
++  a7 = [:u128 p + 112];
++  a8 = [:u128 p + 128];
++  a9 = [:u128 p + 144];
++  a10 = [:u128 p + 160];
++  a11 = [:u128 p + 176];
++  a12 = [:u128 p + 192];
++  a13 = [:u128 p + 208];
++  a14 = [:u128 p + 224];
++  a15 = [:u128 p + 240];
++  a16 = [:u128 p + 256];
++  a17 = [:u128 p + 272];
++  a18 = [:u128 p + 288];
++  a19 = [:u128 p + 304];
++  a20 = [:u128 p + 320];
++  a21 = [:u128 p + 336];
++  a22 = [:u128 p + 352];
++  a23 = [:u128 p + 368];
++  a24 = [:u128 p + 384];
++  lim = 65536; i = 0;
++  while (i < lim) { buf[i] = (8u)i; i += 1; }
++  [:u128 p + 384] = a0;
++  [:u128 p + 368] = a1;
++  [:u128 p + 352] = a2;
++  [:u128 p + 336] = a3;
++  [:u128 p + 320] = a4;
++  [:u128 p + 304] = a5;
++  [:u128 p + 288] = a6;
++  [:u128 p + 272] = a7;
++  [:u128 p + 256] = a8;
++  [:u128 p + 240] = a9;
++  [:u128 p + 224] = a10;
++  [:u128 p + 208] = a11;
++  [:u128 p + 192] = a12;
++  [:u128 p + 176] = a13;
++  [:u128 p + 160] = a14;
++  [:u128 p + 144] = a15;
++  [:u128 p + 128] = a16;
++  [:u128 p + 112] = a17;
++  [:u128 p + 96] = a18;
++  [:u128 p + 80] = a19;
++  [:u128 p + 64] = a20;
++  [:u128 p + 48] = a21;
++  [:u128 p + 32] = a22;
++  [:u128 p + 16] = a23;
++  [:u128 p + 0] = a24;
++  i -= 1;
++  lim = (64u)buf[i];
++  return lim;
++}
++
++/* Callee-saved Q registers (v8-v14) and X registers (x19-x22) in the same
++   save area, at SP + 65536: every save goes through X17. */
++export fn saved_q_and_x(reg u64 p) -> reg u64 {
++  stack u8[65536] buf;
++  reg u128 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 a22 a23 a24 a25 a26 a27 a28 a29 a30;
++  reg u64 x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 x14 x15 x16 x17 x18 x19;
++  reg u64 i lim;
++  a0 = [:u128 p + 0];
++  a1 = [:u128 p + 16];
++  a2 = [:u128 p + 32];
++  a3 = [:u128 p + 48];
++  a4 = [:u128 p + 64];
++  a5 = [:u128 p + 80];
++  a6 = [:u128 p + 96];
++  a7 = [:u128 p + 112];
++  a8 = [:u128 p + 128];
++  a9 = [:u128 p + 144];
++  a10 = [:u128 p + 160];
++  a11 = [:u128 p + 176];
++  a12 = [:u128 p + 192];
++  a13 = [:u128 p + 208];
++  a14 = [:u128 p + 224];
++  a15 = [:u128 p + 240];
++  a16 = [:u128 p + 256];
++  a17 = [:u128 p + 272];
++  a18 = [:u128 p + 288];
++  a19 = [:u128 p + 304];
++  a20 = [:u128 p + 320];
++  a21 = [:u128 p + 336];
++  a22 = [:u128 p + 352];
++  a23 = [:u128 p + 368];
++  a24 = [:u128 p + 384];
++  a25 = [:u128 p + 400];
++  a26 = [:u128 p + 416];
++  a27 = [:u128 p + 432];
++  a28 = [:u128 p + 448];
++  a29 = [:u128 p + 464];
++  a30 = [:u128 p + 480];
++  x0 = [:u64 p + 496];
++  x1 = [:u64 p + 504];
++  x2 = [:u64 p + 512];
++  x3 = [:u64 p + 520];
++  x4 = [:u64 p + 528];
++  x5 = [:u64 p + 536];
++  x6 = [:u64 p + 544];
++  x7 = [:u64 p + 552];
++  x8 = [:u64 p + 560];
++  x9 = [:u64 p + 568];
++  x10 = [:u64 p + 576];
++  x11 = [:u64 p + 584];
++  x12 = [:u64 p + 592];
++  x13 = [:u64 p + 600];
++  x14 = [:u64 p + 608];
++  x15 = [:u64 p + 616];
++  x16 = [:u64 p + 624];
++  x17 = [:u64 p + 632];
++  x18 = [:u64 p + 640];
++  x19 = [:u64 p + 648];
++  lim = 65536; i = 0;
++  while (i < lim) { buf[i] = (8u)i; i += 1; }
++  [:u128 p + 480] = a0;
++  [:u128 p + 464] = a1;
++  [:u128 p + 448] = a2;
++  [:u128 p + 432] = a3;
++  [:u128 p + 416] = a4;
++  [:u128 p + 400] = a5;
++  [:u128 p + 384] = a6;
++  [:u128 p + 368] = a7;
++  [:u128 p + 352] = a8;
++  [:u128 p + 336] = a9;
++  [:u128 p + 320] = a10;
++  [:u128 p + 304] = a11;
++  [:u128 p + 288] = a12;
++  [:u128 p + 272] = a13;
++  [:u128 p + 256] = a14;
++  [:u128 p + 240] = a15;
++  [:u128 p + 224] = a16;
++  [:u128 p + 208] = a17;
++  [:u128 p + 192] = a18;
++  [:u128 p + 176] = a19;
++  [:u128 p + 160] = a20;
++  [:u128 p + 144] = a21;
++  [:u128 p + 128] = a22;
++  [:u128 p + 112] = a23;
++  [:u128 p + 96] = a24;
++  [:u128 p + 80] = a25;
++  [:u128 p + 64] = a26;
++  [:u128 p + 48] = a27;
++  [:u128 p + 32] = a28;
++  [:u128 p + 16] = a29;
++  [:u128 p + 0] = a30;
++  [:u64 p + 648] = x0;
++  [:u64 p + 640] = x1;
++  [:u64 p + 632] = x2;
++  [:u64 p + 624] = x3;
++  [:u64 p + 616] = x4;
++  [:u64 p + 608] = x5;
++  [:u64 p + 600] = x6;
++  [:u64 p + 592] = x7;
++  [:u64 p + 584] = x8;
++  [:u64 p + 576] = x9;
++  [:u64 p + 568] = x10;
++  [:u64 p + 560] = x11;
++  [:u64 p + 552] = x12;
++  [:u64 p + 544] = x13;
++  [:u64 p + 536] = x14;
++  [:u64 p + 528] = x15;
++  [:u64 p + 520] = x16;
++  [:u64 p + 512] = x17;
++  [:u64 p + 504] = x18;
++  [:u64 p + 496] = x19;
++  i -= 1; lim = (64u)buf[i];
++  return lim;
++}
+diff --git a/compiler/tests/success/armv8a/simd_moves.jazz b/compiler/tests/success/armv8a/simd_moves.jazz
+new file mode 100644
+index 00000000..2078e279
+--- /dev/null
++++ b/compiler/tests/success/armv8a/simd_moves.jazz
+@@ -0,0 +1,117 @@
++/* Loads and stores at the encodable address forms. */
++export fn ldst(reg u64 src dst) {
++  reg u128 a b c d;
++  a = [:u128 src + 0];
++  b = [:u128 src + 16];
++  c = [:u128 src + 3];
++  d = [:u128 src - 7];
++  [:u128 dst + 0] = a;
++  [:u128 dst + 33] = c;
++  [:u128 dst + 4080] = b;
++  [:u128 dst - 16] = d;
++}
++
++/* The ends of the immediate offsets: 255 and -256 (LDUR/STUR), 256 and 65520
++   (LDR/STR, a multiple of 16). */
++export fn ldst_bounds(reg u64 src dst) {
++  reg u128 a b c d;
++  a = [:u128 src + 255];
++  b = [:u128 src + 256];
++  c = [:u128 src - 256];
++  d = [:u128 src + 65520];
++  [:u128 dst + 255] = b;
++  [:u128 dst + 256] = c;
++  [:u128 dst - 256] = d;
++  [:u128 dst + 65520] = a;
++}
++
++/* Register offset. */
++export fn ldst_reg(reg u64 src dst i) {
++  reg u128 a;
++  a = [:u128 src + i];
++  [:u128 dst + i] = a;
++}
++
++/* Vector arguments and result (V0-V7 in, V0 out), next to a general-purpose
++   argument. */
++export fn vargs(reg u64 p, reg u128 a b c d e f g h) -> reg u128 {
++  [:u128 p + 0] = a;
++  [:u128 p + 16] = b;
++  [:u128 p + 32] = c;
++  [:u128 p + 48] = d;
++  [:u128 p + 64] = e;
++  [:u128 p + 80] = f;
++  [:u128 p + 96] = g;
++  [:u128 p + 112] = h;
++  return h;
++}
++
++/* Internal call with vector arguments and results. */
++fn inner(reg u128 x y) -> reg u128, reg u128 {
++  return y, x;
++}
++
++export fn call_inner(reg u64 p) {
++  reg u128 a b s t;
++  a = [:u128 p + 0];
++  b = [:u128 p + 16];
++  s, t = inner(a, b);
++  [:u128 p + 32] = s;
++  [:u128 p + 48] = t;
++}
++
++/* 30 live vectors: forces the allocator to use V8-V15 (callee-saved). */
++export fn pressure(reg u64 p) {
++  inline int i;
++  reg u128[30] v;
++  for i = 0 to 30 { v[i] = [:u128 p + 16 * i]; }
++  for i = 0 to 30 { [:u128 p + 480 + 16 * i] = v[29 - i]; }
++}
++
++/* 30 live vectors and 20 live general-purpose values: the save area holds
++   both Q registers (v8-v13) and X registers (x19, x20). */
++export fn pressure_mixed(reg u64 p) {
++  inline int i;
++  reg u128[30] v;
++  reg u64[20] x;
++  for i = 0 to 30 { v[i] = [:u128 p + 16 * i]; }
++  for i = 0 to 20 { x[i] = [:u64 p + 480 + 8 * i]; }
++  for i = 0 to 30 { [:u128 p + 640 + 16 * i] = v[29 - i]; }
++  for i = 0 to 20 { [:u64 p + 1120 + 8 * i] = x[19 - i]; }
++}
++
++/* Stack-resident vectors and a vector stack array. */
++export fn stackvec(reg u64 p) {
++  inline int i;
++  stack u128[4] s;
++  stack u128 t;
++  reg u128 a b;
++  for i = 0 to 4 { a = [:u128 p + 16 * i]; s[i] = a; }
++  b = s[3];
++  t = b;
++  a = s[0];
++  s[3] = a;
++  b = t;
++  s[0] = b;
++  for i = 0 to 4 { a = s[i]; [:u128 p + 64 + 16 * i] = a; }
++}
++
++/* Explicit spill and reload. */
++export fn spill(reg u64 p) {
++  reg u128 a b;
++  a = [:u128 p + 0];
++  () = #spill(a);
++  b = [:u128 p + 16];
++  [:u128 p + 48] = b;
++  () = #unspill(a);
++  [:u128 p + 32] = a;
++}
++
++/* Load of a u128 global. */
++u128 gv = 0x0f0e0d0c0b0a09080706050403020100;
++
++export fn load_global(reg u64 dst) {
++  reg u128 a;
++  a = gv;
++  [:u128 dst + 0] = a;
++}
+diff --git a/docs/source/compiler/advanced/armv8a_register_model.md b/docs/source/compiler/advanced/armv8a_register_model.md
+index 6a4cb35a..7403203f 100644
+--- a/docs/source/compiler/advanced/armv8a_register_model.md
++++ b/docs/source/compiler/advanced/armv8a_register_model.md
+@@ -130,6 +130,50 @@ the `SP[]` accessor). This is what the backend's custom `armv8a_lloads` does: it
+ restores the ordinary saved registers first (relative to the still-live `SP`),
+ then loads the saved `SP` into `X17` and issues `MOV SP, X17`.
+ 
++## 6. The SIMD&FP registers and the calling convention
++
++AArch64 has 32 SIMD&FP registers `V0..V31` of 128 bits each; the narrower
++`D`, `S`, `H` and `B` names are views of the same registers.
++
++> Arm ARM (DDI 0487 M.d), **B1.2 "Registers in AArch64 Execution state"**,
++> p. B1-206: "32 SIMD&FP registers, V0 to V31. Each can be accessed as:
++> [...] A 128-bit register named Q0 to Q31."
++
++They are the `xreg` register class of the backend (`vregister` in
++`armv8a_decl.v`), modeled at their full width: a `u128` variable in a register
++lives in one of them. The narrower views are not registers of the model.
++
++Their use at a function boundary follows the AAPCS64 (IHI 0055, release
++2025Q4):
++
++> AAPCS64, *SIMD and Floating-Point registers*: "The first eight registers,
++> v0-v7, are used to pass argument values into a subroutine and to return
++> result values from a function. [...] Registers v8-v15 are Callee-saved and
++> the remaining registers (v0-v7, v16-v31) are Caller-saved. Additionally,
++> only the bottom 64 bits of each value stored in v8-v15 need to be
++> Callee-saved."
++
++- **Arguments** of type `u128` go in `V0..V7`, in order, independently of the
++  `u64` arguments in `X0..X7`.
++- **Results** of type `u128` go in `V0..V3`: a result is returned in the
++  registers an argument of its type would be passed in (*Result return*), and
++  a homogeneous short-vector aggregate of at most four vectors is passed in
++  consecutive SIMD&FP registers (*Parameter passing rules*, C.2).
++- **`V8..V15`** are saved and restored in full, 128 bits, by an export function
++  that uses them. This preserves more than the 64 bits the AAPCS64 requires.
++  In the other direction, a system call (`#randombytes`) is not assumed to
++  preserve them, because the callee only has to preserve their low 64 bits: a
++  `u128` value live across a system call must be spilled.
++
++**Interfacing with C.** On the C side, a `u128` argument or result of an export
++function is a short vector type, such as `uint8x16_t` or `uint32x4_t` from
++`arm_neon.h` (AAPCS64, *APPENDIX Support for Advanced SIMD Extensions*), not
++`unsigned __int128`: a 16-byte integer is passed in a pair of general-purpose
++registers (*Parameter passing rules*, C.11). Several `u128` results correspond
++to a C function returning a structure of up to four such vectors (an HVA). As
++on x86-64, a function that returns both `u64` and `u128` results has no C
++equivalent.
++
+ ---
+ 
+ ### Cross-reference to the code
+@@ -141,3 +185,5 @@ then loads the saved `SP` into `X17` and issues `MOV SP, X17`.
+ | Round frames to 16 | `armv8a_params.v` — `round_up_16`, `armv8a_allocate_stack_frame`, `armv8a_free_stack_frame` | Arm ARM D1.4.10.2 (RRDMXG, RTFVSM) |
+ | Re-align frames ≥ 16 | `armv8a_params.v` — `armv8a_set_up_sp_register` | Arm ARM D1.4.10.2; AAPCS64 |
+ | Restore `SP` via scratch + `MOV` | `armv8a_params.v` — `armv8a_lloads` | Arm ARM B1.2, p. B1-206 |
++| `V0..V31` as 128-bit `xreg` | `armv8a_decl.v` — `vregister`, `vregisters` | Arm ARM (M.d) B1.2, p. B1-206 |
++| SIMD&FP calling convention | `armv8a_decl.v` — `armv8a_call_conv`, `armv8a_internal_call_conv` | AAPCS64 (2025Q4), *SIMD and Floating-Point registers*, *Result return* |
+diff --git a/eclib/JModel_armv8a.ec b/eclib/JModel_armv8a.ec
+index 37656be9..c7290d52 100644
+--- a/eclib/JModel_armv8a.ec
++++ b/eclib/JModel_armv8a.ec
+@@ -299,3 +299,12 @@ op LDP_32 (x: W64.t) : W32.t * W32.t = (x \bits32 0, x \bits32 1).
+ op STP_64 (x y: W64.t) : W128.t = W2u64.pack2 [x; y].
+ 
+ op STP_32 (x y: W32.t) : W64.t = W2u32.pack2 [x; y].
++
++(* -------------------------------------------------------------------- *)
++(* Advanced SIMD. A SIMD&FP register is a W128.t. *)
++
++op VMOV (x: W128.t) : W128.t = x.
++
++op VLDR (x: W128.t) : W128.t = x.
++
++op VSTR (x: W128.t) : W128.t = x.
+diff --git a/proofs/compiler/armv8a_decl.v b/proofs/compiler/armv8a_decl.v
+index 46705998..3afe2bca 100644
+--- a/proofs/compiler/armv8a_decl.v
++++ b/proofs/compiler/armv8a_decl.v
+@@ -1,8 +1,11 @@
+ (* ARMv8-A (AArch64) architecture declaration.
+ 
+- * Description of the A64 base architecture (no SIMD/FP, no extensions).
++ * Description of the A64 base architecture and of its Advanced SIMD
++ * register file (no floating point).
+  * General-purpose registers are modeled at their full 64-bit width (X
+  * registers); instructions come in 64-bit (X) and 32-bit (W) forms.
++ * SIMD&FP registers are modeled at their full 128-bit width (V/Q
++ * registers).
+  *)
+ From elpi.apps Require Import derive.std.
+ From mathcomp Require Import ssreflect ssrfun ssrbool eqtype fintype ssralg.
+@@ -244,11 +247,72 @@ Definition is_mov_imm (ws : wsize) (x : Z) : bool :=
+       is_wide_imm ws (Z.lnot x mod wbase ws)
+     | is_bitmask_imm ws x ].
+ 
++(* -------------------------------------------------------------------- *)
++(* SIMD&FP registers.
++
++   AArch64 has 32 SIMD&FP registers V0..V31, each 128 bits wide (ARM DDI
++   0487 M.d, B1.2 "Registers in AArch64 Execution state", p. B1-206). They are
++   modeled at their full width: the Q view of a register is the register
++   itself, and the narrower views (D, S, H, B) are not modeled as
++   registers. Writing a narrower view zero-extends the value to the whole
++   register (the setter of the V{width}(n) accessor, ARM DDI 0487 M.d,
++   J1.4.3.351 V, outside SVE); an instruction writing such a view
++   states the zero-extension in its semantics. *)
++
++#[only(eqbOK)] derive
++Variant vregister : Type :=
++| V0  | V1  | V2  | V3  | V4  | V5  | V6  | V7
++| V8  | V9  | V10 | V11 | V12 | V13 | V14 | V15
++| V16 | V17 | V18 | V19 | V20 | V21 | V22 | V23
++| V24 | V25 | V26 | V27 | V28 | V29 | V30 | V31.
++
++#[ export ]
++Instance eqTC_vregister : eqTypeC vregister :=
++  { ceqP := vregister_eqb_OK }.
++
++Canonical armv8a_vregister_eqType := @ceqT_eqType _ eqTC_vregister.
++
++Definition vregisters :=
++  [:: V0;  V1;  V2;  V3;  V4;  V5;  V6;  V7;
++      V8;  V9;  V10; V11; V12; V13; V14; V15;
++      V16; V17; V18; V19; V20; V21; V22; V23;
++      V24; V25; V26; V27; V28; V29; V30; V31 ].
++
++Lemma vregister_fin_axiom : Finite.axiom vregisters.
++Proof. by case. Qed.
++
++#[ export ]
++Instance finTC_vregister : finTypeC vregister :=
++  {
++    cenum  := vregisters;
++    cenumP := vregister_fin_axiom;
++  }.
++
++Canonical vregister_finType := @cfinT_finType _ finTC_vregister.
++
++Definition vregister_to_string (r : vregister) : string :=
++  match r with
++  | V0  => "v0"  | V1  => "v1"  | V2  => "v2"  | V3  => "v3"
++  | V4  => "v4"  | V5  => "v5"  | V6  => "v6"  | V7  => "v7"
++  | V8  => "v8"  | V9  => "v9"  | V10 => "v10" | V11 => "v11"
++  | V12 => "v12" | V13 => "v13" | V14 => "v14" | V15 => "v15"
++  | V16 => "v16" | V17 => "v17" | V18 => "v18" | V19 => "v19"
++  | V20 => "v20" | V21 => "v21" | V22 => "v22" | V23 => "v23"
++  | V24 => "v24" | V25 => "v25" | V26 => "v26" | V27 => "v27"
++  | V28 => "v28" | V29 => "v29" | V30 => "v30" | V31 => "v31"
++  end.
++
++#[ export ]
++Instance vreg_toS : ToString (lword armv8a_xreg_size) vregister :=
++  {| category  := "vector register"
++   ; to_string := vregister_to_string
++  |}.
++
+ (* -------------------------------------------------------------------- *)
+ (* Architecture declaration. *)
+ 
+ Notation register_ext := empty.
+-Notation xregister := empty.
++Notation xregister := vregister.
+ 
+ (* Immediate-argument conditions (see [caimm_cond] in arch_decl.v).
+    Each constructor is a validity predicate for an immediate operand and
+@@ -309,10 +373,25 @@ Definition armv8a_caimm_cond_pp (checker : armv8a_caimm_cond) : string :=
+      register and no offset register, and the displacement is "a multiple of
+      8 in the range -512 to 504" (X registers) or "a multiple of 4 in the
+      range -256 to 252" (W registers), encoded in the imm7 field
+-     (ARM DDI 0487 M.d, C6.2.214 LDP and C6.2.414 STP). *)
++     (ARM DDI 0487 M.d, C6.2.214 LDP and C6.2.414 STP).
++   - [CAmemC_armv8a_q]: the address of a load or store of a 128-bit SIMD&FP
++     register (LDR/STR <Qt>). The encodable forms are a base register with
++     an unsigned offset that is a multiple of 16 in [0, 65520] (field imm12
++     scaled by 16; ARM DDI 0487 M.d, C7.2.230 LDR (immediate, SIMD&FP),
++     p. C7-3528), a base register with a signed unscaled offset in
++     [-256, 255] (field imm9, which assemblers select for this syntax;
++     C7.2.235 LDUR (SIMD&FP), p. C7-3545), and a base register with an
++     unshifted register offset (LSL #0; C7.2.232 LDR (register, SIMD&FP),
++     p. C7-3535). The stores have the same forms (C7.2.387, C7.2.391 and
++     C7.2.388).
++     The register offset scaled by 16 (LSL #4) is encodable but not
++     accepted: assembly generation represents scales 1, 2, 4 and 8 only
++     ([scale_of_z]) and reports an index scaled by 16 as an invalid scale
++     before this check. *)
+ #[only(eqbOK)] derive
+ Variant armv8a_camem_cond :=
+-  | CAmemC_armv8a_pair of wsize.
++  | CAmemC_armv8a_pair of wsize
++  | CAmemC_armv8a_q.
+ 
+ #[ export ]
+ Instance eqTC_armv8a_camem_cond : eqTypeC armv8a_camem_cond :=
+@@ -323,12 +402,21 @@ Definition is_pair_offset (ws : wsize) (d : Z) : bool :=
+   let q := (d / n)%Z in
+   ((d mod n =? 0) && (-64 <=? q) && (q <=? 63))%Z.
+ 
++Definition is_q_offset (d : Z) : bool :=
++  ((-256 <=? d) && (d <=? 255))%Z
++  || ((d mod 16 =? 0) && (0 <=? d) && (d <=? 65520))%Z.
++
+ Definition armv8a_check_CAmem
+   (checker : armv8a_camem_cond) (disp : word armv8a_reg_size)
+-  (base : option register) (_ : nat) (ofs : option register) : bool :=
++  (base : option register) (scale : nat) (ofs : option register) : bool :=
+   match checker with
+   | CAmemC_armv8a_pair ws =>
+     isSome base && ~~ isSome ofs && is_pair_offset ws (wsigned disp)
++  | CAmemC_armv8a_q =>
++    isSome base &&
++    if ofs is Some _
++    then (disp == 0%R) && Nat.eqb scale 0
++    else is_q_offset (wsigned disp)
+   end.
+ 
+ Definition armv8a_camem_cond_pp (checker : armv8a_camem_cond) : string :=
+@@ -337,6 +425,8 @@ Definition armv8a_camem_cond_pp (checker : armv8a_camem_cond) : string :=
+     if ws == U64
+     then "[Xn|SP, #imm], imm a multiple of 8 in [-512, 504]"
+     else "[Xn|SP, #imm], imm a multiple of 4 in [-256, 252]"
++  | CAmemC_armv8a_q =>
++    "[Xn|SP, #imm] with imm in [-256, 255] or a multiple of 16 in [0, 65520], or [Xn|SP, Xm]"
+   end%string.
+ 
+ #[ export ]
+@@ -346,7 +436,7 @@ Instance armv8a_decl : arch_decl register register_ext xregister rflag condt :=
+   ; cond_eqC  := eqTC_condt
+   ; toS_r     := reg_toS
+   ; toS_rx    := empty_toS lword64
+-  ; toS_x     := empty_toS lword128
++  ; toS_x     := vreg_toS
+   ; toS_f     := rflag_toS
+   ; reg_size_neq_xreg_size := refl_equal
+   ; ad_rsp := RSP
+@@ -369,18 +459,33 @@ Instance armv8a_decl : arch_decl register register_ext xregister rflag condt :=
+    x18 (reserved on Windows, on Apple platforms and under
+    shadow-call-stack Linux), and it is excluded from the register file
+    altogether (see the [register] declaration above), so this convention
+-   is valid on all platforms. *)
++   is valid on all platforms.
++
++   SIMD&FP registers (AAPCS64, Arm IHI 0055, release 2025Q4, "SIMD and
++   Floating-Point registers"): V0-V7 pass arguments and return results,
++   V8-V15 are callee-saved, and V0-V7 and V16-V31 are caller-saved. A
++   result is returned in the registers that an argument of its type would
++   be passed in ("Result return"), and a homogeneous short-vector
++   aggregate of at most four members is passed in consecutive SIMD&FP
++   registers (rule C.2 of the parameter passing rules), so up to four
++   vector results are returned, in V0-V3.
++   Only the bottom 64 bits of V8-V15 need to be callee-saved. They are
++   declared callee-saved as whole registers, so the compiler saves and
++   restores all 128 bits, which preserves more than required. In the other
++   direction, a system call is not assumed to preserve them
++   ([syscall_preserved], arch_decl.v). *)
+ 
+ Definition armv8a_call_conv : calling_convention :=
+   {| callee_saved :=
+       map ARReg [:: R19; R20; R21; R22; R23; R24; R25; R26; R27; R28
+                   ; R29; RSP ]
++      ++ map AXReg [:: V8; V9; V10; V11; V12; V13; V14; V15 ]
+    ; callee_saved_not_bool := erefl true
+    ; callee_saved_has_rsp  := erefl true
+    ; call_reg_args  := [:: R0; R1; R2; R3; R4; R5; R6; R7 ]
+-   ; call_xreg_args := [::]
++   ; call_xreg_args := [:: V0; V1; V2; V3; V4; V5; V6; V7 ]
+    ; call_reg_ret   := [:: R0; R1; R2; R3; R4; R5; R6; R7 ]
+-   ; call_xreg_ret  := [::]
++   ; call_xreg_ret  := [:: V0; V1; V2; V3 ]
+    ; call_reg_ret_uniq := erefl true
+    |}.
+ 
+@@ -394,6 +499,6 @@ Definition armv8a_internal_call_conv : internal_calling_convention :=
+           R19; R20; R21; R22; R23; R24;
+           R25; R26; R27; R28 ]
+    ; icall_regx  := [::]
+-   ; icall_xreg  := [::]
++   ; icall_xreg  := vregisters
+    ; icall_rflag := [:: CF; NF; ZF; VF ]
+   |}.
+diff --git a/proofs/compiler/armv8a_instr_decl.v b/proofs/compiler/armv8a_instr_decl.v
+index 11e936fa..cd86fff4 100644
+--- a/proofs/compiler/armv8a_instr_decl.v
++++ b/proofs/compiler/armv8a_instr_decl.v
+@@ -167,7 +167,16 @@ Variant armv8a_mnemonic : Type :=
+ (* Barriers *)
+ | CSDB                           (* Consumption of speculative data barrier *)
+ | DSB                            (* Data synchronization barrier, full system *)
+-| ISB.                           (* Instruction synchronization barrier *)
++| ISB                            (* Instruction synchronization barrier *)
++
++(* Advanced SIMD. The [opts_size] option of these mnemonics is the element
++   size of the arrangement (U8 for 16B, U16 for 8H, U32 for 4S, U64 for 2D),
++   or U128 for the loads and stores of a whole Q register. Each one is named
++   V followed by its assembly mnemonic; its element sizes, and with them its
++   intrinsic names, are given by [vector_esizes] below. *)
++| VMOV                           (* Move vector (MOV, alias of ORR (vector)) *)
++| VLDR                           (* Load a Q register *)
++| VSTR.                          (* Store a Q register *)
+ 
+ #[ export ]
+ Instance eqTC_armv8a_mnemonic : eqTypeC armv8a_mnemonic :=
+@@ -189,6 +198,7 @@ Definition armv8a_mnemonics : seq armv8a_mnemonic :=
+     ; LDR; LDRB; LDRH; LDRSB; LDRSH; LDRSW; LDRW; LDP
+     ; STR; STRB; STRH; STP
+     ; CSDB; DSB; ISB
++    ; VMOV; VLDR; VSTR
+   ].
+ 
+ Lemma armv8a_mnemonic_fin_axiom : Finite.axiom armv8a_mnemonics.
+@@ -352,8 +362,39 @@ Definition string_of_armv8a_mnemonic (mn : armv8a_mnemonic) : string :=
+   | CSDB => "CSDB"
+   | DSB => "DSB"
+   | ISB => "ISB"
++  | VMOV => "VMOV"
++  | VLDR => "VLDR"
++  | VSTR => "VSTR"
+   end%string.
+ 
++(* Assembly mnemonic of the Advanced SIMD instructions. *)
++Definition vasm_name (mn : armv8a_mnemonic) : string :=
++  match mn with
++  | VMOV => "MOV"
++  | VLDR => "LDR"
++  | VSTR => "STR"
++  | _ => string_of_armv8a_mnemonic mn
++  end%string.
++
++(* The element sizes ([opts_size]) at which each Advanced SIMD mnemonic
++   exists; empty for the general-purpose mnemonics. A mnemonic with a single
++   element size has no size suffix in Jasmin; the others are suffixed with
++   their arrangement as on x86 ([VADD_4u32] is [ADD <Vd>.4S, ...]). *)
++Definition vector_esizes (mn : armv8a_mnemonic) : seq wsize :=
++  match mn with
++  | VMOV => [:: U8 ]
++  | VLDR | VSTR => [:: U128 ]
++  | _ => [::]
++  end.
++
++Definition velem_of_wsize (ws : wsize) : velem :=
++  match ws with
++  | U8 => VE8
++  | U16 => VE16
++  | U32 => VE32
++  | _ => VE64
++  end.
++
+ 
+ (* -------------------------------------------------------------------- *)
+ (* ARMv8-A operators are pairs of mnemonics and options. *)
+@@ -607,7 +648,10 @@ Notation msbf := (if osz == U64 then MSB_MERGE else MSB_CLEAR) (only parsing).
+ Let armv8a_mn_str (mn : armv8a_mnemonic) : unit -> string :=
+   if mn \in sized_mnemonics
+   then pp_sz (string_of_armv8a_mnemonic mn) osz
+-  else pp_s (string_of_armv8a_mnemonic mn).
++  else
++    if 1 < size (vector_esizes mn)
++    then pp_ve_sz (string_of_armv8a_mnemonic mn) (velem_of_wsize osz) U128
++    else pp_s (string_of_armv8a_mnemonic mn).
+ 
+ (* Argument kinds.
+    Immediate operands are checked against the A64 encoding rules
+@@ -2938,6 +2982,165 @@ Definition armv8a_DSB_instr : instr_desc_t := mk_barrier_instr DSB.
+ *)
+ Definition armv8a_ISB_instr : instr_desc_t := mk_barrier_instr ISB.
+ 
++
++(* -------------------------------------------------------------------- *)
++(* Advanced SIMD.
++   The operands are whole 128-bit registers (the Q form of the vector
++   instructions, [Q = 1]); the 64-bit (D) forms are not provided. The
++   [opts_size] option is the element size [esize] of the arrangement and
++   the descriptions are valid only at the element sizes listed by
++   [vector_esizes].
++
++   The semantics below are our transcriptions of the operational pseudocode
++   of the Arm Architecture Reference Manual (ARM DDI 0487 M.d, C7.2,
++   "Alphabetical list of A64 Advanced SIMD and floating-point
++   instructions"); each description cites its instruction section and
++   states the semantics in our words. They are trusted, as are the
++   semantics of the general-purpose instructions above.
++
++   The Operational information section of every instruction below states
++   that it is a data-independent-time instruction, hence [id_doit := DOIT]
++   (an instruction is one only if that section says so: ARM DDI 0487 M.d,
++   B1.5.6 "About PSTATE.DIT", p. B1-245). *)
++
++Notation esize := (opts_size opts) (only parsing).
++
++Notation vvalid mn :=
++  ((has_shift opts == None) && (esize \in vector_esizes mn)) (only parsing).
++
++Notation lvec := (lword U128) (only parsing).
++Notation ty_v := (sem_ltuple [:: lvec ]) (only parsing).
++
++(* The [wsize] paired with a vector-register operand is the element size
++   of its arrangement, U128 standing for the Q register name; see the
++   assembly printer. *)
++Definition pp_armv8a_vop
++  (mn : armv8a_mnemonic) (szs : seq wsize) (args : seq asm_arg) : pp_asm_op :=
++  {|
++    pp_aop_name := vasm_name mn;
++    pp_aop_ext := PP_name;
++    pp_aop_args := zip szs args;
++  |}.
++
++Let ak_vv := [:: [:: [:: CAxmm ]; [:: CAxmm ] ] ].
++
++(* One vector source. *)
++Definition mk_v1_instr mn (semi : word U128 -> ty_v) : instr_desc_t :=
++  let tin := [:: lvec ] in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Ea 1 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 2;
++    id_args_kinds := ak_vv;
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str mn;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop mn [:: esize; esize ];
++    id_valid := vvalid mn;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* [C7.2.245 MOV (vector)] ARM DDI 0487 M.d, p. C7-3567, alias of
++   [C7.2.256 ORR (vector, register)] with Vm = Vn.
++   Syntax: MOV <Vd>.<T>, <Vn>.<T>  ==  ORR <Vd>.<T>, <Vn>.<T>, <Vn>.<T>
++   Semantics: the OR of Vn with itself, that is, a copy of Vn. *)
++Definition armv8a_VMOV_semi (wn : word U128) : ty_v := wn.
++
++Definition armv8a_VMOV_instr : instr_desc_t := mk_v1_instr VMOV armv8a_VMOV_semi.
++
++(* [C7.2.230 LDR (immediate, SIMD&FP)] ARM DDI 0487 M.d, p. C7-3528
++   [C7.2.235 LDUR (SIMD&FP)] ARM DDI 0487 M.d, p. C7-3545
++   [C7.2.232 LDR (register, SIMD&FP)] ARM DDI 0487 M.d, p. C7-3535
++   128-bit variants.
++   Syntax: LDR <Qt>, [<Xn|SP>{, #<pimm>}]
++           LDR <Qt>, [<Xn|SP>, <Xm>]
++           LDUR <Qt>, [<Xn|SP>{, #<simm>}]
++   The unsigned offset is a multiple of 16 up to 65520, the signed offset
++   lies in [-256, 255], and the register offset is used unshifted; the
++   address condition [CAmemC_armv8a_q] (armv8a_decl.v) accepts exactly
++   these forms.
++   Semantics: the 16 bytes at the address, as the whole register. The
++   writeback (pre- and post-index) forms are not provided. As for the
++   general-purpose loads, the memory argument is unaligned ([Eu]): no
++   alignment is required, which matches the hardware for Normal memory when
++   alignment checking is disabled (SCTLR_ELx.A = 0), as in user mode on the
++   supported platforms. *)
++Definition armv8a_VLDR_semi (w : word U128) : ty_v := w.
++
++Let ak_v_q := [:: [:: [:: CAxmm ]; [:: CAmem false (Some CAmemC_armv8a_q) ] ] ].
++
++Definition armv8a_VLDR_instr : instr_desc_t :=
++  let tin := [:: lvec ] in
++  let semi := armv8a_VLDR_semi in
++  {|
++    id_msb_flag := MSB_CLEAR;
++    id_tin := tin;
++    id_in := [:: Eu 1 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Ea 0 ];
++    id_semi_total := semi;
++    id_nargs := 2;
++    id_args_kinds := ak_v_q;
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str VLDR;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop VLDR [:: U128; U64 ];
++    id_valid := vvalid VLDR;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
++(* [C7.2.387 STR (immediate, SIMD&FP)] ARM DDI 0487 M.d, p. C7-3926
++   [C7.2.391 STUR (SIMD&FP)] ARM DDI 0487 M.d, p. C7-3940
++   [C7.2.388 STR (register, SIMD&FP)] ARM DDI 0487 M.d, p. C7-3931
++   128-bit variants.
++   Syntax: STR <Qt>, [<Xn|SP>{, #<pimm>}]
++           STR <Qt>, [<Xn|SP>, <Xm>]
++           STUR <Qt>, [<Xn|SP>{, #<simm>}]
++   Semantics: the whole register is written to the 16 bytes at the
++   address. *)
++Definition armv8a_VSTR_semi (w : word U128) : ty_v := w.
++
++(* The destination is memory, so the MSB flag has no effect; MSB_MERGE as
++   for the scalar stores. *)
++Definition armv8a_VSTR_instr : instr_desc_t :=
++  let tin := [:: lvec ] in
++  let semi := armv8a_VSTR_semi in
++  {|
++    id_msb_flag := MSB_MERGE;
++    id_tin := tin;
++    id_in := [:: Ea 0 ];
++    id_tout := [:: lvec ];
++    id_out := [:: Eu 1 ];
++    id_semi_total := semi;
++    id_nargs := 2;
++    id_args_kinds := ak_v_q;
++    id_eq_size := refl_equal;
++    id_check_dest := refl_equal;
++    id_str_jas := armv8a_mn_str VSTR;
++    id_safe := [::];
++    id_err := ErrSemUndef;
++    id_init := [:: IBool true ];
++    id_doit := DOIT;
++    id_pp_asm := pp_armv8a_vop VSTR [:: U128; U64 ];
++    id_valid := vvalid VSTR;
++    id_safe_wf := refl_equal;
++    id_wf := refl_equal;
++  |}.
++
+ (* -------------------------------------------------------------------- *)
+ (* Description of instructions. *)
+ 
+@@ -3017,6 +3220,9 @@ Definition mn_desc (mn : armv8a_mnemonic) : instr_desc_t :=
+   | CSDB => armv8a_CSDB_instr
+   | DSB => armv8a_DSB_instr
+   | ISB => armv8a_ISB_instr
++  | VMOV => armv8a_VMOV_instr
++  | VLDR => armv8a_VLDR_instr
++  | VSTR => armv8a_VSTR_instr
+   end.
+ 
+ End ARMV8A_INSTR.
+@@ -3037,13 +3243,34 @@ Definition armv8a_prim_sized (mn : armv8a_mnemonic) : prim_constructor armv8a_as
+        then Some (ARMv8A_op mn (opts_at sz))
+        else None).
+ 
++(* Advanced SIMD intrinsics: [#VMOV] for a mnemonic with a single element
++   size; a mnemonic with several element sizes is suffixed with its
++   arrangement, [_16u8], [_8u16], [_4u32] or [_2u64]. *)
++Definition armv8a_prim_vector (mn : armv8a_mnemonic) : prim_constructor armv8a_asm_op :=
++  let szs := vector_esizes mn in
++  if szs is [:: sz ]
++  then primM (ARMv8A_op mn (opts_at sz))
++  else
++    PrimX86
++      [seq PVv (velem_of_wsize sz) U128 | sz <- szs ]
++      (fun s =>
++         if s is PVv ve U128
++         then
++           if wsize_of_velem ve \in szs
++           then Some (ARMv8A_op mn (opts_at ve))
++           else None
++         else None).
++
+ Definition armv8a_prim_string : seq (string * prim_constructor armv8a_asm_op) :=
+   map
+     (fun mn =>
+        (string_of_armv8a_mnemonic mn,
+         if mn \in sized_mnemonics
+         then armv8a_prim_sized mn
+-        else primM (ARMv8A_op mn default_opts)))
++        else
++          if vector_esizes mn != [::]
++          then armv8a_prim_vector mn
++          else primM (ARMv8A_op mn default_opts)))
+     cenum.
+ 
+ #[ export ]
+diff --git a/proofs/compiler/armv8a_lowering.v b/proofs/compiler/armv8a_lowering.v
+index b97590c7..61290c0d 100644
+--- a/proofs/compiler/armv8a_lowering.v
++++ b/proofs/compiler/armv8a_lowering.v
+@@ -409,6 +409,28 @@ Definition lower_pexpr_aux (ws : wsize) (e : pexpr) : low_expr :=
+   | _ => le_skip
+   end.
+ 
++(* -------------------------------------------------------------------- *)
++(* Lowering of 128-bit expressions to Advanced SIMD instructions.
++   A 128-bit value lives in a SIMD&FP register. A variable in a register is
++   copied with MOV; one in memory, an array element and a load are read
++   with LDR. *)
++
++Definition lower_vec_Pvar (v : gvar) : low_expr :=
++  if is_var_in_memory (gv v)
++  then le_issue VLDR U128 [:: Pvar v ]
++  else le_issue VMOV U8 [:: Pvar v ].
++
++Definition lower_vec_pexpr (e : pexpr) : low_expr :=
++  match e with
++  | Pvar v => lower_vec_Pvar v
++  | Pget _ _ _ _ _
++  | Pload _ _ _ => le_issue VLDR U128 [:: e ]
++  | _ => le_skip
++  end.
++
++Definition lower_pexpr_word (ws : wsize) (e : pexpr) : low_expr :=
++  if ws == U128 then lower_vec_pexpr e else lower_pexpr_aux ws e.
++
+ (* A64 has no conditional execution: conditional expressions are lowered
+    to the conditional select instructions, whose operands must be
+    registers. *)
+@@ -482,7 +504,7 @@ Definition lower_pexpr (vi : var_info) (ws : wsize) (e : pexpr) :
+       let of_int e := Papp1 (Oword_of_int ws') e in
+       lower_Pif vi ws c (of_int e0) (of_int e1)
+   | _ =>
+-      no_pre (lower_pexpr_aux ws e)
++      no_pre (lower_pexpr_word ws e)
+   end.
+ 
+ (* Lower an assignment to memory.
+@@ -492,6 +514,9 @@ Definition lower_pexpr (vi : var_info) (ws : wsize) (e : pexpr) :
+      + a memory location.
+    - [e] must be a register. *)
+ Definition lower_store (ws : wsize) (e : pexpr) : option (armv8a_asm_op * seq pexpr) :=
++  if ws == U128 then
++    if e is Pvar _ then Some (ARMv8A_op VSTR (opts_at U128), [:: e ]) else None
++  else
+   let%opt mn := store_mn_of_wsize ws in
+   let osz := if (ws <= U16)%CMP then U64 else ws in
+   match e with
+diff --git a/proofs/compiler/armv8a_lowering_proof.v b/proofs/compiler/armv8a_lowering_proof.v
+index 7278415b..a62e4616 100644
+--- a/proofs/compiler/armv8a_lowering_proof.v
++++ b/proofs/compiler/armv8a_lowering_proof.v
+@@ -1418,8 +1418,56 @@ Proof.
+   exact: lower_Papp2P.
+ Qed.
+ 
++(* -------------------------------------------------------------------- *)
++(* Lowering of 128-bit expressions to Advanced SIMD instructions. *)
++
++#[ local ]
++Definition Plower_vec_pexpr (e : pexpr) : Prop :=
++  forall s ws' aop es (w : word ws'),
++    lower_vec_pexpr e = Some (aop, es)
++    -> (U128 <= ws')%CMP
++    -> disj_fvars (read_e e)
++    -> sem_pexpr true (p_globs p) s e = ok (Vword w)
++    -> ok_lower_pexpr_aux s U128 aop es w.
++
++(* A variable, an array element or a memory word is given as it is to VMOV
++   or VLDR. *)
++Lemma lower_vec_moveP e :
++  match e with Pvar _ | Pget _ _ _ _ _ | Pload _ _ _ => Plower_vec_pexpr e
++  | _ => True end.
++Proof.
++  case: e => // [ gx | al aa ws0 x e | al ws0 e ] s ws' aop es w + hws hfve hsem.
++  all: rewrite /lower_vec_pexpr.
++  1: rewrite /lower_vec_Pvar; case: is_var_in_memory.
++  all: move=> -[? ?]; subst aop es.
++  all: split; last done.
++  all: exists [:: Vword w ]; first by apply/mapM_cons.
++  all: by rewrite /exec_sopn /= truncate_word_le.
++Qed.
++
++Lemma lower_vec_pexprP e : Plower_vec_pexpr e.
++Proof.
++  case: e => [||| gx | al aa ws0 x e || al ws0 x e | op e | op e0 e1 ||].
++  all: try by move=> > /=.
++  - exact: (lower_vec_moveP (Pvar _)).
++  - exact: (lower_vec_moveP (Pget _ _ _ _ _)).
++  exact: (lower_vec_moveP (Pload _ _ _)).
++Qed.
++
++Lemma lower_pexpr_wordP s ws ws' e aop es (w : word ws') :
++  lower_pexpr_word ws e = Some (aop, es)
++  -> (ws <= ws')%CMP
++  -> disj_fvars (read_e e)
++  -> sem_pexpr true (p_globs p) s e = ok (Vword w)
++  -> ok_lower_pexpr_aux s ws aop es w.
++Proof.
++  rewrite /lower_pexpr_word; case: eqP => [-> | _].
++  - exact: lower_vec_pexprP.
++  exact: lower_pexpr_auxP.
++Qed.
++
+ Lemma sem_i_lower_pexpr_aux s0 s1 s0' ws ws' ii e op es (w : word ws') lv tag :
+-  lower_pexpr_aux ws e = Some (op, es)
++  lower_pexpr_word ws e = Some (op, es)
+   -> eq_fv s0 s0'
+   -> (ws <= ws')%CMP
+   -> disj_fvars (read_e e)
+@@ -1435,7 +1483,7 @@ Proof.
+   have hseme' := eeq_exc_sem_pexpr hfve hs00 hseme.
+   clear hseme.
+ 
+-  have [[vs hsemes hexec] _] := lower_pexpr_auxP h hws hfve hseme'.
++  have [[vs hsemes hexec] _] := lower_pexpr_wordP h hws hfve hseme'.
+   clear h hws hfve hseme'.
+ 
+   have [s1' hwrite' hs11] := eeq_exc_write_lval hfvlv hs00 hwrite.
+@@ -1631,7 +1679,7 @@ Proof using atoI ev fv fv_correct p pT sCP sc_sem syscall_state warning wsw.
+      [lower_pexpr_aux]. *)
+   match goal with
+   | [ |- ?G ] =>
+-      have hnopre : no_pre (lower_pexpr_aux ws e) = Some (pre, op, es) -> G
++      have hnopre : no_pre (lower_pexpr_word ws e) = Some (pre, op, es) -> G
+   end.
+   {
+     move=> /no_preP [? h']; subst pre.
+@@ -1717,6 +1765,16 @@ Proof.
+ 
+   move: h.
+   rewrite /lower_store.
++  case: eqP => [? | _].
++  {
++    (* A 128-bit register is stored with STR <Qt>. *)
++    subst ws.
++    case: e hseme hfv => [||| gx |||||||] // hseme hfv [? ?]; subst aop es.
++    rewrite /= /sem_sopn /=.
++    have /= -> := eeq_exc_sem_pexpr hfv hs00 hseme.
++    rewrite /exec_sopn /= (truncate_word_le _ hws) /=.
++    by rewrite hwrite.
++  }
+   case hmn: store_mn_of_wsize => [mn|] //.
+ 
+   (* On armv8a only a register can be stored: [e] is a [Pvar]. *)
+diff --git a/proofs/compiler/armv8a_params.v b/proofs/compiler/armv8a_params.v
+index cefc5df2..62a2f13f 100644
+--- a/proofs/compiler/armv8a_params.v
++++ b/proofs/compiler/armv8a_params.v
+@@ -186,27 +186,38 @@ Definition armv8a_set_up_sp_register
+ Definition armv8a_tmp  : Ident.ident := vname (v_var vtmpi).
+ Definition armv8a_tmp2 : Ident.ident := vname (v_var vtmp2i).
+ 
+-Definition armv8a_lmove (_ : wsize) (xd xs : var_i) :=
+-  ([:: LLvar xd], Oarmv8a (ARMv8A_op MOV default_opts), [:: Rexpr (Fvar xs)]).
++(* Moves, stores and loads of saved registers: X registers (U64) and, for
++   the callee-saved SIMD&FP registers, whole Q registers (U128). The offset
++   of a slot is a pointer-sized constant whatever the size of the register. *)
++Definition armv8a_lmove (ws : wsize) (xd xs : var_i) :=
++  let op := if ws == U128 then ARMv8A_op VMOV (opts_at U8) else ARMv8A_op MOV default_opts in
++  ([:: LLvar xd], Oarmv8a op, [:: Rexpr (Fvar xs)]).
+ 
+-Definition armv8a_check_ws ws := ws == reg_size.
++Definition armv8a_check_ws ws := (ws == reg_size) || (ws == U128).
+ 
+ Definition armv8a_lstore (ws : wsize) (xd : var_i) (ofs : Z) (xs : var_i) :=
+-  let mn := STR in
+-  ([:: Store Aligned ws (faddv Uptr xd (fconst ws ofs))], Oarmv8a (ARMv8A_op mn default_opts), [:: Rexpr (Fvar xs)]).
++  let op := if ws == U128 then ARMv8A_op VSTR (opts_at U128) else ARMv8A_op STR default_opts in
++  ([:: Store Aligned ws (faddv Uptr xd (fconst Uptr ofs))], Oarmv8a op, [:: Rexpr (Fvar xs)]).
+ 
+ Definition armv8a_lload (ws : wsize) (xd : var_i) (xs : var_i) (ofs : Z) :=
+-  let mn := LDR in
+-  ([:: LLvar xd], Oarmv8a (ARMv8A_op mn default_opts), [:: Load Aligned ws (faddv Uptr xs (fconst ws ofs))]).
++  let op := if ws == U128 then ARMv8A_op VLDR (opts_at U128) else ARMv8A_op LDR default_opts in
++  ([:: LLvar xd], Oarmv8a op, [:: Load Aligned ws (faddv Uptr xs (fconst Uptr ofs))]).
+ 
+ (* A saved register is stored to or loaded from [SP + ofs] directly only when
+-   LDR and STR can encode [ofs]: for an X register, "a multiple of 8 in the
+-   range 0 to 32760" (ARM DDI 0487 M.d, C6.2.216 LDR (immediate) and C6.2.415
+-   STR (immediate), unsigned offset). The saved registers are X registers
+-   ([armv8a_check_ws]) in 8-byte aligned slots; a wider saved register needs
+-   this test revised. Otherwise the address of the first slot is computed
+-   into X17 and the slots are reached from it with small offsets. Keeping
+-   [is_arith_small] changes only the code that did not assemble. *)
++   [ofs] is a multiple of 8 in [0, 32760], the unsigned offset range of LDR
++   and STR of an X register (ARM DDI 0487 M.d, C6.2.216 LDR (immediate) and
++   C6.2.415 STR (immediate)). The saved Q registers pass the same test: their
++   slots are 16-byte aligned (the alignment check of [check_to_save],
++   linearization.v), so such an offset is also a multiple of 16 in the range
++   of LDR and STR of a Q register, 0 to 65520 (C7.2.230 LDR (immediate,
++   SIMD&FP) and C7.2.387 STR (immediate, SIMD&FP)); the test is conservative
++   for them. Otherwise the address of the first slot is computed into X17
++   and each slot is reached at its distance from the first one, within the
++   save area. For an X register this distance is a multiple of 8 far below
++   32760, so it is always encodable; for a Q register, a distance that LDR or
++   STR cannot encode is rejected by assembly generation ([CAmemC_armv8a_q],
++   armv8a_decl.v). Keeping [is_arith_small] leaves the code unchanged
++   wherever the direct offset was already encodable. *)
+ Definition is_save_slot_offset (ofs : Z) : bool :=
+   is_arith_small ofs && ((0 <=? ofs) && (ofs <=? 32760) && (ofs mod 8 =? 0))%Z.
+ 
+@@ -235,7 +246,13 @@ Definition armv8a_lloads (rspi : var_i) (to_restore : seq (var * Z)) (spofs : Z)
+                to_restore
+   in
+   let restore_sp :=
+-    if is_save_slot_offset spofs then
++    if vtype rspi != aword Uptr then
++      (* Not reached: the stack pointer is a pointer-sized register. This
++         case only keeps the specification of [lip_lloads] uniform in the
++         type of [rspi], which may be any type accepted by
++         [armv8a_check_ws]. *)
++      [:: armv8a_lload (wsize_of_atype (vtype rspi)) rspi rspi spofs ]
++    else if is_save_slot_offset spofs then
+       [:: armv8a_lload Uptr vtmp2i rspi spofs; armv8a_lmove Uptr rspi vtmp2i ]
+     else
+       ARMv8AFopn_smart_addi vtmp2i rspi spofs
+@@ -431,7 +448,7 @@ Definition armv8a_szparams : stack_zeroization_params :=
+ 
+ Definition armv8a_is_load (o : asm_op_t) : bool :=
+   if o is BaseOp (None, ARMv8A_op mn _) then
+-    mn \in [:: LDR; LDRB; LDRH; LDRSB; LDRSH; LDRSW; LDRW; LDP ]
++    mn \in [:: VLDR; LDR; LDRB; LDRH; LDRSB; LDRSH; LDRSW; LDRW; LDP ]
+   else false.
+ 
+ Definition armv8a_laparams : lower_addressing_params :=
+@@ -446,7 +463,7 @@ Definition armv8a_laparams : lower_addressing_params :=
+ Definition armv8a_is_move_op (o : asm_op_t) : bool :=
+   match o with
+   | BaseOp (None, ARMv8A_op o opts) =>
+-    if o \in [:: MOV; LDR; STR; STRH; STRB ] then
++    if o \in [:: MOV; LDR; STR; STRH; STRB; VMOV; VLDR; VSTR ] then
+       ~~ has_shift opts
+     else false
+ 
+diff --git a/proofs/compiler/armv8a_params_proof.v b/proofs/compiler/armv8a_params_proof.v
+index e3a55777..6fd325ff 100644
+--- a/proofs/compiler/armv8a_params_proof.v
++++ b/proofs/compiler/armv8a_params_proof.v
+@@ -309,19 +309,22 @@ Qed.
+ 
+ Lemma armv8a_lmove_correct : lmove_correct armv8a_liparams.
+ Proof.
+-  move=> xd xs ws w s /eqP hws htxd; t_xrbindP => z hget htr; subst.
+-  rewrite /armv8a_liparams /lip_lmove /armv8a_lmove /= hget /=.
+-  rewrite /exec_sopn /= htr /= /set_var /=.
+-  by case: vtype htxd.
++  move=> xd xs ws w s hchk htxd; t_xrbindP => z hget htr.
++  case/orP: hchk => /eqP ?; subst ws.
++  all: rewrite /armv8a_liparams /lip_lmove /armv8a_lmove /= hget /=.
++  all: rewrite /exec_sopn /= htr /= /set_var /=.
++  all: by case: vtype htxd.
+ Qed.
+ 
+ Lemma armv8a_lstore_correct : lstore_correct_aux armv8a_check_ws armv8a_lstore.
+ Proof.
+-  move=> xd xs ofs ws w wp s m /eqP hchk; t_xrbindP; subst ws.
++  move=> xd xs ofs ws w wp s m hchk; t_xrbindP.
+   move=> vd hgetd htrd vs hgets htrs hwr.
+-  rewrite /armv8a_lstore /= hgets hgetd /= /exec_sopn /= htrs /=.
+-  rewrite /sem_sop2 /= htrd /= !truncate_word_u /= truncate_word_u /=.
+-  by rewrite zero_extend_u hwr.
++  have {}htrd : to_word armv8a_reg_size vd = ok wp := htrd.
++  case/orP: hchk => /eqP ?; subst ws.
++  all: rewrite /armv8a_lstore /= hgets hgetd /= /exec_sopn /= htrs /=.
++  all: rewrite /sem_sop2 /= htrd /= !truncate_word_u /= truncate_word_u /=.
++  all: by rewrite ?zero_extend_u hwr.
+ Qed.
+ 
+ Lemma armv8a_smart_addi_correct : ladd_imm_correct_aux ARMv8AFopn_smart_addi.
+@@ -342,10 +345,11 @@ Lemma armv8a_lload_correct :
+   lload_correct_aux (lip_check_ws armv8a_liparams) armv8a_lload.
+ Proof.
+   move=> xd xs ofs ws top s w vm hcheck; t_xrbindP => ? hgets hto hread hset.
+-  move/eqP: hcheck => ?; subst ws.
+-  rewrite /armv8a_lload /= hgets /= /sem_sop2 /= hto /= !truncate_word_u /=
++  have {}hto : to_word armv8a_reg_size _ = ok top := hto.
++  case/orP: hcheck => /eqP ?; subst ws.
++  all: rewrite /armv8a_lload /= hgets /= /sem_sop2 /= hto /= !truncate_word_u /=
+     truncate_word_u /= hread /=.
+-  by rewrite /exec_sopn /= truncate_word_u /= zero_extend_u hset.
++  all: by rewrite /exec_sopn /= truncate_word_u /= ?zero_extend_u hset.
+ Qed.
+ 
+ Lemma armv8a_tmp_correct : lip_tmp armv8a_liparams <> lip_tmp2 armv8a_liparams.
+@@ -392,7 +396,6 @@ Proof.
+   case heqt: (vtype rspi) => [|||ws] //=; t_xrbindP
+     => vm2' wsx hwsx hchk w_sp hread hset heqv.
+   subst wsx vm2.
+-  move/eqP: (hchk) => ?; subst ws.
+   move/set_varP: hset => [_ _ ?]; subst vm2'.
+ 
+   have hsetvar : forall (vm : Vm.t) (w : word Uptr),
+@@ -406,13 +409,28 @@ Proof.
+       get_var true vmr rspi >>= to_word Uptr = ok top ->
+       exists2 vm,
+         sem_fopns_args (with_vm s vmr)
+-          (if is_save_slot_offset ofs
++          (if vtype rspi != aword Uptr
++           then [:: armv8a_lload (constant_prop.wsize_of_atype (vtype rspi)) rspi rspi ofs ]
++           else if is_save_slot_offset ofs
+            then [:: armv8a_lload Uptr vtmp2i rspi ofs; armv8a_lmove Uptr rspi vtmp2i ]
+            else ARMv8AFopn_smart_addi vtmp2i rspi ofs
+                 ++ [:: armv8a_lload Uptr vtmp2i vtmp2i 0%Z; armv8a_lmove Uptr rspi vtmp2i ])
+           = ok (with_vm s vm)
+         & vm =[\ Sv.singleton (v_var vtmp2i) ] vmr.[v_var rspi <- Vword w_sp].
+   - move=> vmr hget_r.
++    rewrite heqt.
++    case/orP: (hchk) => /eqP ?; subst ws; last first.
++    + (* A 128-bit [rspi] (not produced by the compiler) is reloaded
++         directly. *)
++      have -> : (aword U128 != aword Uptr) = true by apply/eqP.
++      rewrite sem_fopns_args_1.
++      rewrite (armv8a_lload_correct (xd := rspi) (xs := rspi)
++                 (s := with_vm s vmr) (ws := U128) _ hget_r hread
++                 (vm := vmr.[v_var rspi <- Vword w_sp])); first last.
++      * by rewrite set_var_eq_type // heqt.
++      * by [].
++      by eexists.
++    rewrite eqxx /=.
+     case: ifP => _.
+     + (* Small offset: LDR from [rspi] directly. *)
+       rewrite -cat1s sem_fopns_args_cat !sem_fopns_args_1.

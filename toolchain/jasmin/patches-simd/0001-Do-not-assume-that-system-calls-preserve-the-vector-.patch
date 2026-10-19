@@ -1,0 +1,287 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: athexweb3 <athexweb3@nirapod.org>
+Date: Wed, 14 Oct 2026 20:08:32 +0600
+Subject: [PATCH] Do not assume that system calls preserve the vector registers
+
+A system call is assumed to preserve every callee-saved register in
+full (eval_syscall_preserves, and syscall_kill in register allocation).
+That's too strong for the vector registers. With -call-conv windows,
+xmm6-xmm15 are callee-saved, but a Jasmin xreg is the 256-bit ymm, and
+the Microsoft x64 ABI makes the upper half of ymm0-ymm15 volatile. So a
+u256 live across #randombytes can sit in ymm6 and lose its upper 128
+bits. AAPCS64 has the same gap for v8-v15, where only the low 64 bits
+are preserved, which matters once armv8a has vector registers.
+
+A system call is now assumed to preserve only the callee-saved
+registers that aren't vector registers (syscall_preserved). The model
+and syscall_kill both use it, and on the OCaml side the kill set calls
+the extracted definition. callee_saved doesn't change, so export
+functions still save and restore the vector registers in full.
+
+It's conservative: a register is either preserved whole or not at all,
+so a u128 in xmm6, which the ABI does keep, isn't assumed to survive
+either. Only syscall programs compiled with -call-conv windows change.
+An export that issues a syscall, directly or not, now saves and
+restores ymm6-ymm15, and a vector value live across a syscall has to be
+spilled.
+
+Co-authored-by: orvenweb3 <orvenweb3@gmail.com>
+---
+ compiler/config/tests.config                  |  1 +
+ compiler/src/arch_full.ml                     | 18 +++++++++-------
+ .../windows/x86-64/syscall_live_u256.jazz     | 11 ++++++++++
+ compiler/tests/negative.expected              |  7 ++++++-
+ .../tests/success/windows/x86-64/syscall.jazz | 11 ++++++++++
+ proofs/arch/arch_decl.v                       | 16 ++++++++++++++
+ proofs/arch/arch_sem.v                        |  2 +-
+ proofs/arch/asm_gen.v                         |  1 +
+ proofs/arch/asm_gen_proof.v                   | 21 ++++++++++++-------
+ proofs/lang/one_varmap.v                      |  3 ++-
+ 10 files changed, 72 insertions(+), 19 deletions(-)
+ create mode 100644 compiler/tests/fail/windows/x86-64/syscall_live_u256.jazz
+ create mode 100644 compiler/tests/success/windows/x86-64/syscall.jazz
+
+diff --git a/compiler/config/tests.config b/compiler/config/tests.config
+index 4b90bf0a..12f729f6 100644
+--- a/compiler/config/tests.config
++++ b/compiler/config/tests.config
+@@ -55,6 +55,7 @@ okdirs = examples/**/x86-64 tests/success/**/x86-64 tests/success/**/common
+ bin = ./scripts/check
+ args = -arch x86-64 -call-conv windows
+ okdirs = tests/success/windows
++kodirs = tests/fail/windows
+ 
+ [test-x86-64-extraction]
+ bin = ./scripts/extract-and-check
+diff --git a/compiler/src/arch_full.ml b/compiler/src/arch_full.ml
+index 868e848a..7af22aab 100644
+--- a/compiler/src/arch_full.ml
++++ b/compiler/src/arch_full.ml
+@@ -201,19 +201,21 @@ module Arch_from_Core_arch (A : Core_arch) :
+   let xmm_allocatable_vars =
+     List.map var_of_xreg xmm_allocatable
+ 
+-  let callee_save_vars =
+-    let var_of_typed = function
+-      | ARReg r -> var_of_reg  r
+-      | ARegX r -> var_of_regx r
+-      | AXReg r -> var_of_xreg r
+-      | ABReg r -> var_of_flag r in
+-    List.map var_of_typed callee_save
++  let var_of_typed = function
++    | ARReg r -> var_of_reg  r
++    | ARegX r -> var_of_regx r
++    | AXReg r -> var_of_xreg r
++    | ABReg r -> var_of_flag r
++
++  let callee_save_vars = List.map var_of_typed callee_save
+ 
+   let rsp_var = var_of_reg rsp
+ 
+   let all_registers = reg_vars @ regx_vars @ xreg_vars @ flag_vars
+ 
+-  let syscall_kill = Sv.diff (Sv.of_list all_registers) (Sv.of_list callee_save_vars)
++  let syscall_kill =
++    let preserved = Arch_decl.syscall_preserved arch_decl call_conv in
++    Sv.diff (Sv.of_list all_registers) (Sv.of_list (List.map var_of_typed preserved))
+ 
+   let callstyle =
+     match A.callstyle with
+diff --git a/compiler/tests/fail/windows/x86-64/syscall_live_u256.jazz b/compiler/tests/fail/windows/x86-64/syscall_live_u256.jazz
+new file mode 100644
+index 00000000..7c805b5a
+--- /dev/null
++++ b/compiler/tests/fail/windows/x86-64/syscall_live_u256.jazz
+@@ -0,0 +1,11 @@
++/* A syscall is not assumed to preserve the vector registers: [a] cannot stay
++   in ymm6-ymm15 across it, and there is no other register for it. */
++export fn f(reg ptr u8[64] io) -> reg ptr u8[64] {
++  stack u8[32] r;
++  reg u256 a;
++  a = io[:u256 0];
++  r = #randombytes(r);
++  a ^= r[:u256 0];
++  io[:u256 1] = a;
++  return io;
++}
+diff --git a/compiler/tests/negative.expected b/compiler/tests/negative.expected
+index 878bfc5e..01f40c84 100644
+--- a/compiler/tests/negative.expected
++++ b/compiler/tests/negative.expected
+@@ -1925,6 +1925,11 @@ fail/unroll/x86-64/run-time-bound.jazz:
+ compilation error in function count:
+ loop unrolling: for loops remain
+ 
++fail/windows/x86-64/syscall_live_u256.jazz:
++
++compilation error:
++register allocation: cannot solve the register allocation problem.
++
+ fail/x86-64/bug_1366.jazz:
+ 
+ "fail/x86-64/bug_1366.jazz", line 2 (2-21): invalid number of lvalues, 1 provided instead of 2
+@@ -2089,4 +2094,4 @@ Statistics:
+ 	Pretyping:  65
+ 	Parsing:     5
+ 	Typing:      5
+-	Compile:   247
++	Compile:   248
+diff --git a/compiler/tests/success/windows/x86-64/syscall.jazz b/compiler/tests/success/windows/x86-64/syscall.jazz
+new file mode 100644
+index 00000000..894c055f
+--- /dev/null
++++ b/compiler/tests/success/windows/x86-64/syscall.jazz
+@@ -0,0 +1,11 @@
++/* A syscall is not assumed to preserve the vector registers (with the Windows
++   calling convention, only the low 128 bits of xmm6-xmm15 are callee-saved),
++   so an export function that issues a syscall saves and restores them. */
++export fn rand64() -> reg u64 {
++  reg u64 res;
++  stack u64[4] r;
++  r = #randombytes(r);
++  res = r[0];
++  res += r[3];
++  return res;
++}
+diff --git a/proofs/arch/arch_decl.v b/proofs/arch/arch_decl.v
+index 7d037339..2811d7c6 100644
+--- a/proofs/arch/arch_decl.v
++++ b/proofs/arch/arch_decl.v
+@@ -767,6 +767,12 @@ Definition is_ABReg r :=
+   | _ => false
+   end.
+ 
++Definition is_AXReg r :=
++  match r with
++  | AXReg _ => true
++  | _ => false
++  end.
++
+ Class calling_convention :=
+   { callee_saved   : seq asm_typed_reg
+   ; callee_saved_not_bool : all (fun r => ~~is_ABReg r) callee_saved
+@@ -778,6 +784,16 @@ Class calling_convention :=
+   ; call_reg_ret_uniq : uniq (T:= @ceqT_eqType _ _) call_reg_ret
+   }.
+ 
++(* The registers that a system call (a call to an external function, e.g.
++   randombytes) is assumed to preserve: the callee-saved registers, except
++   the vector ones.  The ABIs may preserve only part of a vector register
++   (Microsoft x64: the upper portions of YMM0-YMM15 are volatile; AAPCS64:
++   only the bottom 64 bits of v8-v15 need to be preserved), and a register is
++   either preserved in full or not at all here, so they are not assumed to be
++   preserved. *)
++Definition syscall_preserved {call_conv : calling_convention} :=
++  [seq r <- callee_saved | ~~ is_AXReg r].
++
+ Definition get_ARReg (a:asm_typed_reg) :=
+   match a with
+   | ARReg r => Some r
+diff --git a/proofs/arch/arch_sem.v b/proofs/arch/arch_sem.v
+index 78e02e5a..7f826928 100644
+--- a/proofs/arch/arch_sem.v
++++ b/proofs/arch/arch_sem.v
+@@ -139,7 +139,7 @@ Class asm_syscall_sem := {
+   eval_syscall_preserves :
+     forall o s1 s2,
+       eval_syscall o s1 = ok s2 ->
+-      [/\ forall r, r \in callee_saved -> preserved_register r s1 s2
++      [/\ forall r, r \in syscall_preserved -> preserved_register r s1 s2
+         , s1.(asm_rip) = s2.(asm_rip)
+         & stack_stable s1.(asm_mem) s2.(asm_mem)
+       ];
+diff --git a/proofs/arch/asm_gen.v b/proofs/arch/asm_gen.v
+index aad7726b..9e6a881f 100644
+--- a/proofs/arch/asm_gen.v
++++ b/proofs/arch/asm_gen.v
+@@ -759,6 +759,7 @@ Definition all_vars :=
+          scs_vout := map to_var (take (size sig.(scs_tout)) call_reg_ret) |};
+   all_vars     := all_vars;
+   callee_saved := sv_of_list var_of_asm_typed_reg callee_saved;
++  syscall_preserved := sv_of_list var_of_asm_typed_reg syscall_preserved;
+   vflags       := vflags;
+   vflagsP      := vflagsP;
+ }.
+diff --git a/proofs/arch/asm_gen_proof.v b/proofs/arch/asm_gen_proof.v
+index ad524992..c1697397 100644
+--- a/proofs/arch/asm_gen_proof.v
++++ b/proofs/arch/asm_gen_proof.v
+@@ -1615,6 +1615,10 @@ Proof.
+   by rewrite cats0 flatten_cat /= cats0 size_cat size_map.
+ Qed.
+ 
++Lemma syscall_preserved_callee_saved :
++  {subset arch_decl.syscall_preserved <= arch_decl.callee_saved}.
++Proof. by move=> r; rewrite mem_filter => /andP []. Qed.
++
+ Lemma match_state_SysCall_eval fd ls ls' ii sc ac0 ac1 xs :
+   let: li := MkLI ii (Lsyscall sc) in
+   lom_eqv rip (to_estate ls) (asm_m xs) ->
+@@ -1715,9 +1719,9 @@ Proof using hagparams ok_p'.
+     case: (Sv_memP (to_var r) syscall_kill) => hinK.
+     + by rewrite (hkill _ hinK hinR) /=.
+     move: (hinK); rewrite /syscall_kill => hnin.
+-    have : Sv.In (to_var r) one_varmap.callee_saved.
++    have : Sv.In (to_var r) one_varmap.syscall_preserved.
+     + by have := reg_in_all r; SvD.fsetdec.
+-    rewrite /one_varmap.callee_saved /= => /sv_of_listP /mapP [x] /hpr.
++    rewrite /one_varmap.syscall_preserved /= => /sv_of_listP /mapP [x] /hpr.
+     move=> h /to_var_typed_reg ?; subst x.
+     rewrite -h heqx // /X.
+     SvD.fsetdec.
+@@ -1730,9 +1734,9 @@ Proof using hagparams ok_p'.
+     case: (Sv_memP (to_var r) syscall_kill) => hinK.
+     + by have /(_ erefl) -> /= := hkill _ hinK hinR.
+     move: (hinK); rewrite /syscall_kill => hnin.
+-    have : Sv.In (to_var r) one_varmap.callee_saved.
++    have : Sv.In (to_var r) one_varmap.syscall_preserved.
+     + have := regx_in_all r; SvD.fsetdec.
+-    rewrite /one_varmap.callee_saved /= => /sv_of_listP /mapP [x] /hpr.
++    rewrite /one_varmap.syscall_preserved /= => /sv_of_listP /mapP [x] /hpr.
+     move=> h /to_var_typed_regx ?; subst x.
+     rewrite -h heqx // /X.
+     SvD.fsetdec.
+@@ -1745,9 +1749,9 @@ Proof using hagparams ok_p'.
+     case: (Sv_memP (to_var r) syscall_kill) => hinK.
+     + by have /(_ erefl) -> /= := hkill _ hinK hinR.
+     move: (hinK); rewrite /syscall_kill => hnin.
+-    have : Sv.In (to_var r) one_varmap.callee_saved.
++    have : Sv.In (to_var r) one_varmap.syscall_preserved.
+     + have := xreg_in_all r. SvD.fsetdec.
+-    rewrite /one_varmap.callee_saved /= => /sv_of_listP /mapP [x] /hpr.
++    rewrite /one_varmap.syscall_preserved /= => /sv_of_listP /mapP [x] /hpr.
+     move=> h /to_var_typed_xreg ?; subst x.
+     rewrite -h heqx // /X.
+     SvD.fsetdec.
+@@ -1756,9 +1760,10 @@ Proof using hagparams ok_p'.
+   have hinR : ~Sv.In (to_var r) R.
+   + rewrite /R /= vrvs_to_lvals => /sv_of_listP.
+     by move=> /(mapP (T1 := @ceqT_eqType _ _)) [x _].
+-  have hnc: ~ Sv.In (to_var r) one_varmap.callee_saved.
++  have hnc: ~ Sv.In (to_var r) one_varmap.syscall_preserved.
+   + move=>
+-      /= /sv_of_listP /mapP [] f /(allP callee_saved_not_bool) h
++      /= /sv_of_listP /mapP [] f
++      /syscall_preserved_callee_saved /(allP callee_saved_not_bool) h
+       /to_var_typed_flag ?.
+     by subst f.
+   have hinK : Sv.In (to_var r) syscall_kill.
+diff --git a/proofs/lang/one_varmap.v b/proofs/lang/one_varmap.v
+index 874a8c76..de13efdd 100644
+--- a/proofs/lang/one_varmap.v
++++ b/proofs/lang/one_varmap.v
+@@ -12,12 +12,13 @@ Class one_varmap_info := {
+   syscall_sig  : syscall_t -> ovm_syscall_sig_t;
+   all_vars     : Sv.t;
+   callee_saved : Sv.t;
++  syscall_preserved : Sv.t;
+   vflags       : Sv.t;
+   vflagsP      : forall x, Sv.In x vflags -> vtype x = abool
+ }.
+ 
+ Definition syscall_kill {ovm_i : one_varmap_info} :=
+-  Sv.diff all_vars callee_saved.
++  Sv.diff all_vars syscall_preserved.
+ 
+ Section Section.
+ 

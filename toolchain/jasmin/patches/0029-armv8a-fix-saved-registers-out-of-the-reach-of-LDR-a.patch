@@ -1,0 +1,173 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Athex Web3 <athexweb3@nirapod.org>
+Date: Thu, 15 Oct 2026 12:40:31 +0600
+Subject: [PATCH] armv8a: fix saved registers out of the reach of LDR and STR
+ (#1639)
+
+* armv8a: fix saved registers out of the reach of LDR and STR
+
+* armv8a: changelog entry for the save slot fix
+
+(cherry picked from commit 88f73422b34af1adf0069093d05dbec4c9d26640)
+---
+ .../02-bugfix/1639-armv8a-save-slot-offset.md |  4 ++
+ .../armv8a/large_stack/save_slot_offset.jazz  | 66 +++++++++++++++++++
+ proofs/compiler/armv8a_params.v               | 17 ++++-
+ proofs/compiler/armv8a_params_proof.v         |  4 +-
+ 4 files changed, 86 insertions(+), 5 deletions(-)
+ create mode 100644 changes/02-bugfix/1639-armv8a-save-slot-offset.md
+ create mode 100644 compiler/tests/success/armv8a/large_stack/save_slot_offset.jazz
+
+diff --git a/changes/02-bugfix/1639-armv8a-save-slot-offset.md b/changes/02-bugfix/1639-armv8a-save-slot-offset.md
+new file mode 100644
+index 00000000..85ea6481
+--- /dev/null
++++ b/changes/02-bugfix/1639-armv8a-save-slot-offset.md
+@@ -0,0 +1,4 @@
++- On armv8a, saving or restoring a callee-saved register, or the saved stack
++  pointer, of an export function no longer compiles to a load or store that does
++  not assemble, such as `ldr x19, [sp, #36864]` in a large stack frame
++  ([PR #1639](https://github.com/jasmin-lang/jasmin/pull/1639)).
+diff --git a/compiler/tests/success/armv8a/large_stack/save_slot_offset.jazz b/compiler/tests/success/armv8a/large_stack/save_slot_offset.jazz
+new file mode 100644
+index 00000000..d35914e7
+--- /dev/null
++++ b/compiler/tests/success/armv8a/large_stack/save_slot_offset.jazz
+@@ -0,0 +1,66 @@
++/* Save slots at SP + 36864: a multiple of 4096 (an ADD immediate) but out
++   of the range of LDR and STR of an X register (a multiple of 8 up to
++   32760). */
++
++/* One saved register (x19), restored alone from SP + 36864. */
++#[callee_saved = 2]
++export fn one_saved(reg u64 p) -> reg u64 {
++  stack u8[36864] buf;
++  reg u64 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16;
++  reg u64 i lim;
++  a0 = [:u64 p + 0];
++  a1 = [:u64 p + 8];
++  a2 = [:u64 p + 16];
++  a3 = [:u64 p + 24];
++  a4 = [:u64 p + 32];
++  a5 = [:u64 p + 40];
++  a6 = [:u64 p + 48];
++  a7 = [:u64 p + 56];
++  a8 = [:u64 p + 64];
++  a9 = [:u64 p + 72];
++  a10 = [:u64 p + 80];
++  a11 = [:u64 p + 88];
++  a12 = [:u64 p + 96];
++  a13 = [:u64 p + 104];
++  a14 = [:u64 p + 112];
++  a15 = [:u64 p + 120];
++  a16 = [:u64 p + 128];
++  lim = 36864; i = 0;
++  while (i < lim) { buf[i] = (8u)i; i += 1; }
++  i -= 1;
++  lim = (64u)buf[i];
++  a1 ^= lim;
++  a0 ^= a1;
++  a0 ^= a2;
++  a0 ^= a3;
++  a0 ^= a4;
++  a0 ^= a5;
++  a0 ^= a6;
++  a0 ^= a7;
++  a0 ^= a8;
++  a0 ^= a9;
++  a0 ^= a10;
++  a0 ^= a11;
++  a0 ^= a12;
++  a0 ^= a13;
++  a0 ^= a14;
++  a0 ^= a15;
++  a0 ^= a16;
++  [:u64 p + 0] = a0;
++  return a0;
++}
++
++
++/* No saved register; the stack pointer is saved at SP + 36864, then
++   restored from there. */
++#[callee_saved = 1]
++export fn sp_slot(reg u64 p) -> reg u64 {
++  stack u8[36864] buf;
++  reg u64 i lim a;
++  lim = 36864; i = 0;
++  while (i < lim) { buf[i] = (8u)i; i += 1; }
++  i -= 1;
++  a = (64u)buf[i];
++  [:u64 p + 0] = a;
++  return a;
++}
+diff --git a/proofs/compiler/armv8a_params.v b/proofs/compiler/armv8a_params.v
+index 9ae9a50d..cefc5df2 100644
+--- a/proofs/compiler/armv8a_params.v
++++ b/proofs/compiler/armv8a_params.v
+@@ -199,6 +199,17 @@ Definition armv8a_lload (ws : wsize) (xd : var_i) (xs : var_i) (ofs : Z) :=
+   let mn := LDR in
+   ([:: LLvar xd], Oarmv8a (ARMv8A_op mn default_opts), [:: Load Aligned ws (faddv Uptr xs (fconst ws ofs))]).
+ 
++(* A saved register is stored to or loaded from [SP + ofs] directly only when
++   LDR and STR can encode [ofs]: for an X register, "a multiple of 8 in the
++   range 0 to 32760" (ARM DDI 0487 M.d, C6.2.216 LDR (immediate) and C6.2.415
++   STR (immediate), unsigned offset). The saved registers are X registers
++   ([armv8a_check_ws]) in 8-byte aligned slots; a wider saved register needs
++   this test revised. Otherwise the address of the first slot is computed
++   into X17 and the slots are reached from it with small offsets. Keeping
++   [is_arith_small] changes only the code that did not assemble. *)
++Definition is_save_slot_offset (ofs : Z) : bool :=
++  is_arith_small ofs && ((0 <=? ofs) && (ofs <=? 32760) && (ofs mod 8 =? 0))%Z.
++
+ (* Restore saved values from the stack. Unlike ARMv7 (where SP/R13 is an
+    ordinary register that LDR can target), an A64 load writes its result through
+    the general-purpose (X[]) register accessor, for which register number 31 is
+@@ -211,7 +222,7 @@ Definition armv8a_lload (ws : wsize) (xd : var_i) (xs : var_i) (ofs : Z) :=
+ Definition armv8a_lloads (rspi : var_i) (to_restore : seq (var * Z)) (spofs : Z) :
+     seq fopn_args :=
+   let restore_regs :=
+-    if all (fun '(_, ofs) => is_arith_small ofs) to_restore then
++    if all (fun '(_, ofs) => is_save_slot_offset ofs) to_restore then
+       map (fun '(x, ofs) =>
+              armv8a_lload (wsize_of_atype (vtype x)) (VarI x dummy_var_info) rspi ofs)
+           to_restore
+@@ -224,7 +235,7 @@ Definition armv8a_lloads (rspi : var_i) (to_restore : seq (var * Z)) (spofs : Z)
+                to_restore
+   in
+   let restore_sp :=
+-    if is_arith_small spofs then
++    if is_save_slot_offset spofs then
+       [:: armv8a_lload Uptr vtmp2i rspi spofs; armv8a_lmove Uptr rspi vtmp2i ]
+     else
+       ARMv8AFopn_smart_addi vtmp2i rspi spofs
+@@ -244,7 +255,7 @@ Definition armv8a_liparams : linearization_params :=
+     lip_check_ws := armv8a_check_ws;
+     lip_lstore  := armv8a_lstore;
+     lip_lload := armv8a_lload;
+-    lip_lstores := lstores_imm_dfl armv8a_tmp2 armv8a_lstore ARMv8AFopn_smart_addi is_arith_small;
++    lip_lstores := lstores_imm_dfl armv8a_tmp2 armv8a_lstore ARMv8AFopn_smart_addi is_save_slot_offset;
+     lip_lloads  := armv8a_lloads;
+   |}.
+ 
+diff --git a/proofs/compiler/armv8a_params_proof.v b/proofs/compiler/armv8a_params_proof.v
+index a4a53609..e3a55777 100644
+--- a/proofs/compiler/armv8a_params_proof.v
++++ b/proofs/compiler/armv8a_params_proof.v
+@@ -406,7 +406,7 @@ Proof.
+       get_var true vmr rspi >>= to_word Uptr = ok top ->
+       exists2 vm,
+         sem_fopns_args (with_vm s vmr)
+-          (if is_arith_small ofs
++          (if is_save_slot_offset ofs
+            then [:: armv8a_lload Uptr vtmp2i rspi ofs; armv8a_lmove Uptr rspi vtmp2i ]
+            else ARMv8AFopn_smart_addi vtmp2i rspi ofs
+                 ++ [:: armv8a_lload Uptr vtmp2i vtmp2i 0%Z; armv8a_lmove Uptr rspi vtmp2i ])
+@@ -458,7 +458,7 @@ Proof.
+ 
+   rewrite /lip_lloads /armv8a_lloads.
+   rewrite /sem_fopns_args foldM_cat -!/sem_fopns_args.
+-  case hall: (all (fun '(_, ofs1) => is_arith_small ofs1) to_save).
++  case hall: (all (fun '(_, ofs1) => is_save_slot_offset ofs1) to_save).
+ 
+   (* All offsets small: LDR directly from [rspi]. *)
+   - have [hsem1 hget1] := lloads_aux_correct armv8a_lload_correct hnin hget hf.

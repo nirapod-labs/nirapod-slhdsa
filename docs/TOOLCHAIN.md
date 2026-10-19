@@ -132,8 +132,9 @@ Trusted, not proved:
   architecture manuals, including the instructions the series adds;
 - the EasyCrypt models of the instructions in the Jasmin EasyCrypt library
   (`eclib/JModel_armv8a.ec`, `eclib/JModel_x86.ec`), which `jasmin2ec`
-  output refers to, including the `LDRW` model the series adds, and the
-  global axioms of that library: its memory model (`JMemory`), the AES
+  output refers to, including the models the series adds (`LDRW`, and the
+  Advanced SIMD and SHA instructions of `toolchain/jasmin/PATCHES-SIMD.md`),
+  and the global axioms of that library: its memory model (`JMemory`), the AES
   helpers (`AES`) and the horizontal addition of the x86-64 model
   (`JModel_x86`), listed in `toolchain/jasmin/ECLIB_AXIOMS`;
 - the speculative guarantees of barrier instructions, an assumption of the

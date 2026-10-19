@@ -15,50 +15,112 @@ fill them in for AArch64 and add the instructions.
 
 ## Series
 
-All four are project patches, written for this project and not submitted
-upstream.
+The seven patches are the commits of jasmin-lang/jasmin pull request #1643,
+at its head `06eae3de97487e0ac8bd4e0847dddaa7c9ac5d44`, which is based on
+upstream `main` at `b1a56f315`. The pull request is open, not merged (head
+checked on 2026-10-19). They need two upstream changes that are
+merged but not in the pin: the shared BIC recogniser of #1633 and the
+save-slot test of #1639, carried as `patches/0021` and `patches/0029`.
 
 | Patch | Content | Proof status |
 |---|---|---|
-| 0001 | SIMD&FP registers V0-V31 as 128-bit vector registers; calling convention; MOV (vector), LDR/STR of a Q register, AND, BIC, ORR, EOR, NOT, ADD, SUB, SHL, USHR, SRI, SLI; lowering of u128 moves, loads, stores and operators; saving of callee-saved vector registers | lowering, linearization and assembly generation proved; instruction semantics trusted |
-| 0002 | SHA256H, SHA256H2, SHA256SU0, SHA256SU1, SHA512H, SHA512H2, SHA512SU0, SHA512SU1; lemmas relating them to FIPS 180-4; a known-answer test of whole SHA-256 and SHA-512 digests | instruction semantics trusted; the FIPS 180-4 lemmas are proved about those semantics; the known-answer test checks the semantics against published digests |
-| 0003 | EOR3, BCAX, RAX1, XAR | instruction semantics trusted |
+| 0001 | system calls no longer assumed to preserve the vector registers, on every architecture | model of system calls and register allocation's kill set changed; compiler theorem proved again |
+| 0002 | SIMD&FP registers V0-V31 as 128-bit vector registers; calling convention; MOV (vector), LDR and STR of a Q register; lowering of u128 moves, loads and stores; saving of callee-saved vector registers; `reg u256` rejected on ARMv8-A | lowering, linearization and assembly generation proved; instruction semantics trusted |
+| 0003 | AND, BIC, ORR, EOR, NOT, ADD, SUB, SHL, USHR, SSHR, SRI, SLI, MOVI; lowering of the u128 bitwise operators, element-wise addition and subtraction, shifts by a constant and the constant zero | lowering proved; instruction semantics trusted |
 | 0004 | EXT, REV32, REV64, TRN1, TRN2, ZIP1, ZIP2, UZP1, UZP2, DUP (general and element), INS (general and element), UMOV | instruction semantics trusted; element operands printed by the trusted printer |
+| 0005 | SHA256H, SHA256H2, SHA256SU0, SHA256SU1, SHA512H, SHA512H2, SHA512SU0, SHA512SU1; lemmas relating them to FIPS 180-4; a known-answer test | instruction semantics trusted; the FIPS 180-4 lemmas are proved about those semantics |
+| 0006 | EOR3, BCAX, RAX1, XAR; a lemma relating XAR to the ρ rotation of FIPS 202 | instruction semantics trusted; the lemma is proved about the semantics |
+| 0007 | changelog entries | none |
 
 Intrinsic names: the bitwise instructions, moves and Q-register loads and
-stores take no suffix (`#VEOR`, `#VLDR`); the element-wise instructions take
-the arrangement as a suffix (`#VADD_4u32` is `ADD Vd.4S`); the cryptographic
-instructions keep their assembly name (`#SHA256H`). An instruction whose
-destination is also a source takes it as its first argument:
-`d = #SHA256SU0(d, n);`.
+stores are `V` followed by the mnemonic, with no suffix (`#VEOR`, `#VLDR`);
+an instruction that exists at several element sizes takes the arrangement as
+a suffix (`#VADD_4u32` is `ADD Vd.4S`); the cryptographic instructions keep
+their assembly name (`#SHA256H`). An instruction whose destination is also a
+source takes it as its first argument: `d = #SHA256SU0(d, n);`.
+
+### Lowering
+
+A u128 move, load or store becomes MOV, LDR or STR of a Q register. `&`,
+`|`, `^` and `!` become AND, ORR, EOR and NOT; `a & !b` and `!b & a`
+become one BIC through the recogniser that #1633 shares between the
+targets. Element-wise `+` and `-` become ADD and SUB. A shift by a constant
+is lowered only when its amount fits the immediate form: 0 to esize - 1 for
+`<<` (SHL), 1 to esize for `>>` (USHR) and `>>s` (SSHR), where a shift by
+esize gives what the Jasmin operator gives. The constant 0 becomes
+`MOVI Vd.2D, #0`, the only immediate MOVI accepts. Any other u128 operator,
+including a shift by a register amount, a multiplication or a comparison,
+remains a compile error.
+
+### Adaptations to the pin
+
+The pull request is based on a later upstream `main` than the pin. Against
+its commits, the changed lines of the patches differ in three places, and
+nowhere else (`git range-diff`). Each adaptation sits in the commit that
+needs it, so that every commit of the series builds and passes its tests on
+the pin; a separate fix-up patch would leave commits that do not:
+
+- `compiler/tests/negative.expected` records a `Compile:` count for the
+  negative tests that ran before each test it lists. The patches of
+  `patches/` add negative tests before this series, so the count each patch
+  changes is ten higher than in the pull request (247 to 248 in 0001, then
+  257, 263, 268, and 269 in 0006). The count is generated by the test
+  runner; the negative test suite checks it.
+- 0002 adds VLDR to `armv8a_is_load` in a list that, on this pin, also
+  holds LDRW (`patches/0023`).
+- 0002 gives the vector register type to the ARMv8-A safety checker
+  (`compiler/safetylib/armv8a_safety.ml`, `patches/0018`), which upstream
+  does not have; without it the compiler does not build.
+
+### Syscalls and the vector registers
+
+Before 0001, a system call such as `#randombytes` was assumed to preserve
+every callee-saved register in full. AAPCS64 requires only the low 64 bits
+of V8-V15 to be preserved, and the Microsoft x64 ABI makes the upper half
+of YMM6-YMM15 volatile. 0001 assumes that a system call preserves only the
+callee-saved registers that are not vector registers (`syscall_preserved`
+in `arch_decl.v`), in the semantics and in register allocation. On ARMv8-A,
+an export function that issues a system call therefore saves and restores
+q8-q15 (16 instructions and 128 bytes of frame), and a u128 value cannot
+stay in a register across the call. `callee_saved` is unchanged.
+
+### Register allocation
+
+The 32 new registers shift the identifiers of the variables created after
+them, so register allocation can break ties differently, on every
+architecture. The allocations are checked by the proved development as
+before; the emitted code may name other registers.
 
 ### What is proved, what is trusted
 
 Proved, by `make -C proofs all` on the patched tree: the compiler correctness
 theorem (`it_compile_prog_to_asmP`) with the patched ARMv8-A parameters
-(`armv8a_h_params`). This covers the new lowering cases (each lowered u128
-expression computes the value of the source expression), the saving and
-restoring of 128-bit registers in function prologues and epilogues, and
-assembly generation for the new register class and argument conditions.
-`Print Assumptions it_compile_prog_to_asmP` and `Print Assumptions
-armv8a_h_params` list only the axioms of the unpatched
-development: Rocq's primitive 63-bit integers, `eq_rect_eq`,
-`proof_irrelevance`, and Jasmin's label encoding. The patches add no
-`Admitted` proof and no `Axiom`.
+(`armv8a_h_params`). This covers the system-call model of 0001, the new
+lowering cases (each lowered u128 expression computes the value of the source
+expression), the saving and restoring of 128-bit registers in function
+prologues and epilogues, and assembly generation for the new register class
+and argument conditions. `Print Assumptions` for the theorem and for both
+architecture records lists the names of `ASSUMPTIONS`, as without the
+series. The patches add no `Admitted` proof and no `Axiom` (`ADMITS` and
+`ECLIB_AXIOMS` are unchanged).
 
 Trusted, as for every instruction of the target:
 
 - The instruction semantics. Each is a transcription of the operational
-  pseudocode of the Arm A64 Instruction Set Architecture (DDI 0602, release
-  2026-03), cited beside its description in `armv8a_instr_decl.v` with the
-  semantics stated in our own words; the
-  word-level helpers are in `armv8a_simd.v`. The transcriptions, the
-  encodable operand ranges and the data-independent-time classification
-  were checked against Arm's machine-readable release of the same version.
+  pseudocode of the Arm Architecture Reference Manual for A-profile
+  architecture (DDI 0487 M.d, C7.2, with the shared pseudocode of J1.4),
+  cited beside its description in `armv8a_instr_decl.v` with the semantics
+  stated in our own words; the word-level helpers are in `armv8a_simd.v`.
+  The SHA-256 functions Σ0, Σ1, σ0, σ1, Ch and Maj are those of Jasmin's
+  `sha256.v`, and the EasyCrypt models use those of `SHA.ec`.
 - The encodability conditions on immediates and addresses
   (`armv8a_check_CAimm`, `armv8a_check_CAmem`), transcribed from the same
-  document. A condition that is too permissive makes the assembler reject
-  the output; it cannot change what an accepted instruction means.
+  document. A Q-register load or store takes an offset that is a multiple
+  of 16 from 0 to 65520 or lies in [-256, 255], or an unshifted register.
+  A condition that is too permissive makes the assembler reject the output;
+  it cannot change what an accepted instruction means. EXT is the
+  exception: llvm-mc accepts a byte position above 15 and encodes it
+  modulo 16, so the compiler's check is the only guard.
 - The assembly printer (`pp_arm_v8a.ml`), which prints a vector operand from
   the element size its description pairs with it: `v0.16b`, `v0.8h`,
   `v0.4s`, `v0.2d`, or `q0`, and an element operand of DUP, INS and UMOV as
@@ -71,19 +133,21 @@ Trusted, as for every instruction of the target:
   for Normal memory when alignment checking is disabled (user mode on Linux
   and macOS).
 
-Proved about the semantics (`proofs/compiler/armv8a_simd_facts.v`, outside
-the compiler; `Print Assumptions` reports no axiom): the elements of a packed
-vector are the packed words; the SHA-2 functions of the Arm pseudocode are
-those of FIPS 180-4; SHA256H and SHA256H2 perform four SHA-256 rounds
-(FIPS 180-4, 6.2.2 step 3) and SHA256SU0 followed by SHA256SU1 computes four
-message-schedule words (step 1); SHA512H, SHA512H2 and an element-wise
-addition perform two SHA-512 rounds and SHA512SU0 followed by SHA512SU1
-computes two message-schedule words (6.4.2); XAR by 64 - r rotates each
-64-bit lane left by r (the ρ step of Keccak-f[1600], FIPS 202, 3.2.2). The
+Proved about the semantics, in `proofs/compiler/armv8a_simd_lemmas.v`: a
+file outside the compiler, which nothing extracted depends on. Its 27
+lemmas are each closed under the global context (`Print Assumptions`). They
+state that the elements of a packed vector are the packed words; that the
+SHA-2 functions of the Arm pseudocode are those of FIPS 180-4; that SHA256H
+and SHA256H2 perform four SHA-256 rounds (FIPS 180-4, 6.2.2 step 3) and
+SHA256SU0 followed by SHA256SU1 computes four message-schedule words (step
+1); that SHA512H, SHA512H2 and an element-wise addition perform two SHA-512
+rounds and SHA512SU0 followed by SHA512SU1 computes two message-schedule
+words (6.4.2); and that XAR by 64 - r rotates each 64-bit element left by r
+(the ρ step of Keccak-f[1600], FIPS 202, 3.2.2; XAR by 0 when r is 0). The
 SHA-2 statements are made both about the helper functions and about the
 `id_semi` of the instruction descriptions, so the role of each operand is
-part of what is proved. The SHA-512 pair packs the state as
-`[a; b]`, `[c; d]`, `[e; f]`, `[g; h]`, first element in element 0:
+part of what is proved. The SHA-512 pair packs the state as `[a; b]`,
+`[c; d]`, `[e; f]`, `[g; h]`, first element in element 0:
 `SHA512H([g + k1; h + k0], [f; g], [d; e])`, then `SHA512H2` of that,
 `[c; d]` and `[a; b]`; `[f; g]` and `[d; e]` are `EXT #8` of adjacent state
 registers. These lemmas are about the transcribed semantics; they do not
@@ -96,18 +160,25 @@ the registers, which no instruction of the series writes.
 ### Assembling
 
 The SHA-2 and SHA-3 instructions need the corresponding architecture
-features enabled in the assembler. Apple's assembler enables them for
-`arm64-apple-macos`; for Linux, assemble with
-`-march=armv8.2-a+sha2+sha3` or an equivalent `.arch` directive. Running
-them requires FEAT_SHA256, FEAT_SHA512 and FEAT_SHA3 on the processor.
+features enabled in the assembler; the printed assembly does not enable
+them, and the compiler does not check that the target implements them.
+Apple's assembler enables them for `arm64-apple-macos`; for Linux, assemble
+with `-march=armv8.2-a+sha2+sha3` or an equivalent `.arch` directive. The
+compiler's own assembly tests pass `-mattr=+sha2,+sha3` to llvm-mc, which
+places SHA-512 under `sha3`. Running them requires FEAT_SHA256,
+FEAT_SHA512 and FEAT_SHA3 on the processor.
 
 ### Constant time
 
-The operational information of every instruction of the series in DDI 0602
-2026-03 classifies it as a data-independent-time instruction (see About
-PSTATE.DIT), so `jasmin-ct --doit` accepts them. The constant-time and
-speculative constant-time checkers treat them as other operators: their
-outputs carry the join of the security levels of their inputs.
+An instruction is data-independent-time only if the Operational information
+of its description in DDI 0487 M.d says so (B1.5.6, "About PSTATE.DIT").
+Every instruction of the series but MOVI has that statement, and is marked
+so that `jasmin-ct --doit` accepts it. MOVI has no Operational information
+section and is not on the list; the only form the series accepts is
+`MOVI Vd.2D, #0`, whose sole input is the constant, so it consumes no data.
+The constant-time and speculative constant-time checkers treat the
+instructions as other operators: their outputs carry the join of the
+security levels of their inputs.
 
 The architecture makes these instructions data-independent-time only while
 PSTATE.DIT is set. Compiled Jasmin code does not set PSTATE.DIT, and the
@@ -120,63 +191,81 @@ Vector arguments are passed in V0-V7 and results returned in V0-V3, as in the
 procedure call standard for 128-bit short vectors; a function returning
 several vectors corresponds to a C function returning a homogeneous
 short-vector aggregate of that many 128-bit members, which a C compiler
-returns in V0 upward (measured with clang for two and four members).
-V8-V15 are callee-saved: the standard requires their low 64 bits to be
-preserved, the compiler saves and restores all 128 bits. The other vector
-registers are caller-saved.
+returns in V0 upward. On the C side, a u128 argument is a short vector type
+such as `uint8x16_t`, not `__int128`, which AAPCS64 passes in a pair of X
+registers. V8-V15 are callee-saved: the standard requires their low 64 bits
+to be preserved, the compiler saves and restores all 128 bits. The other
+vector registers are caller-saved.
 
 ## Tests
 
-By patch: 0001 `simd_moves.jazz`, `simd_ops.jazz` and five programs under
-`fail/asmgen/armv8a/` (Q-register address forms, shift amounts); 0002
-`simd_sha2.jazz`, `simd_sha2_kat.jazz` and `exec/exec_armv8a.ml`; 0003
-`simd_sha3.jazz` and `xar_rotation_range.jazz`; 0004 `simd_lanes.jazz`,
-`vext_index_range.jazz` and `vins_index_range.jazz`.
+In the Jasmin tree:
 
-In the Jasmin tree: `compiler/tests/success/armv8a/simd_moves.jazz`,
-`simd_ops.jazz`, `simd_sha2.jazz`, `simd_sha2_kat.jazz`, `simd_sha3.jazz` and
-`simd_lanes.jazz` compile for Linux and macOS.
-`compiler/tests/exec/exec_armv8a.ml` evaluates `simd_sha2_kat.jazz` with the
-semantics of the compiler: SHA-256 and SHA-512 digests of the FIPS 180-4
-example messages (the empty message, "abc", and a two-block message),
-computed with the SHA-2 instructions, must equal the published digests
-(`exec_armv8a.expected`). Eight programs under
-`compiler/tests/fail/asmgen/armv8a/` with an unencodable address, shift
-amount, rotation or element index are rejected at assembly generation
-(`negative.expected`).
+- 0001: `compiler/tests/success/windows/x86-64/syscall.jazz` and
+  `fail/windows/x86-64/syscall_live_u256.jazz`;
+- 0002: `success/armv8a/simd_moves.jazz`,
+  `success/armv8a/large_stack/save_slot_offset_q.jazz`, seven programs
+  under `fail/asmgen/armv8a/` with a Q-register address that cannot be
+  encoded, and `fail/register_allocation/armv8a/syscall_live_u128.jazz` and
+  `u256_reg.jazz`;
+- 0003: `success/armv8a/simd_ops.jazz`, `bic_lowering.jazz` extended to
+  vectors, and six programs under `fail/asmgen/armv8a/` with a shift amount
+  out of range or a nonzero MOVI immediate;
+- 0004: `success/armv8a/simd_permute.jazz` and five programs under
+  `fail/asmgen/armv8a/` with an element index or EXT position out of range;
+- 0005: `success/armv8a/simd_sha2_kat.jazz` and `simd_exec.jazz`, evaluated
+  with the semantics of the compiler by `compiler/tests/exec/exec_armv8a.ml`:
+  the SHA-256 and SHA-512 digests of "abc", computed with the SHA-2
+  instructions, must equal the published ones, and the permutations and
+  element moves must give the values of `exec_armv8a.expected`;
+- 0006: `success/armv8a/simd_sha3.jazz`, `fail/asmgen/armv8a/xar_rotation_range.jazz`,
+  and the SHA-3 instructions of `simd_exec.jazz` in the same
+  evaluation.
 
-Run on an Apple M4 (macOS, native), with harnesses that are not yet part of
-this repository:
+`toolchain/build.sh test` runs the negative suite, which checks that the
+fail tests are rejected as `negative.expected` records, and the evaluation
+of `exec_armv8a.ml`. It does not compile the success tests: that is
+`compiler/scripts/runtest` with the categories `test-armv8a`,
+`test-armv8a-macos` and `test-x86-64-windows` of `compiler/config/tests.config`
+(see "Assembly checks" in `PATCHES.md`). On this pin, on an Apple M4, every
+success test of those categories compiles and assembles with LLVM's
+assembler, 46 for each ARMv8-A category and 3 for Windows, and the Windows
+fail test is rejected; the ELF shared-library link that the script also
+does was not run there.
 
-- every test program of `compiler/tests/success/**/armv8a` compiles to the
-  same assembly as with the series of `patches/` alone, for Linux and macOS;
-- a differential test executes each instruction and each lowered operator
-  natively over random and boundary inputs (about 760 cases per seed, three
-  seeds) and compares the result with the Jasmin interpreter, which evaluates
-  the extracted Rocq semantics, and with an independent model written from
-  the same pseudocode; all three agree. Mutating the extracted semantics of
-  one instruction (SRI) makes the test fail on that instruction;
-- the known-answer test runs natively: the six digests, returned in V0-V1
-  and V0-V3 to a C caller, equal the published ones. Mutating the extracted
-  semantics of SHA256H or of SHA512H makes the three digests of that
-  algorithm differ, and calling SHA512H with the operands `[e; f]`, `[c; d]`
-  in place of `[f; g]`, `[d; e]` makes the SHA-512 digests differ;
-- a native test of the calling convention: vector arguments and result,
-  calls between Jasmin functions, preservation of V8-V15 by a function that
-  uses 30 vector registers, vector stack variables and spills, and every
-  accepted address form of a Q-register load and store;
-- `jasmin-ct`, `jasmin-ct --doit` and `jasmin-ct --sct` accept a program that
-  passes secret data through every instruction and reject a secret address;
-- `jasmin2ec` extracts that program in the normal, CT and CTG modes and
-  EasyCrypt checks the result;
-- for each case of the differential test (three seeds, about 2,300 cases,
-  every instruction and lowered operator), EasyCrypt proves by computation
+Run on an Apple M4 (macOS 27.0, native), with harnesses that are not part
+of this repository:
+
+- a differential test executes each instruction of the series and each
+  lowered operator, MOVI, SSHR and both BIC operand orders included,
+  natively over random and boundary inputs (2,468 cases over three seeds)
+  and compares the result with the Jasmin interpreter, which evaluates the
+  extracted Rocq semantics, and with an independent model written from the
+  same pseudocode; all three agree on every case. Each case's instruction
+  is found in its assembly, except 18 vector moves that register allocation
+  removed. Mutating the extracted semantics changes the interpreter's
+  result for every instruction family; mutating the lowering (BIC with its
+  operands swapped, SSHR emitted as USHR) changes the native results; a
+  MOVI immediate of 1 is rejected at assembly generation;
+- for each case of the differential test, EasyCrypt proves by computation
   that the operator expression `jasmin2ec` extracts for it, applied to the
-  case's inputs, equals the value the processor produced. For each
-  instruction, the same statement with one result bit flipped is rejected.
+  case's inputs, equals the value the processor produced; for each
+  instruction, the same statement with one result bit flipped is rejected;
+- the SHA-256 and SHA-512 digests of the FIPS 180-4 example messages (the
+  empty message, "abc", and a two-block message), computed with the SHA-2
+  instructions natively and with the interpreter, equal the published ones.
+  Mutating the extracted semantics of SHA256H or of SHA512H changes the
+  three interpreter digests of that algorithm, and calling SHA512H with the
+  wrong state operands changes the three SHA-512 digests;
+- a native test of the calling convention: vector arguments and results,
+  calls between Jasmin functions, preservation of V8-V15, vector stack
+  variables and spills, and the accepted address forms of a Q-register load
+  and store;
+- `jasmin-ct`, `jasmin-ct --doit` and `jasmin-ct --sct` accept programs
+  that pass secret data through the instructions of the series and reject
+  the controls with a secret address; `jasmin2ec` extracts them in the
+  normal, CT and CTG modes and EasyCrypt checks the result.
 
-These runs used the same four patches on the previous pin, 2bf326d5,
-before their instruction descriptions were rewritten in the descriptor form
-of the current pin; they have not been repeated on the current pin. The
-tests in the Jasmin tree are run on the current pin by
-`toolchain/build.sh test`.
+These runs used upstream `main` at `b1a56f315` with the seven commits of
+the pull request, not this pin; on this pin the patches differ only by the
+three adaptations above.

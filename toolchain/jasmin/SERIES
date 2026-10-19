@@ -31,7 +31,7 @@ patches/0017-armv8a-add-EXTR-and-the-bit-field-instructions.patch b825ee2e4a9138
 patches/0018-safetylib-implement-the-safety-checker-for-ARMv8-A.patch f74fcc3a734c6adefac99953aad45e5e5a00499b60eed2396ad536ba673e0602
 patches/0019-linearization-report-invalid-operands-as-errors.patch a3d9681575d77c56fdd33cf99cb599192eac66d0d28e2ba25b6aaf958ba6a844
 patches/0020-linearization-changelog-entry-for-invalid-operands.patch a57bbb8505eac5e3bde89677663d44477d4bd6c715991056d4b8b1883eb291ea
-patches/0021-armv8a-lower-an-AND-with-a-complemented-operand-to-B.patch b08c57e7247fa7fa91acfc71b3f9a2dce245680831b51fddf385262351122e07
+patches/0021-Lowering-lower-to-BIC-on-arm-m4-and-armv8a.patch f56c3927e631df7ab9abd62411116273c2ae470d53e348780341030fbdab4f85
 patches/0022-armv8a-store-an-immediate-through-a-scratch-register.patch fd6d90c8269a77942fc4ac415bebe5584afb53c1d0f937d5ec900a918ca38611
 patches/0023-armv8a-load-a-32-bit-word-zero-extended-to-64-bits.patch 49e504895db46edada4d5741ffcfd579297349e39b339752ab9dd5e5fe1ee814
 patches/0024-safetylib-reuse-abstract-values-and-environments-tha.patch bcc421a7dbf916ec609dccbbb823897dc4a3b0c1d7608b56a9dd0c320a0a7bf5
@@ -39,7 +39,11 @@ patches/0025-safetylib-option-to-leave-large-arrays-out-of-the-nu.patch 0417973a
 patches/0026-safetylib-option-to-pass-on-congruences-for-written-.patch 76fa8cb36c5341050af9500aba18cb6efbd0c2fc4f53f950065233ad7e30497e
 patches/0027-armv8a-keep-x29-the-frame-pointer-out-of-register-al.patch 8a89de4cfddebd3a8c3de72c8fbfe2a06d083284567210dc8f4d7ad7154dbfc7
 patches/0028-safetylib-options-to-keep-fewer-loop-variables-relat.patch 7724ea66ed1bb99b1f0b1f5a606013ca74b950d95ea767239957bc035cc1478c
-patches-simd/0001-armv8a-add-the-SIMD-FP-registers-and-basic-Advanced-.patch 7552ae7b4569d9167e6fe9c56710f9e72131db09a31094ee18aa1410b213a89d
-patches-simd/0002-armv8a-add-the-SHA-256-and-SHA-512-instructions.patch c3482a2c109a6a1352f3dc554b20e4f8c74ce665732a10b0feca89a195a0bda0
-patches-simd/0003-armv8a-add-the-SHA-3-instructions.patch 45a2405c6987d81b5724e66bf5557271eefb7112aef420175d7bdcb729e371cc
-patches-simd/0004-armv8a-add-Advanced-SIMD-permutations-and-element-mo.patch f1ea5291acb8a08c181b6e9e11bb2390b96bfaa316986fa10f588c8579f1f73c
+patches/0029-armv8a-fix-saved-registers-out-of-the-reach-of-LDR-a.patch 47b5e39458e3fcabe488414c5855dd7b213792f4c37b918f486835a21ddc5a53
+patches-simd/0001-Do-not-assume-that-system-calls-preserve-the-vector-.patch 48a3cf5c8e9cb5cca6bc01e832ce11eda52c86b3866bcb4a76ef7fd707795f01
+patches-simd/0002-armv8a-add-the-SIMD-FP-registers.patch 0e22d8f03efeb2588740d37239dc7d018b7e45ad9fe03a7d77747378a5159909
+patches-simd/0003-armv8a-add-the-basic-Advanced-SIMD-instructions.patch fa4b83c6a9860401aed6fa7d2f4b2ff42833e4d05edf9be7891353d246ab0c65
+patches-simd/0004-armv8a-add-Advanced-SIMD-permutations-and-element-mo.patch aca0317e3ad2fc90ce6545c190858b9271ea8abb3e8175d08e5652bb7323bf19
+patches-simd/0005-armv8a-add-the-SHA-256-and-SHA-512-instructions.patch 80c210b974dc10b13bef0391e9d5ef3b5c3c88b3dc68da1845d68da49fb7b489
+patches-simd/0006-armv8a-add-the-SHA-3-instructions.patch 607f7f6c699af0c9b85f11a793f1dc0f501562d972aeb7262df0546a5f35584f
+patches-simd/0007-armv8a-changelog-entries-for-the-vector-registers-an.patch c7d4d0167582b533215237014615173fe4ad63114029ed8c1886369ec4c05527
