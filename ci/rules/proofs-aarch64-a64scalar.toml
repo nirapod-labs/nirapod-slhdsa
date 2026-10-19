@@ -10,4 +10,4 @@
 [[aarch64-a64scalar.line]]
 what = "correctness proofs against the aarch64 a64scalar model, every file checked"
 pattern = '^check-pair aarch64/a64scalar: PASS (\d+) files$'
-minimum = 43
+minimum = 44

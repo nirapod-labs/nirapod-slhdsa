@@ -9,4 +9,4 @@
 [[aarch64-portable.line]]
 what = "correctness proofs against the aarch64 portable model, every file checked"
 pattern = '^check-pair aarch64/portable: PASS (\d+) files$'
-minimum = 44
+minimum = 45

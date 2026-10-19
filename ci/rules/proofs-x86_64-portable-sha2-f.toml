@@ -10,32 +10,32 @@
 [[x86_64-portable-sha2-f.line]]
 what = "files of sha2_128f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set x86_64/portable/sha2_128f: PASS (\d+) files$'
-minimum = 42
+minimum = 60
 
 [[x86_64-portable-sha2-f.line]]
-what = "theorems in the unchanged inventory of x86_64/portable/sha2_128f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, ADRSc 2, Thash 4)"
+what = "theorems in the unchanged inventory of x86_64/portable/sha2_128f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, WotsLeaf 1, XmssPk 1, TreeFold 1, Xmss 2, ForsPk 1, ForsTree 1, ForsSign 1, Hypertree 2, ADRSc 2, Thash 4, PreHash 3, HMsg 1, ThashT 2, ThashX4 3, Theorems 8)"
 pattern = '^inventory x86_64/portable/sha2_128f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 13
+minimum = 40
 
 [[x86_64-portable-sha2-f.line]]
 what = "files of sha2_192f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set x86_64/portable/sha2_192f: PASS (\d+) files$'
-minimum = 49
+minimum = 67
 
 [[x86_64-portable-sha2-f.line]]
-what = "theorems in the unchanged inventory of x86_64/portable/sha2_192f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, ADRSc 2, Thash 4)"
+what = "theorems in the unchanged inventory of x86_64/portable/sha2_192f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, WotsLeaf 1, XmssPk 1, TreeFold 1, Xmss 2, ForsPk 1, ForsTree 1, ForsSign 1, Hypertree 2, ADRSc 2, Thash 4, PreHash 3, HMsg 1, ThashT 2, ThashX4 3, Theorems 8)"
 pattern = '^inventory x86_64/portable/sha2_192f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 13
+minimum = 40
 
 [[x86_64-portable-sha2-f.line]]
 what = "files of sha2_256f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set x86_64/portable/sha2_256f: PASS (\d+) files$'
-minimum = 43
+minimum = 61
 
 [[x86_64-portable-sha2-f.line]]
-what = "theorems in the unchanged inventory of x86_64/portable/sha2_256f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, ADRSc 2, Thash 4)"
+what = "theorems in the unchanged inventory of x86_64/portable/sha2_256f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, WotsLeaf 1, XmssPk 1, TreeFold 1, Xmss 2, ForsPk 1, ForsTree 1, ForsSign 1, Hypertree 2, ADRSc 2, Thash 4, PreHash 3, HMsg 1, ThashT 2, ThashX4 3, Theorems 8)"
 pattern = '^inventory x86_64/portable/sha2_256f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 13
+minimum = 40
 
 [[x86_64-portable-sha2-f.line]]
 what = "sets of the sha2-f group checked against the x86_64/portable models"

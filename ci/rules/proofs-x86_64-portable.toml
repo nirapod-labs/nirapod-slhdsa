@@ -9,4 +9,4 @@
 [[x86_64-portable.line]]
 what = "correctness proofs against the x86_64 portable model, every file checked"
 pattern = '^check-pair x86_64/portable: PASS (\d+) files$'
-minimum = 44
+minimum = 45

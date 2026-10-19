@@ -10,32 +10,32 @@
 [[aarch64-a64scalar-shake-f.line]]
 what = "files of shake_128f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set aarch64/a64scalar/shake_128f: PASS (\d+) files$'
-minimum = 36
+minimum = 51
 
 [[aarch64-a64scalar-shake-f.line]]
-what = "theorems in the unchanged inventory of aarch64/a64scalar/shake_128f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, Thash 7)"
+what = "theorems in the unchanged inventory of aarch64/a64scalar/shake_128f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, WotsLeaf 1, XmssPk 1, TreeFold 1, Xmss 2, ForsPk 1, ForsTree 1, ForsSign 1, Hypertree 2, Thash 7, PreHash 3, ThashX4 4, Theorems 8)"
 pattern = '^inventory aarch64/a64scalar/shake_128f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 14
+minimum = 39
 
 [[aarch64-a64scalar-shake-f.line]]
 what = "files of shake_192f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set aarch64/a64scalar/shake_192f: PASS (\d+) files$'
-minimum = 40
+minimum = 55
 
 [[aarch64-a64scalar-shake-f.line]]
-what = "theorems in the unchanged inventory of aarch64/a64scalar/shake_192f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, Thash 7)"
+what = "theorems in the unchanged inventory of aarch64/a64scalar/shake_192f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, WotsLeaf 1, XmssPk 1, TreeFold 1, Xmss 2, ForsPk 1, ForsTree 1, ForsSign 1, Hypertree 2, Thash 7, PreHash 3, ThashX4 4, Theorems 8)"
 pattern = '^inventory aarch64/a64scalar/shake_192f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 14
+minimum = 39
 
 [[aarch64-a64scalar-shake-f.line]]
 what = "files of shake_256f: the model, SetModel, its array theories and the per-set proofs, every file checked"
 pattern = '^check-set aarch64/a64scalar/shake_256f: PASS (\d+) files$'
-minimum = 35
+minimum = 50
 
 [[aarch64-a64scalar-shake-f.line]]
-what = "theorems in the unchanged inventory of aarch64/a64scalar/shake_256f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, Thash 7)"
+what = "theorems in the unchanged inventory of aarch64/a64scalar/shake_256f (Encoding 2, DigestIndices 2, Wots 1, WotsChain 1, WotsPk 1, WotsLeaf 1, XmssPk 1, TreeFold 1, Xmss 2, ForsPk 1, ForsTree 1, ForsSign 1, Hypertree 2, Thash 7, PreHash 3, ThashX4 4, Theorems 8)"
 pattern = '^inventory aarch64/a64scalar/shake_256f: \d+ axioms, (\d+) theorems, \d+ definitions, unchanged$'
-minimum = 14
+minimum = 39
 
 [[aarch64-a64scalar-shake-f.line]]
 what = "sets of the shake-f group checked against the aarch64/a64scalar models"
