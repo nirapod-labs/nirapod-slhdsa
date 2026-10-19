@@ -262,9 +262,6 @@ def main(argv):
     ap.add_argument("--namespace", action="append", default=[])
     ap.add_argument("--theorems", default="")
     ap.add_argument("--generated", action="append", default=[])
-    # The per-set proofs may define nothing of their own; their definitions
-    # are those of the specification, which the pair inventories pin.
-    ap.add_argument("--allow-no-definitions", action="store_true")
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write")
     mode.add_argument("--check")
@@ -305,7 +302,7 @@ def main(argv):
     if theorems and not thms:
         print("inventory.py: no theorem statements printed")
         return 2
-    if pinned and not defs and not args.allow_no_definitions:
+    if pinned and not defs:
         print("inventory.py: no definitions printed")
         return 2
     text = render(args.pair, axioms, thms, defs)

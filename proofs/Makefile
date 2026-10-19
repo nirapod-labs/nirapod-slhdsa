@@ -434,7 +434,7 @@ inventory-set:
 	@test -n "$(PAIR)" -a -n "$(SET)" || { echo "inventory-set: PAIR or SET not set"; exit 1; }
 	@$(PYTHON) -I tools/inventory.py --pair $(PAIR)/$(SET) --easycrypt "$(EASYCRYPT)" \
 	  --flags "$(call set_flags,$(PAIR),$(SET))" --namespace JazzEC=$(CRYPTO_SPECS)/arrays \
-	  --generated extracted --theorems "$(call set_theorems,$(SET))" --allow-no-definitions \
+	  --generated extracted --theorems "$(call set_theorems,$(SET))" \
 	  --$(MODE) $(call set_inventory_file,$(PAIR),$(SET)) $(call set_files,$(PAIR),$(SET))
 
 # ------------------------------------------------------------------
