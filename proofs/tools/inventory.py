@@ -66,6 +66,42 @@ DECL = re.compile(r"^\s*(?:\(\* (?:no )?(?:import|export) \*\) )?(?:(?:abstract|
                   r"(op|pred|type|abbrev|lemma|axiom|schema|theory|end|module|inductive|"
                   r"notation|class|instance)\b\s*(.*)$")
 KEPT = {"op", "pred", "type", "abbrev", "module", "inductive", "notation", "class", "instance"}
+# A memory restriction, as in `Adv{-A, -B}`, is a set. EasyCrypt prints its
+# members in the order of internal identifiers, which is not the same on
+# every host for the same theories, so the members are sorted before the
+# output is read: the inventory records the set, not the print order.
+RESTRICTION = re.compile(r"\{([+-][^{}\n]*)\}")
+RESTRICTION_MEMBER = re.compile(r"[+-][A-Za-z_]")
+
+
+def split_members(text):
+    """The members of a restriction, keeping `-F(A, B)` whole; None if the
+    parentheses do not balance."""
+    members, depth, start = [], 0, 0
+    for i, c in enumerate(text):
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth < 0:
+                return None
+        elif c == "," and depth == 0:
+            members.append(text[start:i].strip())
+            start = i + 1
+    if depth:
+        return None
+    members.append(text[start:].strip())
+    return members
+
+
+def canonical_restrictions(out):
+    """`out` with the members of every printed memory restriction sorted."""
+    def canon(m):
+        members = split_members(m.group(1))
+        if members is None or not all(RESTRICTION_MEMBER.match(x) for x in members):
+            return m.group(0)
+        return "{" + ", ".join(sorted(members)) + "}"
+    return RESTRICTION.sub(canon, out)
 
 
 def scratch_theory(files, namespaces, theorems, pinned):
@@ -292,10 +328,11 @@ def main(argv):
         sys.stdout.write(run.stderr)
         print("inventory.py: EasyCrypt failed (status %d) for %s" % (run.returncode, args.pair))
         return 2
+    out = canonical_restrictions(run.stdout)
     try:
-        axioms = parse_axioms(section(run.stdout, MARK_AXIOMS, MARK_THEOREMS))
-        thms = parse_theorems(section(run.stdout, MARK_THEOREMS, MARK_DEFS))
-        defs = parse_definitions(section(run.stdout, MARK_DEFS, None))
+        axioms = parse_axioms(section(out, MARK_AXIOMS, MARK_THEOREMS))
+        thms = parse_theorems(section(out, MARK_THEOREMS, MARK_DEFS))
+        defs = parse_definitions(section(out, MARK_DEFS, None))
     except ValueError as e:
         print("inventory.py: %s" % e)
         return 2
