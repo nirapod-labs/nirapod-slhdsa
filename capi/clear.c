@@ -28,7 +28,16 @@
  *                            restored by this function's own epilogue
  *         x86-64 (SysV)      rax, rcx, rdx, rsi, rdi, r8-r11, and
  *                            xmm0-xmm15, or all of ymm0-ymm15 with VZEROALL
- *                            after a variant that used AVX
+ *                            after a variant that used AVX; on a CPU with
+ *                            AVX-512, all of zmm0-zmm31, whatever the
+ *                            variant
+ *
+ *     The Jasmin code never uses the registers AVX-512 adds, but other code
+ *     in the process can leave secrets there before the export runs: the C
+ *     library's memcpy has variants that copy through zmm16-zmm31 (or their
+ *     ymm halves), and the testing build copies the seeds it is given with
+ *     memcpy. The AVX-512 mask registers k0-k7 are not cleared, nor is
+ *     the register state of later extensions (APX r16-r31).
  *
  *     x18 is left alone: macOS reserves it, as do Linux systems that keep
  *     a shadow call stack there, so writing it is not safe everywhere. The
@@ -92,13 +101,41 @@ void nirapod_slhdsa_clear_registers(unsigned used_features)
 #elif defined(__x86_64__)
 
 /*
- * VZEROALL needs AVX, which every non-scalar variant requires (sets.c);
- * the scalar variant runs on CPUs without it and uses no upper ymm halves,
- * so for it the legacy-encoded XORPS of the low halves is enough.
+ * zmm16-zmm31 exist only with AVX-512 and only EVEX instructions reach
+ * them. Writing the xmm form zeroes the whole zmm register; that form
+ * needs AVX512VL, so a CPU with AVX-512F alone gets the zmm form. The
+ * compiler is told about the registers only when it may allocate them
+ * itself; otherwise it never holds a value there.
+ */
+#if defined(__AVX512F__)
+#define CLEAR_HI16_CLOBBERS                                                    \
+    , "xmm16", "xmm17", "xmm18", "xmm19", "xmm20", "xmm21", "xmm22", "xmm23",  \
+    "xmm24", "xmm25", "xmm26", "xmm27", "xmm28", "xmm29", "xmm30", "xmm31"
+#else
+#define CLEAR_HI16_CLOBBERS
+#endif
+
+#define CLEAR_HI16_ONE(w, i) "vpxord %%" w #i ", %%" w #i ", %%" w #i "\n\t"
+#define CLEAR_HI16(w)                                                          \
+    CLEAR_HI16_ONE(w, 16) CLEAR_HI16_ONE(w, 17) CLEAR_HI16_ONE(w, 18)         \
+    CLEAR_HI16_ONE(w, 19) CLEAR_HI16_ONE(w, 20) CLEAR_HI16_ONE(w, 21)         \
+    CLEAR_HI16_ONE(w, 22) CLEAR_HI16_ONE(w, 23) CLEAR_HI16_ONE(w, 24)         \
+    CLEAR_HI16_ONE(w, 25) CLEAR_HI16_ONE(w, 26) CLEAR_HI16_ONE(w, 27)         \
+    CLEAR_HI16_ONE(w, 28) CLEAR_HI16_ONE(w, 29) CLEAR_HI16_ONE(w, 30)         \
+    CLEAR_HI16_ONE(w, 31)
+
+/*
+ * VZEROALL needs AVX, which every non-scalar variant requires (sets.c),
+ * as does AVX-512; it also zeroes the upper halves of zmm0-zmm15. The
+ * scalar variant runs on CPUs without AVX and uses no upper ymm halves,
+ * so for it, on a CPU without AVX-512, the legacy-encoded XORPS of the
+ * low halves is enough.
  */
 __attribute__((noinline))
 void nirapod_slhdsa_clear_registers(unsigned used_features)
 {
+    unsigned cpu = nirapod_slhdsa_cpu_features();
+
     __asm__ __volatile__(
         "xorl %%eax, %%eax\n\t" "xorl %%ecx, %%ecx\n\t" "xorl %%edx, %%edx\n\t"
         "xorl %%esi, %%esi\n\t" "xorl %%edi, %%edi\n\t" "xorl %%r8d, %%r8d\n\t"
@@ -107,7 +144,14 @@ void nirapod_slhdsa_clear_registers(unsigned used_features)
         :
         : "rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11", "memory");
 
-    if ((used_features & (NIRAPOD_SLHDSA_CPU_AVX2 | NIRAPOD_SLHDSA_CPU_SHANI)) != 0) {
+    if ((cpu & NIRAPOD_SLHDSA_CPU_AVX512VL) != 0) {
+        __asm__ __volatile__(CLEAR_HI16("xmm") : : : "memory" CLEAR_HI16_CLOBBERS);
+    } else if ((cpu & NIRAPOD_SLHDSA_CPU_AVX512) != 0) {
+        __asm__ __volatile__(CLEAR_HI16("zmm") : : : "memory" CLEAR_HI16_CLOBBERS);
+    }
+
+    if ((used_features & (NIRAPOD_SLHDSA_CPU_AVX2 | NIRAPOD_SLHDSA_CPU_SHANI)) != 0 ||
+        (cpu & NIRAPOD_SLHDSA_CPU_AVX512) != 0) {
         __asm__ __volatile__("vzeroall" : : :
             "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", "xmm8",
             "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", "memory");

@@ -28,16 +28,21 @@
 #include <cpuid.h>
 
 /*
- * CPUID and XCR0 bits (Intel SDM vol. 2A, CPUID; vol. 1, sections 13.3 and
- * 14.3): an AVX-encoded instruction may run only when the CPU reports AVX
- * and OSXSAVE and the operating system has set XCR0 bits 1 (SSE state)
- * and 2 (AVX state).
+ * CPUID and XCR0 bits (Intel SDM vol. 2A, CPUID; vol. 1, sections 13.3,
+ * 14.3 and 15.2): an AVX-encoded instruction may run only when the CPU
+ * reports AVX and OSXSAVE and the operating system has set XCR0 bits 1
+ * (SSE state) and 2 (AVX state); an AVX-512 instruction only when it has
+ * also set bits 5, 6 and 7 (opmask, the upper halves of zmm0-zmm15, and
+ * zmm16-zmm31).
  */
-#define LEAF1_ECX_OSXSAVE (1u << 27)
-#define LEAF1_ECX_AVX     (1u << 28)
-#define LEAF7_EBX_AVX2    (1u << 5)
-#define LEAF7_EBX_SHA     (1u << 29)
-#define XCR0_SSE_AVX      0x6u
+#define LEAF1_ECX_OSXSAVE  (1u << 27)
+#define LEAF1_ECX_AVX      (1u << 28)
+#define LEAF7_EBX_AVX2     (1u << 5)
+#define LEAF7_EBX_AVX512F  (1u << 16)
+#define LEAF7_EBX_SHA      (1u << 29)
+#define LEAF7_EBX_AVX512VL (1u << 31)
+#define XCR0_SSE_AVX       0x6u
+#define XCR0_AVX512        0xe0u
 
 unsigned nirapod_slhdsa_cpu_features(void)
 {
@@ -64,6 +69,12 @@ unsigned nirapod_slhdsa_cpu_features(void)
     }
     if ((b & LEAF7_EBX_SHA) != 0) {
         features |= NIRAPOD_SLHDSA_CPU_SHANI;
+    }
+    if ((b & LEAF7_EBX_AVX512F) != 0 && (xcr0_lo & XCR0_AVX512) == XCR0_AVX512) {
+        features |= NIRAPOD_SLHDSA_CPU_AVX512;
+        if ((b & LEAF7_EBX_AVX512VL) != 0) {
+            features |= NIRAPOD_SLHDSA_CPU_AVX512VL;
+        }
     }
     return features;
 }

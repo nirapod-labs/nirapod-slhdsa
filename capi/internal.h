@@ -59,10 +59,14 @@ typedef enum nirapod_slhdsa_opt_rand {
 
 /*
  * CPU features a variant may require, as reported by
- * nirapod_slhdsa_cpu_features for the running architecture.
+ * nirapod_slhdsa_cpu_features for the running architecture. No variant
+ * requires the AVX-512 bits: nirapod_slhdsa_clear_registers reads them to
+ * clear the registers AVX-512 adds.
  */
-#define NIRAPOD_SLHDSA_CPU_AVX2   0x01u  /* x86-64: AVX2, YMM state enabled */
-#define NIRAPOD_SLHDSA_CPU_SHANI  0x02u  /* x86-64: SHA extensions and AVX */
+#define NIRAPOD_SLHDSA_CPU_AVX2     0x01u  /* x86-64: AVX2, YMM state enabled */
+#define NIRAPOD_SLHDSA_CPU_SHANI    0x02u  /* x86-64: SHA extensions and AVX */
+#define NIRAPOD_SLHDSA_CPU_AVX512   0x04u  /* x86-64: AVX-512F, ZMM state enabled */
+#define NIRAPOD_SLHDSA_CPU_AVX512VL 0x08u  /* x86-64: AVX512VL as well */
 #define NIRAPOD_SLHDSA_CPU_ASIMD  0x10u  /* AArch64: Advanced SIMD */
 #define NIRAPOD_SLHDSA_CPU_SHA256 0x20u  /* AArch64: FEAT_SHA256 */
 #define NIRAPOD_SLHDSA_CPU_SHA512 0x40u  /* AArch64: FEAT_SHA512 */
@@ -240,7 +244,8 @@ void nirapod_slhdsa_clear(void *p, size_t len);
 /*
  * Zero the registers the platform ABI lets a callee leave changed, after a
  * Jasmin export that read the secret key. used_features is the
- * NIRAPOD_SLHDSA_CPU_* set of the variant that ran. clear.c.
+ * NIRAPOD_SLHDSA_CPU_* set of the variant that ran; on x86-64 the function
+ * also reads the CPU's AVX-512 bits itself. clear.c.
  */
 void nirapod_slhdsa_clear_registers(unsigned used_features);
 
