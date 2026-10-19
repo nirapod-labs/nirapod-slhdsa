@@ -104,7 +104,7 @@
 
 require import AllCore.
 require FIPS205_Params.
-require BArray16 BArray32 BArray34 BArray35 BArray48 BArray64 BArray96 BArray112 BArray132 BArray192 BArray332 BArray528 BArray560 BArray608 BArray640 BArray2240 BArray3696 BArray13376 BArray17088 SBArray32_16 SBArray64_16 SBArray64_32 SBArray112_16 SBArray192_64 SBArray192_128 SBArray528_16 SBArray560_16 SBArray608_16 SBArray608_560 SBArray640_64 SBArray640_128 SBArray3696_16 SBArray13376_608 SBArray17088_16 SBArray17088_3696 SBArray17088_13376.
+require BArray16 BArray32 BArray34 BArray35 BArray48 BArray64 BArray96 BArray112 BArray132 BArray192 BArray332 BArray528 BArray560 BArray608 BArray640 BArray2240 BArray3696 BArray13376 BArray17088 SBArray32_16 SBArray64_16 SBArray64_32 SBArray112_16 SBArray192_64 SBArray192_128 SBArray528_16 SBArray560_16 SBArray608_16 SBArray608_560 SBArray640_64 SBArray640_128 SBArray2240_560 SBArray3696_16 SBArray13376_608 SBArray17088_16 SBArray17088_3696 SBArray17088_13376.
 
 op P : FIPS205_Params.params = FIPS205_Params.slh_dsa_sha2_128f.
 
@@ -205,3 +205,5 @@ theory MgfBuf = BArray192.
 theory MgfBlk256 = SBArray192_64.SBArray192_64.
 (* its 128-byte SHA-512 blocks *)
 theory MgfBlk512 = SBArray192_128.SBArray192_128.
+(* the len n-byte lanes of a TLenIn4, one T_len input per lane *)
+theory TLenIn4Lane = SBArray2240_560.SBArray2240_560.

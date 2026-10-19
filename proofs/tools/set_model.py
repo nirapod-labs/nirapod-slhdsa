@@ -137,6 +137,8 @@ THASH_ROLES = {
         ("MgfBuf", (MGF_BUF,), "the MGF1 buffer of the padded seed and counter"),
         ("MgfBlk256", (MGF_BUF, "64"), "its 64-byte SHA-256 blocks"),
         ("MgfBlk512", (MGF_BUF, "128"), "its 128-byte SHA-512 blocks"),
+        ("TLenIn4Lane", ("4 * SLH_LEN * SLH_N", "SLH_LEN * SLH_N"),
+         "the len n-byte lanes of a TLenIn4, one T_len input per lane"),
     ],
 }
 
