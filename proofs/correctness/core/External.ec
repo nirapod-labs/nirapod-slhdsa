@@ -558,12 +558,17 @@ move=> hs hx -> hm; rewrite /ext_verify; case: (dsel d = 0) => h0 /=.
 by rewrite hs /= hverify_ctx (msg_ph _ _ _ _ _ _ h0 hx).
 qed.
 
+(* M' is at most Prefix.size bytes of prefix, then M (pure) or nothing
+   (pre-hash), so the domain of M with the longest prefix covers it. *)
 lemma frame_msg_ok (r : Prefix.t * W64.t * W64.t * W64.t * W64.t) d M (m ml : W64.t) :
-  dsel d <= 12 => frame_out d M ml r => to_uint m + to_uint ml <= W64.modulus =>
+  dsel d <= 12 => frame_out d M ml r => msg_dom (W64.of_int Prefix.size) m ml =>
   msg_ok r.`2 m r.`3.
 proof.
 move=> hs; rewrite /frame_out hs /msg_ok /= => [#] _ hl _ -> hm; split => //.
-by case: (dsel d = 0) => _ //=; smt(W64.to_uint_cmp).
+move: hm; rewrite !msg_domE /sha2_msg_ok /sha2_msg_max W64.of_uintK /= => [#] hm h2; split.
++ by case: (dsel d = 0) => _ //=; smt(W64.to_uint_cmp).
+move=> hf; have [_ h2b] := h2 hf; move: h2b; rewrite (_ : Prefix.size = 332) 1:// /= => h2b.
+by case: (dsel d = 0) => _ /=; smt(W64.to_uint_cmp).
 qed.
 
 (* Algorithms 22 and 23 (hedged with opt_rand fresh, deterministic with
@@ -613,7 +618,7 @@ lemma sign_correct (ok : bytes -> Ctx.t -> bool) :
          (mem0 : global_mem_t),
   phoare [M.sign :
     sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ sk = k0 /\ opt_rand = o0 /\
-    Glob.mem = mem0 /\ to_uint m + to_uint ml <= W64.modulus ==>
+    Glob.mem = mem0 /\ msg_dom (W64.of_int Prefix.size) m ml ==>
     if dsel d0 <= 12
     then res.`2 = W64.zero /\
          ext_sign d0 (m_of mem0 m ml) (SK.to_list k0) (Some (Node.to_list o0)) = Some (Sig.to_list res.`1)
@@ -623,12 +628,14 @@ proof.
 move=> hph hctx hprf hf htl hh htk hpm hhm s0 m ml d0 k0 o0 mem0.
 proc.
 seq 8 : (sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ sk = k0 /\ opt_rand = o0 /\
-         Glob.mem = mem0 /\ to_uint m + to_uint ml <= W64.modulus) 1%r 1%r 0%r _ => //.
+         Glob.mem = mem0 /\ msg_dom (W64.of_int Prefix.size) m ml) 1%r 1%r 0%r _ => //.
 + by auto.
-+ seq 1 : (sig = s0 /\ msg = m /\ sk = k0 /\ opt_rand = o0 /\ to_uint m + to_uint ml <= W64.modulus /\
++ seq 1 : (sig = s0 /\ msg = m /\ sk = k0 /\ opt_rand = o0 /\ msg_dom (W64.of_int Prefix.size) m ml /\
            frame_out d0 (m_of mem0 m ml) ml (prefix, prefix_len, msg_len, status, ms) /\
            (dsel d0 = 0 => Glob.mem = mem0)) 1%r 1%r 0%r _ => //.
-  + by call (slh_frame_correct hph d0 m ml mem0); auto => /> &hr hm [].
+  + call (slh_frame_correct hph d0 m ml mem0); auto => /> hm.
+    split; [exact (msg_dom_end _ _ _ hm) | move=> _ r; rewrite /frame_out].
+    by case: (dsel d0 <= 12) => //= _ [#] -> -> ->; rewrite -(W64.of_int_mod (-1)).
   + exlim prefix, prefix_len, msg_len, Glob.mem => x pl ml' mem1.
     have [hs | hs] : dsel d0 <= 12 \/ !(dsel d0 <= 12) by rewrite orbN.
     + rcondt 6; first by auto => /> &hr; rewrite /frame_out hs => /#.
@@ -642,7 +649,9 @@ seq 8 : (sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ sk = k0 /\ opt_ra
     rcondf 6; first by auto => /> &hr; rewrite /frame_out hs /= => _ [#] -> _ _ _; apply ones_nz.
     auto => /> &hr hm; rewrite /frame_out hs /= => [#] -> _ _ _.
     by rewrite /ext_sign ifF 1:/# ifF 1:/#.
-  + by hoare; call (slh_frame_h hph d0 m ml mem0); auto => /> &hr hm [].
+  + hoare; call (slh_frame_h hph d0 m ml mem0); auto => /> hm.
+    split; [exact (msg_dom_end _ _ _ hm) | move=> _ r; rewrite /frame_out].
+    by case: (dsel d0 <= 12) => //= _ [#] -> -> ->; rewrite -(W64.of_int_mod (-1)).
 + by hoare; auto.
 qed.
 
@@ -678,19 +687,21 @@ lemma verify_correct (ok : bytes -> Ctx.t -> bool) :
   forall (s0 : Sig.t) (m ml : W64.t) (d0 : BArray257.t) (p0 : PK.t) (mem0 : global_mem_t),
   phoare [M.verify :
     sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ pk = p0 /\ Glob.mem = mem0 /\
-    to_uint m + to_uint ml <= W64.modulus ==>
+    msg_dom (W64.of_int Prefix.size) m ml ==>
     res = if ext_verify d0 (m_of mem0 m ml) (Sig.to_list s0) (PK.to_list p0)
           then W64.zero else W64.of_int (-1)] = 1%r.
 proof.
 move=> hph hctx hf htl hh htk hhm s0 m ml d0 p0 mem0.
 proc.
 seq 7 : (sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ pk = p0 /\
-         Glob.mem = mem0 /\ to_uint m + to_uint ml <= W64.modulus) 1%r 1%r 0%r _ => //.
+         Glob.mem = mem0 /\ msg_dom (W64.of_int Prefix.size) m ml) 1%r 1%r 0%r _ => //.
 + by auto.
-+ seq 1 : (sig = s0 /\ msg = m /\ pk = p0 /\ to_uint m + to_uint ml <= W64.modulus /\
++ seq 1 : (sig = s0 /\ msg = m /\ pk = p0 /\ msg_dom (W64.of_int Prefix.size) m ml /\
            frame_out d0 (m_of mem0 m ml) ml (prefix, prefix_len, msg_len, status, ms) /\
            (dsel d0 = 0 => Glob.mem = mem0)) 1%r 1%r 0%r _ => //.
-  + by call (slh_frame_correct hph d0 m ml mem0); auto => /> &hr hm [].
+  + call (slh_frame_correct hph d0 m ml mem0); auto => /> hm.
+    split; [exact (msg_dom_end _ _ _ hm) | move=> _ r; rewrite /frame_out].
+    by case: (dsel d0 <= 12) => //= _ [#] -> -> ->; rewrite -(W64.of_int_mod (-1)).
   + exlim prefix, prefix_len, msg_len, Glob.mem => x pl ml' mem1.
     have [hs | hs] : dsel d0 <= 12 \/ !(dsel d0 <= 12) by rewrite orbN.
     + rcondt 6; first by auto => /> &hr; rewrite /frame_out hs => /#.
@@ -706,7 +717,9 @@ seq 7 : (sig = s0 /\ msg = m /\ msg_len = ml /\ domain = d0 /\ pk = p0 /\
     have hv : !ext_verify d0 (m_of mem0 m ml) (Sig.to_list s0) (PK.to_list p0)
       by rewrite /ext_verify ifF 1:/# ifF 1:/#.
     by rewrite hv.
-  + by hoare; call (slh_frame_h hph d0 m ml mem0); auto => /> &hr hm [].
+  + hoare; call (slh_frame_h hph d0 m ml mem0); auto => /> hm.
+    split; [exact (msg_dom_end _ _ _ hm) | move=> _ r; rewrite /frame_out].
+    by case: (dsel d0 <= 12) => //= _ [#] -> -> ->; rewrite -(W64.of_int_mod (-1)).
 + by hoare; auto.
 qed.
 
@@ -783,7 +796,7 @@ lemma sign_internal_correct (ok : bytes -> Ctx.t -> bool) :
   forall (s0 : Sig.t) (m ml : W64.t) (k0 : SK.t) (o0 : Node.t) (mem0 : global_mem_t),
   phoare [M.sign_internal :
     sig = s0 /\ msg = m /\ msg_len = ml /\ sk = k0 /\ opt_rand = o0 /\ Glob.mem = mem0 /\
-    to_uint m + to_uint ml <= W64.modulus ==>
+    msg_dom W64.zero m ml ==>
     Sig.to_list res = slh_sign_internal P (m_of mem0 m ml) (SK.to_list k0) (Some (Node.to_list o0))] = 1%r.
 proof.
 move=> hctx hprf hf htl hh htk hpm hhm s0 m ml k0 o0 mem0; proc.
@@ -816,7 +829,7 @@ lemma verify_internal_correct (ok : bytes -> Ctx.t -> bool) :
   forall (s0 : Sig.t) (m ml : W64.t) (p0 : PK.t) (mem0 : global_mem_t),
   phoare [M.verify_internal :
     sig = s0 /\ msg = m /\ msg_len = ml /\ pk = p0 /\ Glob.mem = mem0 /\
-    to_uint m + to_uint ml <= W64.modulus ==>
+    msg_dom W64.zero m ml ==>
     res = if slh_verify_internal P (m_of mem0 m ml) (Sig.to_list s0) (PK.to_list p0)
           then W64.zero else W64.of_int (-1)] = 1%r.
 proof.
