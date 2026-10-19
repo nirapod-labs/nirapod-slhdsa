@@ -673,8 +673,8 @@ seq 1 : (opt_rand = o0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len =
 + ecall (hmac256_init_h (SBArray128_64.get_sub k0 0)).
   skip => &m [#] -> -> -> -> -> -> hok hk _ /= r [h1 h2].
   by rewrite -(kblock256 k0{m} s0 hk) h1 h2.
-(* opt_rand opens the inner message *)
-seq 5 : (prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\ msg_ok pl m ml /\
+(* the zeroed block buffer, then opt_rand opens the inner message *)
+seq 8 : (prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\ msg_ok pl m ml /\
         SHA256_Stream.stream256 SHA256.H0_256
            (xorb (kb256 (Node.to_list s0)) (ipad 64) ++ Node.to_list o0) inner buf total /\
         hw256 outer = SHA256.compress SHA256.H0_256 (words256 (xorb (kb256 (Node.to_list s0)) (opad 64)))).
@@ -685,7 +685,9 @@ seq 5 : (prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len = ml /\ Glob.mem =
     case: (8 * i{m} <= j < 8 * i{m} + 8) => h.
     + by rewrite ifT 1:/# Node.get64d_byte 1:/#; congr; smt().
     by rewrite ifF 1:/# hj /#.
-  wp; skip => &m [#] -> -> -> -> -> -> hok hi ho /=; rewrite /SLH64.protect_ptr /=; split; first smt().
+  wp; while (true); first by wp; skip.
+  wp; skip => &m [#] -> -> -> -> -> -> hok hi ho b0 i0 _.
+  rewrite /SLH64.protect_ptr /=; split; first smt().
   move=> b1 i1 hlt [#] g0 g1 _ gj; split; first exact hok.
   split; last exact ho.
   apply head_stream256.
@@ -786,8 +788,8 @@ seq 1 : (opt_rand = o0 /\ prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len =
 + ecall (hmac512_init_h k0).
   skip => &m [#] -> -> -> -> -> -> hok hk _ /= r [h1 h2].
   by rewrite -(kblock512 k0{m} s0 hk) h1 h2.
-(* opt_rand opens the inner message *)
-seq 5 : (prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\ msg_ok pl m ml /\
+(* the zeroed block buffer, then opt_rand opens the inner message *)
+seq 8 : (prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len = ml /\ Glob.mem = mem0 /\ msg_ok pl m ml /\
         SHA512_Stream.stream512 SHA512.H0_512
            (xorb (kb512 (Node.to_list s0)) (ipad 128) ++ Node.to_list o0) inner512 buf512 total /\
         hw512 outer512 = SHA512.compress SHA512.H0_512 (words512 (xorb (kb512 (Node.to_list s0)) (opad 128)))).
@@ -798,7 +800,9 @@ seq 5 : (prefix = x0 /\ prefix_len = pl /\ msg = m /\ msg_len = ml /\ Glob.mem =
     case: (8 * i{m} <= j < 8 * i{m} + 8) => h.
     + by rewrite ifT 1:/# Node.get64d_byte 1:/#; congr; smt().
     by rewrite ifF 1:/# hj /#.
-  wp; skip => &m [#] -> -> -> -> -> -> hok hi ho /=; rewrite /SLH64.protect_ptr /=; split; first smt().
+  wp; while (true); first by wp; skip.
+  wp; skip => &m [#] -> -> -> -> -> -> hok hi ho b0 i0 _.
+  rewrite /SLH64.protect_ptr /=; split; first smt().
   move=> b1 i1 hlt [#] g0 g1 _ gj; split; first exact hok.
   split; last exact ho.
   apply head_stream512.
@@ -966,10 +970,12 @@ if.
 + while (true) (inc - i); first by auto => /#.
   wp; call hmac256_fin_ll; call absorb_message256_ll; wp.
   while (true) (inc - i); first by auto => /#.
+  wp; while (true) (8 - i); first by auto => /#.
   by wp; call hmac256_init_ll; auto => /#.
 while (true) (inc - i); first by auto => /#.
 wp; call hmac512_fin_ll; call absorb_message512_ll; wp.
 while (true) (inc - i); first by auto => /#.
+wp; while (true) (16 - i); first by auto => /#.
 by wp; call hmac512_init_ll; auto => /#.
 qed.
 
