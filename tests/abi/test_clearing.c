@@ -75,8 +75,23 @@
  *     function of this test that leaves 16 bytes of SK.prf in its frame,
  *     and functions called through CAPTURED that leave bytes of SK.prf in
  *     one register each (AArch64 x8, x9 and v16, and x18 on Linux; x86-64
- *     r11, r10 and xmm15) and return to a wrapper that then stores its
- *     status, as the operations do. Each must be found, or the test fails.
+ *     r11, r10, xmm15 and, with AVX-512, zmm31) and return to a wrapper
+ *     that then stores its status, as the operations do. Each must be
+ *     found, or the test fails.
+ *
+ *     AVX-512 (x86-64)
+ *
+ *     On a CPU with AVX-512F whose state the operating system has enabled,
+ *     the capture stores all of zmm0-zmm31 as well, so a copy left in
+ *     zmm16-zmm31 or in the upper halves of zmm0-zmm15 counts like any
+ *     other. The C library's memcpy has variants that copy through
+ *     zmm16-zmm31, and the testing library and given_entropy below copy
+ *     the seeds with it. The testing build also runs clear_hi16 on every
+ *     set: a function that leaves SK.prf in zmm31, then calls
+ *     nirapod_slhdsa_clear_registers, which must remove it. Elsewhere the
+ *     zmm31 control and clear_hi16 print NOT APPLICABLE, and so does the
+ *     summary line, so a run that did not inspect the AVX-512 registers
+ *     says so.
  *
  * Negative controls (--expect-residue)
  *
@@ -90,12 +105,9 @@
  *                          must leave residue on the stack
  *
  * Not covered: the flags; on macOS x18, the platform's register, which
- * the library does not use; on x86-64 CPUs with AVX-512, the upper halves
- * of the zmm registers, zmm16-zmm31 and the mask registers. The Jasmin
- * code does not use those, but the C library's memory routines may, and
- * the testing library copies the seeds it is given with memcpy: a copy
- * left in zmm16-zmm31 there would not be seen, and
- * nirapod_slhdsa_clear_registers does not clear them. Also not covered:
+ * the library does not use; the AVX-512 mask registers k0-k7 and the
+ * state of later extensions (APX r16-r31), which
+ * nirapod_slhdsa_clear_registers does not clear either. Also not covered:
  * memory outside the region, and copies the operating system makes.
  * Reading below the stack pointer is outside the C abstract machine: as
  * in test_stack.c, the accesses are volatile byte accesses with no call in
@@ -318,6 +330,14 @@ static void op_control_vec(void)
     cur_status = CAPTURED(call_dump_leave_vec)(cur->sk + cur_n);
 }
 
+#if defined(__x86_64__)
+static void op_control_zmm(void)
+{
+    cur_status = CAPTURED(call_dump_leave_zmm)(cur->sk + cur_n);
+}
+#define CONTROL_ZMM_NAME "control_zmm31"
+#endif
+
 #if defined(__aarch64__) && CALL_DUMP_X18
 static void op_control_x18(void)
 {
@@ -467,6 +487,9 @@ static const op OPS[] = {
     { CONTROL_GPR_NAME, op_control_gpr, 1 },
     { CONTROL_GPR2_NAME, op_control_gpr2, 1 },
     { CONTROL_VEC_NAME, op_control_vec, 1 },
+#if defined(CONTROL_ZMM_NAME)
+    { CONTROL_ZMM_NAME, op_control_zmm, 1 },
+#endif
 #if defined(CONTROL_X18_NAME)
     { CONTROL_X18_NAME, op_control_x18, 1 },
 #endif
@@ -568,6 +591,28 @@ static void op_sign_internal(void)
         msg, sizeof(msg), cur->sk, 4 * cur_n, cur->opt_rand, cur_n);
 }
 
+#if defined(__x86_64__)
+/* capi/internal.h; clear.c in the testing library, clear_skip.c in the
+   negative control. */
+void nirapod_slhdsa_clear_registers(unsigned used_features);
+
+/*
+ * SK.prf left in zmm31, then the library's register clearing, as an
+ * export's wrapper runs it: nothing may remain.
+ */
+static int leave_zmm_then_clear(const uint8_t *secret)
+{
+    (void)call_dump_leave_zmm(secret);
+    nirapod_slhdsa_clear_registers(0);
+    return 0;
+}
+
+static void op_clear_hi16(void)
+{
+    cur_status = CAPTURED(leave_zmm_then_clear)(cur->sk + cur_n);
+}
+#endif
+
 /* The secret keys with one bit of PK.root flipped: the check fails. */
 static input withheld[2];
 
@@ -605,6 +650,10 @@ static const op OPS[] = {
     { CONTROL_GPR_NAME, op_control_gpr, 0, 0, NIRAPOD_SLHDSA_OK, 1 },
     { CONTROL_GPR2_NAME, op_control_gpr2, 0, 0, NIRAPOD_SLHDSA_OK, 1 },
     { CONTROL_VEC_NAME, op_control_vec, 0, 0, NIRAPOD_SLHDSA_OK, 1 },
+#if defined(CONTROL_ZMM_NAME)
+    { "clear_hi16", op_clear_hi16, 0, 0, NIRAPOD_SLHDSA_OK, 0 },
+    { CONTROL_ZMM_NAME, op_control_zmm, 0, 0, NIRAPOD_SLHDSA_OK, 1 },
+#endif
 #if defined(CONTROL_X18_NAME)
     { CONTROL_X18_NAME, op_control_x18, 0, 0, NIRAPOD_SLHDSA_OK, 1 },
 #endif
@@ -637,7 +686,38 @@ static int make_keys(nirapod_slhdsa_set set)
  * ------------------------------------------------------------------ */
 
 static int expect_residue;
-static int warmed[16];
+static int warmed[18];
+
+/*
+ * The operations that need AVX-512 state, and whether this run has it
+ * (x86-64 only). Without it they are reported NOT APPLICABLE, not run.
+ */
+static int avx512;
+
+#if !defined(NIRAPOD_SLHDSA_CLEARING_NOZERO)
+static int needs_avx512(void (*fn)(void))
+{
+#if defined(CONTROL_ZMM_NAME) && !defined(NIRAPOD_SLHDSA_CLEARING_PRODUCTION)
+    return fn == op_control_zmm || fn == op_clear_hi16;
+#elif defined(CONTROL_ZMM_NAME)
+    return fn == op_control_zmm;
+#else
+    (void)fn;
+    return 0;
+#endif
+}
+
+static int not_applicable(const char *set, const char *variant, const char *name,
+                          void (*fn)(void))
+{
+    if (!needs_avx512(fn) || avx512) {
+        return 0;
+    }
+    printf("%-20s %-7s %-22s NOT APPLICABLE (no AVX-512 state on this CPU)\n", set, variant,
+           name);
+    return 1;
+}
+#endif
 static size_t control_stack_seen, control_regs_seen;
 
 /*
@@ -745,7 +825,7 @@ static void run_all(void)
         for (o = 0; o < sizeof(OPS) / sizeof(OPS[0]); o++) {
             residue r;
 
-            if (skip_op(s, &OPS[o])) {
+            if (skip_op(s, &OPS[o]) || not_applicable(name, "host", OPS[o].name, OPS[o].fn)) {
                 continue;
             }
             r = compare_runs(OPS[o].fn, inputs, &warmed[o]);
@@ -781,7 +861,8 @@ static void run_all(void)
             for (o = 0; o < sizeof(OPS) / sizeof(OPS[0]); o++) {
                 residue r;
 
-                if (skip_op(s, &OPS[o]) || (OPS[o].control && v != 0)) {
+                if (skip_op(s, &OPS[o]) || ((OPS[o].control || needs_avx512(OPS[o].fn)) && v != 0) ||
+                    not_applicable(name, variant, OPS[o].name, OPS[o].fn)) {
                     continue;
                 }
                 cur_config.variant = variant;
@@ -805,7 +886,8 @@ int main(int argc, char **argv)
     expect_residue = argc == 2 && strcmp(argv[1], "--expect-residue") == 0;
 
 #if defined(__x86_64__)
-    wide_vectors = __builtin_cpu_supports("avx");
+    avx512 = call_dump_avx512();
+    wide_vectors = avx512 ? WIDE_AVX512 : __builtin_cpu_supports("avx");
 #endif
 
     run_all();
@@ -823,6 +905,12 @@ int main(int argc, char **argv)
 #endif
     }
 
+    printf("AVX-512 registers (zmm0-zmm31): %s\n", avx512 ? "stored and compared" :
+#if defined(__x86_64__)
+           "NOT APPLICABLE (no AVX-512 state on this CPU)");
+#else
+           "NOT APPLICABLE (x86-64 only)");
+#endif
     printf("test_clearing%s: %s (%d failures)\n",
 #if defined(NIRAPOD_SLHDSA_CLEARING_PRODUCTION)
            " (application library)",

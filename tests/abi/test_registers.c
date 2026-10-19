@@ -51,10 +51,11 @@
  * Jasmin exports happen not to return with the seeds in registers, so
  * check 3 passes with or without it, and covers copies of the seeds only,
  * not values derived from them; test_clearing.c compares the registers
- * of two runs instead. The flags, x18 on macOS and, on x86-64, the upper
- * halves of the zmm registers, zmm16-zmm31 and the mask registers of
- * AVX-512 CPUs are not inspected. Check 1 does not require x18 to be
- * zero: the library never writes it.
+ * of two runs instead. The flags, x18 on macOS and, on x86-64, the AVX-512
+ * registers are not inspected here: test_clearing.c stores zmm0-zmm31 on
+ * CPUs that have them and checks that the clearing removes a copy left in
+ * zmm31. Check 1 does not require x18 to be zero: the library never
+ * writes it.
  */
 
 #include <stdio.h>

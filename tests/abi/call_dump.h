@@ -26,16 +26,17 @@
  *               platform ABI lets a callee use it (on macOS it is the
  *               platform's register and is neither filled nor stored)
  *     x86-64    rax, rcx, rdx, rsi, rdi, r8-r11, and xmm0-xmm15, or the full
- *               ymm0-ymm15 when wide_vectors is set
+ *               ymm0-ymm15 when wide_vectors is set; when it is
+ *               WIDE_AVX512, also all of zmm0-zmm31 (call_dump_avx512
+ *               says whether the CPU allows it)
  *
  * The callee-saved registers the trampoline does not use itself get the
  * pattern too (AArch64 x21-x29, x86-64 rbp and r13-r15): whatever the
  * library's frames save below the recorded stack pointer is then
  * independent of the trampoline's caller.
  *
- * Not stored: the flags; on x86-64 the upper halves of the zmm registers,
- * zmm16-zmm31 and the mask registers of AVX-512 CPUs. The test headers
- * say what that leaves out.
+ * Not stored: the flags, and on x86-64 the mask registers k0-k7 of
+ * AVX-512 CPUs. The test headers say what that leaves out.
  */
 
 #ifndef NIRAPOD_SLHDSA_TESTS_CALL_DUMP_H
@@ -59,6 +60,7 @@
 #define NGPR 9            /* rax rcx rdx rsi rdi r8 r9 r10 r11 */
 #define NVEC 16           /* ymm0-ymm15, 32 bytes each (16 without AVX) */
 #define VEC_BYTES 32
+#define NZMM 32           /* zmm0-zmm31, 64 bytes each, with AVX-512 only */
 #else
 #error "call_dump.h: unsupported architecture"
 #endif
@@ -71,6 +73,9 @@ typedef struct {
 #endif
     uint8_t vec[NVEC][VEC_BYTES];
     uint64_t sp;          /* the stack pointer at the call of fn */
+#if defined(__x86_64__)
+    uint8_t zmm[NZMM][64]; /* zero unless wide is WIDE_AVX512 */
+#endif
 } dump;
 
 /*
@@ -82,7 +87,7 @@ typedef struct {
     void (*target)(void); /* the function CAPTURED calls */
     uint64_t saved[2];    /* the caller's x19 and x30 / rbx */
     uint64_t calls;       /* captures since call_and_dump began */
-    uint64_t wide;        /* x86-64: store ymm rather than xmm */
+    uint64_t wide;        /* x86-64: 0 xmm, 1 ymm, WIDE_AVX512 ymm and zmm */
 } call_dump_shared;
 
 #define PATTERN 0xA5u
@@ -102,10 +107,12 @@ typedef struct {
 #else
 #define CD_VEC    72
 #define CD_SP     584
-#define CD_TARGET 592
-#define CD_SAVED  600
-#define CD_CALLS  616
-#define CD_WIDE   624
+#define CD_ZMM    592
+#define CD_TARGET 2640
+#define CD_SAVED  2648
+#define CD_CALLS  2664
+#define CD_WIDE   2672
+#define WIDE_AVX512 2
 #endif
 
 #define CD_CHECK(name, cond) typedef char call_dump_check_##name[(cond) ? 1 : -1]
@@ -113,6 +120,7 @@ typedef struct {
 CD_CHECK(x18, offsetof(dump, x18) == CD_X18);
 CD_CHECK(saved1, offsetof(call_dump_shared, saved) + 8 == CD_SAVED1);
 #else
+CD_CHECK(zmm, offsetof(dump, zmm) == CD_ZMM);
 CD_CHECK(wide, offsetof(call_dump_shared, wide) == CD_WIDE);
 #endif
 CD_CHECK(vec, offsetof(dump, vec) == CD_VEC);
@@ -121,12 +129,55 @@ CD_CHECK(target, offsetof(call_dump_shared, target) == CD_TARGET);
 CD_CHECK(saved, offsetof(call_dump_shared, saved) == CD_SAVED);
 CD_CHECK(calls, offsetof(call_dump_shared, calls) == CD_CALLS);
 
+/*
+ * The compiler can hold values in xmm16-xmm31 only when it targets
+ * AVX-512; only then are they named as clobbered.
+ */
+#if defined(__x86_64__) && defined(__AVX512F__)
+#define CD_CLOBBER_HI16                                                        \
+    "xmm16", "xmm17", "xmm18", "xmm19", "xmm20", "xmm21", "xmm22", "xmm23",    \
+    "xmm24", "xmm25", "xmm26", "xmm27", "xmm28", "xmm29", "xmm30", "xmm31",
+#else
+#define CD_CLOBBER_HI16
+#endif
+
 /* Defined here, read and written by name from the assembly. */
 call_dump_shared call_dump_state __attribute__((used));
 
 #if defined(__x86_64__)
-/* Whether the capture stores full ymm registers (x86-64 with AVX). */
+#include <cpuid.h>
+
+/*
+ * What the capture stores of the vector registers (x86-64): 0 the xmm
+ * registers, 1 the full ymm registers (AVX), WIDE_AVX512 the full ymm
+ * registers and all of zmm0-zmm31.
+ */
 static int wide_vectors;
+
+/*
+ * Whether the capture may use AVX-512: the CPU reports AVX-512F and
+ * OSXSAVE, and the operating system has enabled the SSE, AVX, opmask and
+ * both zmm states (XCR0 bits 1, 2, 5, 6, 7; Intel SDM vol. 1, section
+ * 15.2). Read here rather than from the library, which is under test;
+ * test_clearing.c uses it.
+ */
+__attribute__((unused))
+static int call_dump_avx512(void)
+{
+    unsigned int a, b, c, d, lo, hi;
+
+    if (__get_cpuid_max(0, NULL) < 7 || !__get_cpuid(1, &a, &b, &c, &d) ||
+        (c & (1u << 27)) == 0) {
+        return 0;
+    }
+    __asm__ __volatile__("xgetbv" : "=a"(lo), "=d"(hi) : "c"(0));
+    (void)hi;
+    if ((lo & 0xe6u) != 0xe6u) {
+        return 0;
+    }
+    __cpuid_count(7, 0, a, b, c, d);
+    return (b & (1u << 16)) != 0;
+}
 #endif
 
 #define CD_STR(x) CD_STR_1(x)
@@ -147,6 +198,9 @@ void call_dump_thunk(void);
 int call_dump_leave_gpr(const uint8_t *secret);    /* AArch64 x8, x86-64 r11 */
 int call_dump_leave_gpr2(const uint8_t *secret);   /* AArch64 x9, x86-64 r10 */
 int call_dump_leave_vec(const uint8_t *secret);    /* AArch64 v16, x86-64 xmm15 */
+#if defined(__x86_64__)
+int call_dump_leave_zmm(const uint8_t *secret);    /* zmm31, AVX-512 only */
+#endif
 #if defined(__aarch64__) && CALL_DUMP_X18
 int call_dump_leave_x18(const uint8_t *secret);
 #endif
@@ -295,6 +349,25 @@ __asm__(
     "vmovdqu %ymm10, 392(%rbx)\n" "vmovdqu %ymm11, 424(%rbx)\n"
     "vmovdqu %ymm12, 456(%rbx)\n" "vmovdqu %ymm13, 488(%rbx)\n"
     "vmovdqu %ymm14, 520(%rbx)\n" "vmovdqu %ymm15, 552(%rbx)\n"
+    "cmpq $" CD_STR(WIDE_AVX512) ", " CD_STR(CD_WIDE) "(%rbx)\n"
+    "jne 2f\n"
+    "leaq " CD_STR(CD_ZMM) "(%rbx), %rcx\n"
+    "vmovdqu64 %zmm0, 0(%rcx)\n"      "vmovdqu64 %zmm1, 64(%rcx)\n"
+    "vmovdqu64 %zmm2, 128(%rcx)\n"    "vmovdqu64 %zmm3, 192(%rcx)\n"
+    "vmovdqu64 %zmm4, 256(%rcx)\n"    "vmovdqu64 %zmm5, 320(%rcx)\n"
+    "vmovdqu64 %zmm6, 384(%rcx)\n"    "vmovdqu64 %zmm7, 448(%rcx)\n"
+    "vmovdqu64 %zmm8, 512(%rcx)\n"    "vmovdqu64 %zmm9, 576(%rcx)\n"
+    "vmovdqu64 %zmm10, 640(%rcx)\n"   "vmovdqu64 %zmm11, 704(%rcx)\n"
+    "vmovdqu64 %zmm12, 768(%rcx)\n"   "vmovdqu64 %zmm13, 832(%rcx)\n"
+    "vmovdqu64 %zmm14, 896(%rcx)\n"   "vmovdqu64 %zmm15, 960(%rcx)\n"
+    "vmovdqu64 %zmm16, 1024(%rcx)\n"  "vmovdqu64 %zmm17, 1088(%rcx)\n"
+    "vmovdqu64 %zmm18, 1152(%rcx)\n"  "vmovdqu64 %zmm19, 1216(%rcx)\n"
+    "vmovdqu64 %zmm20, 1280(%rcx)\n"  "vmovdqu64 %zmm21, 1344(%rcx)\n"
+    "vmovdqu64 %zmm22, 1408(%rcx)\n"  "vmovdqu64 %zmm23, 1472(%rcx)\n"
+    "vmovdqu64 %zmm24, 1536(%rcx)\n"  "vmovdqu64 %zmm25, 1600(%rcx)\n"
+    "vmovdqu64 %zmm26, 1664(%rcx)\n"  "vmovdqu64 %zmm27, 1728(%rcx)\n"
+    "vmovdqu64 %zmm28, 1792(%rcx)\n"  "vmovdqu64 %zmm29, 1856(%rcx)\n"
+    "vmovdqu64 %zmm30, 1920(%rcx)\n"  "vmovdqu64 %zmm31, 1984(%rcx)\n"
     "jmp 2f\n"
     "1:\n"
     "movdqu %xmm0, 72(%rbx)\n"   "movdqu %xmm1, 104(%rbx)\n"
@@ -329,6 +402,13 @@ __asm__(
     CD_SYM(call_dump_leave_vec) ":\n"
     "endbr64\n"
     "movdqu (%rdi), %xmm15\n"
+    "xorl %eax, %eax\n"
+    "ret\n"
+    ".p2align 4\n"
+    ".globl " CD_SYM(call_dump_leave_zmm) "\n"
+    CD_SYM(call_dump_leave_zmm) ":\n"
+    "endbr64\n"
+    "vmovdqu64 (%rdi), %zmm31\n"
     "xorl %eax, %eax\n"
     "ret\n");
 
@@ -393,7 +473,9 @@ static void call_and_dump(void (*fn)(void), dump *d)
     /*
      * rbx holds the shared state and r12 the caller's rsp across the
      * call; the stack is moved below the red zone and aligned to 32 bytes
-     * first. The ymm fill uses AVX instructions only.
+     * first. The ymm fill uses AVX instructions only; with WIDE_AVX512,
+     * zmm16-zmm31 get the pattern too (EVEX), and the VEX writes of the
+     * ymm fill have zeroed the upper halves of zmm0-zmm15.
      */
     call_dump_state.wide = (uint64_t)wide_vectors;
     if (wide_vectors) {
@@ -418,6 +500,15 @@ static void call_and_dump(void (*fn)(void), dump *d)
             "vmovdqa %%ymm0, %%ymm7\n\t"   "vmovdqa %%ymm0, %%ymm8\n\t"   "vmovdqa %%ymm0, %%ymm9\n\t"
             "vmovdqa %%ymm0, %%ymm10\n\t"  "vmovdqa %%ymm0, %%ymm11\n\t"  "vmovdqa %%ymm0, %%ymm12\n\t"
             "vmovdqa %%ymm0, %%ymm13\n\t"  "vmovdqa %%ymm0, %%ymm14\n\t"  "vmovdqa %%ymm0, %%ymm15\n\t"
+            "cmpq $" CD_STR(WIDE_AVX512) ", " CD_STR(CD_WIDE) "(%%rbx)\n\t"
+            "jne 3f\n\t"
+            "vpbroadcastq %%rcx, %%zmm16\n\t"
+            "vmovdqa64 %%zmm16, %%zmm17\n\t"  "vmovdqa64 %%zmm16, %%zmm18\n\t"  "vmovdqa64 %%zmm16, %%zmm19\n\t"
+            "vmovdqa64 %%zmm16, %%zmm20\n\t"  "vmovdqa64 %%zmm16, %%zmm21\n\t"  "vmovdqa64 %%zmm16, %%zmm22\n\t"
+            "vmovdqa64 %%zmm16, %%zmm23\n\t"  "vmovdqa64 %%zmm16, %%zmm24\n\t"  "vmovdqa64 %%zmm16, %%zmm25\n\t"
+            "vmovdqa64 %%zmm16, %%zmm26\n\t"  "vmovdqa64 %%zmm16, %%zmm27\n\t"  "vmovdqa64 %%zmm16, %%zmm28\n\t"
+            "vmovdqa64 %%zmm16, %%zmm29\n\t"  "vmovdqa64 %%zmm16, %%zmm30\n\t"  "vmovdqa64 %%zmm16, %%zmm31\n\t"
+            "3:\n\t"
             "callq *%%rax\n\t"
             "vzeroupper\n\t"
             "popq %%rbp\n\t"
@@ -427,7 +518,7 @@ static void call_and_dump(void (*fn)(void), dump *d)
             : "b"(&call_dump_state)
             : "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
               "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", "xmm8",
-              "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
+              "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", CD_CLOBBER_HI16
               "memory", "cc");
     } else {
         __asm__ __volatile__(
@@ -458,7 +549,7 @@ static void call_and_dump(void (*fn)(void), dump *d)
             : "b"(&call_dump_state)
             : "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
               "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", "xmm8",
-              "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
+              "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", CD_CLOBBER_HI16
               "memory", "cc");
     }
 #endif
