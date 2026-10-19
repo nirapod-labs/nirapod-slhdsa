@@ -163,10 +163,18 @@ fn _sha256_absorb_mem(
     off = inlen;
     off >>= 6;
     off <<= 6;
-    inlen &= 63;
   } else {
     ms = #update_msf(!more, ms);
   }
+
+  /*
+   * The remainder is inlen mod 64 on both paths; when no block was
+   * compressed inlen is already below 64 and the mask changes nothing.
+   * Masking after the branch makes the bound on the copy below explicit
+   * instead of leaving it implied by n = 0, which jasmin-checksafety
+   * does not invert.
+   */
+  inlen &= 63;
 
   /*
    * Keep the remainder; buf is empty at this point when inlen > 0. It

@@ -78,14 +78,14 @@
  *     1c1703a9a9fb0db2f2bbf1d9c098c8bd6b761567ab236c56dd2cc95281d8adcd  ./sha2/aarch64/sha2/sha512_compress.jinc
  *     ac08e58d565cadd6afe0df7943b811e155a74fdc1309f08d3dd8cda117d43de9  ./sha2/hmac.jinc
  *     60ac802ab9347651f0db7b04344fc6ed90b0afb2b2450fbd51bd9d5e44d545e1  ./sha2/mgf1.jinc
- *     e0a831db7da12266abfea713e32cd14c61630eef0b4cf0f72ab79430651c948a  ./sha2/sha256.jinc
+ *     063788335e2c760895b7b408107ed40db1ee8df0ffe686bab2985595462cba32  ./sha2/sha256.jinc
  *     01653390a2f77047c8b8bbd695663f5c2b04b41df4dae8c05285b42ced346e1a  ./sha2/sha256_array.jinc
  *     2ef076349fa6419836c060a2bfe986952cfe80b4f8237a826c137c3d20b60b7f  ./sha2/sha256_compress.jinc
  *     fa9874158d69a3ea868a1c9eb101e336535a5dd26f07466c5d13e7f518faddd6  ./sha2/sha256_k.jinc
  *     8d434e2b7758cc64e9629c7de9dc1326ed328f4cde4bfa09eca5f09fed3701f6  ./sha2/sha256_x8.jinc
  *     fbbef2092ae1f8d791e72fe0b87a96679e70d2559949c4f43c0f8da3432ebd97  ./sha2/sha256_x8_array.jinc
  *     b8217856d4d0ea149f8f6647d56575412b638010be612ce0718aeb6c7523579d  ./sha2/sha256_x8_compress.jinc
- *     0ac501460769198eb1c78b1d3e3ec5183912f84dd319679529630c0a978710fc  ./sha2/sha512.jinc
+ *     21fc6c1de6f58d4440bc7292f323fe9ac383c0937b5a685ee092b10d41822db2  ./sha2/sha512.jinc
  *     6190f1b947748d61cac0b134b38b8a2dd600bf6f47b3d457d9ad50b74ea697e6  ./sha2/sha512_array.jinc
  *     a1a07336c8455e3061f184abf313a48294d494e6e9f967810fc9237c324cbe30  ./sha2/sha512_compress.jinc
  *     5989b7c126302e22e9825fbf39b7120f487071ec0c25ff38352bf731b95416d7  ./sha2/sha512_k.jinc
@@ -3083,10 +3083,10 @@ module M = {
       off <- inlen;
       off <- (off `>>` (W8.of_int 6));
       off <- (off `<<` (W8.of_int 6));
-      inlen <- (inlen `&` (W64.of_int 63));
     } else {
       ms <- (update_msf (! more) ms);
     }
+    inlen <- (inlen `&` (W64.of_int 63));
     fill <- (W64.of_int 0);
     more <- (fill \ult inlen);
     while (more) {
@@ -3462,10 +3462,10 @@ module M = {
       off <- inlen;
       off <- (off `>>` (W8.of_int 7));
       off <- (off `<<` (W8.of_int 7));
-      inlen <- (inlen `&` (W64.of_int 127));
     } else {
       ms <- (update_msf (! more) ms);
     }
+    inlen <- (inlen `&` (W64.of_int 127));
     fill <- (W64.of_int 0);
     more <- (fill \ult inlen);
     while (more) {

@@ -342,8 +342,9 @@ seq 3 : (W64.to_uint total = size m + W64.to_uint l0 /\
   case: (size m %% 64 = 0) => hr0.
   + by left; rewrite -size_eq0 size_cat size_tail256 size_memread 1:/# /nfill hr0.
   by right; rewrite hi; move: hlt; rewrite /nfill hr0 /= /#.
-(* Phase 2: the whole blocks that follow, straight from memory. *)
-seq 5 : (W64.to_uint total = size m + W64.to_uint l0 /\
+(* Phase 2: the whole blocks that follow, straight from memory, then
+   the remainder length, inlen mod 64 on both paths. *)
+seq 6 : (W64.to_uint total = size m + W64.to_uint l0 /\
          W64.to_uint inlen = (W64.to_uint l0 - nfill (size m %% 64) (W64.to_uint l0)) %% 64 /\
          W64.to_uint in_0 = W64.to_uint p0 + nfill (size m %% 64) (W64.to_uint l0) /\
          W64.to_uint off = 64 * ((W64.to_uint l0 - nfill (size m %% 64) (W64.to_uint l0)) %/ 64) /\
@@ -354,7 +355,7 @@ seq 5 : (W64.to_uint total = size m + W64.to_uint l0 /\
          size m + W64.to_uint l0 < W64.modulus).
 + have hr64 : 0 <= size m %% 64 < 64 by smt(modz_ge0 modz_cmp).
   have [[hn0 hnl] hnr] := nfill_bounds (size m %% 64) (W64.to_uint l0) hr64 _; first smt(W64.to_uint_cmp).
-  seq 4 : (#pre /\ off = W64.zero /\ W64.to_uint n = (W64.to_uint l0 - nfill (size m %% 64) (W64.to_uint l0)) %/ 64 /\ more = (n <> W64.zero)).
+  wp; seq 4 : (#pre /\ off = W64.zero /\ W64.to_uint n = (W64.to_uint l0 - nfill (size m %% 64) (W64.to_uint l0)) %/ 64 /\ more = (n <> W64.zero)).
   + by auto => /> &hr ht hi hin hh hp hd hb1 hb2; rewrite W64.shr_div_le // hi.
   if.
   + wp; ecall (sha256_compress_blocks_correct (hwords h) in_0 n).
@@ -374,7 +375,7 @@ seq 5 : (W64.to_uint total = size m + W64.to_uint l0 /\
     by rewrite pmod_small; smt(divz_ge0 W64.to_uint_cmp).
   auto => /> &hr ht hi hin hh hp hd hb1 hb2 hk0.
   have hk64 : (W64.to_uint l0 - nfill (size m %% 64) (W64.to_uint l0)) %% 64 = (W64.to_uint l0 - nfill (size m %% 64) (W64.to_uint l0)) by rewrite {2}(divz_eq (W64.to_uint l0 - nfill (size m %% 64) (W64.to_uint l0)) 64) -hk0.
-  by rewrite -hk0 /= hk64 hi /= cats0 hh hp /=; smt().
+  by rewrite and63 hi -hk0 /= hk64 /= cats0 hh hp /=; smt().
 (* Phase 3: the rest goes into the buffer. *)
 wp; while (0 <= W64.to_uint fill <= W64.to_uint inlen /\
        W64.to_uint inlen = (W64.to_uint l0 - nfill (size m %% 64) (W64.to_uint l0)) %% 64 /\
@@ -448,7 +449,7 @@ seq 1 : true 1%r 1%r 0%r 0%r => //.
   by auto => /> &hr f; rewrite W64.ultE /#.
 seq 3 : true 1%r 1%r 0%r 0%r => //.
 + by sp; if; [wp; call sha256_compress_ll |]; auto.
-seq 5 : true 1%r 1%r 0%r 0%r => //.
+seq 6 : true 1%r 1%r 0%r 0%r => //.
 + by sp; if; [wp; call sha256_compress_blocks_ll |]; auto.
 wp; while (more = (fill \ult inlen)) (W64.to_uint inlen - W64.to_uint fill).
 + move=> z; auto => /> &hr; rewrite W64.ultE => hlt.

@@ -180,10 +180,17 @@ fn _sha512_absorb_mem(
     off = inlen;
     off >>= 7;
     off <<= 7;
-    inlen &= 127;
   } else {
     ms = #update_msf(!more, ms);
   }
+
+  /*
+   * The remainder is inlen mod 128 on both paths, as in
+   * _sha256_absorb_mem: the mask after the branch changes nothing when
+   * no block was compressed and makes the bound on the copy below
+   * explicit.
+   */
+  inlen &= 127;
 
   /*
    * Keep the remainder; buf is empty at this point when inlen > 0. It
