@@ -90,14 +90,17 @@ internal signing, for every set and every variant the CPU runs, on the
 testing library, and the public functions on the application library. Each
 build must find a copy of SK.prf the test leaves in a frame, and copies that
 functions called like the library leave in one register each (AArch64 x8,
-x9, v16 and, on Linux, x18; x86-64 r11, r10, xmm15) before returning to a
-caller that stores its status. Two negative controls must find residue in
-every operation they run: the testing library with `capi/clear.c` replaced
-by `tests/abi/clear_skip.c`, which clears nothing, and the two units
-compiled without stack zeroization (the latter when the Jasmin compiler is
-available). Not inspected: the flags, x18 on macOS, the AVX-512 state on
-x86-64 (upper zmm halves, zmm16-zmm31, mask registers), and memory outside
-the probed region.
+x9, v16 and, on Linux, x18; x86-64 r11, r10, xmm15 and, with AVX-512,
+zmm31) before returning to a caller that stores its status. On x86-64 CPUs
+with AVX-512 the stored registers include all of zmm0-zmm31, and the testing
+build also checks that `nirapod_slhdsa_clear_registers` removes a copy left
+in zmm31; elsewhere the test prints those parts as NOT APPLICABLE. Two
+negative controls must find residue in every operation they run: the testing
+library with `capi/clear.c` replaced by `tests/abi/clear_skip.c`, which clears
+nothing, and the two units compiled without stack zeroization (the latter when
+the Jasmin compiler is available). Not inspected: the flags, x18 on macOS, the
+AVX-512 mask registers and the state of later x86-64 extensions (APX r16-r31),
+and memory outside the probed region.
 
 ## Registers after return (`tests/abi/test_registers.c`)
 

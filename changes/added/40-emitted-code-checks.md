@@ -8,7 +8,7 @@
   x18 on Linux, and must be found; builds without the register clearing
   or without stack zeroization must show residue. A secret-dependent value
   that is equal for both inputs is not seen, and on x86-64 the AVX-512
-  register state is not stored.
+  mask registers are not stored.
 - The residue scan of `test_stack` covers the internal signing and
   verification exports, and `test_registers` stores the registers as the
   library function returns rather than after the test's own wrapper.

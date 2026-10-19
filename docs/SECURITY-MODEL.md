@@ -136,8 +136,9 @@ inputs that differ only in the secrets, and finds no difference on the stack bel
 the call or in the caller-saved registers, stored the moment the library function
 returns, on every variant of the host. A secret-dependent value that is equal for
 the two inputs would not show. The caller's buffers, copies made by the operating
-system or a debugger, the flags, and on x86-64 the AVX-512 register state are
-outside it ([API](API.md#what-is-cleared)).
+system or a debugger, the flags, and on x86-64 the AVX-512 mask registers and the
+state of later extensions such as APX are outside it; on CPUs with AVX-512 the
+clearing and the comparison cover all of zmm0-zmm31 ([API](API.md#what-is-cleared)).
 
 ## Faults
 

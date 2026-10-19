@@ -298,11 +298,11 @@ What the checks establish, on the host and build they run on:
   no value that differs between two secret inputs is left there, values
   derived from them included, in the C frames as in the Jasmin frames. The
   stored registers are x0-x17 and v0-v31 on AArch64, with x18 on Linux, and
-  rax, rcx, rdx, rsi, rdi, r8-r11 and xmm0-xmm15 (ymm0-ymm15 with AVX) on
-  x86-64. A secret-dependent value that happens to be equal for the two
-  inputs is not seen. On the application library the two keys come from
-  key generation, so the inputs differ in PK.seed too, which can only add
-  differences. The same test with the clearing removed from the C layer,
+  rax, rcx, rdx, rsi, rdi, r8-r11 and xmm0-xmm15 (ymm0-ymm15 with AVX, and
+  all of zmm0-zmm31 with AVX-512) on x86-64. A secret-dependent value that
+  happens to be equal for the two inputs is not seen. On the application
+  library the two keys come from key generation, so the inputs differ in
+  PK.seed too, which can only add differences. The same test with the clearing removed from the C layer,
   and on units built without stack zeroization, must find residue, as must
   a copy of SK.prf the test leaves in a frame, and one a function leaves in
   each of three registers (four on Linux AArch64) before returning to a
@@ -317,10 +317,13 @@ covered: the caller's own buffers (the secret key, the
 message), copies the operating system or a debugger makes (swap, core dumps,
 registers saved on a context switch), the flags register, x18 on macOS (the
 platform's register, which the library never writes), and on x86-64 CPUs
-with AVX-512 the upper halves of the zmm registers, zmm16-zmm31 and the mask
-registers. The Jasmin code does not use those; the C library's memory
-routines may, and the testing library copies the seeds it is given with
-`memcpy`, so a copy there is neither cleared nor seen.
+with AVX-512 the mask registers k0-k7, which are neither cleared nor
+inspected, nor is the register state of later extensions, such as APX's
+r16-r31 where the operating system enables it. On AVX-512 CPUs `nirapod_slhdsa_clear_registers` zeroes all of
+zmm0-zmm31, whatever the variant: the Jasmin code does not use the
+registers AVX-512 adds, but the C library's `memcpy` may copy through them,
+and the testing library copies the seeds it is given with `memcpy`. Where
+the CPU has no AVX-512, `test_clearing` reports that part NOT APPLICABLE.
 
 ## Timing mode
 
