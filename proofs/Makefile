@@ -372,11 +372,22 @@ SET_THEOREMS := Encoding.node_copy_correct Encoding.node_concat_correct \
                 DigestIndices.digest_tree_leaf_correct DigestIndices.fors_indices_correct \
                 Wots.wots_digits_correct WotsChain.wots_chain_correct WotsPk.wots_pk_from_sig_correct \
                 ADRSc.adrs_compress_into64_correct ADRSc.adrs_compress_into128_correct \
-                Thash.thash_f_correct Thash.thash_prf_correct Thash.thash_h_correct
+                Thash.thash_f_correct Thash.thash_prf_correct Thash.thash_h_correct \
+                PreHash.prehash_ll PreHash.prehash_h PreHash.prehash_total
 # Theorems of one hash family's proofs only (correctness/core/<family>/).
-SET_THEOREMS_sha2 := Thash.thash_ctx_init_correct
+# Theorems.ec of each family composes them: the internal functions and the
+# exports with no hash premise.
+FAMILY_THEOREMS := Theorems.slh_verify_total Theorems.slh_sign_total Theorems.slh_keygen_total \
+                   Theorems.sign_total Theorems.verify_total Theorems.keygen_total \
+                   Theorems.sign_internal_total Theorems.verify_internal_total
+SET_THEOREMS_sha2 := Thash.thash_ctx_init_correct HMsg.h_msg_correct \
+                     ThashT.thash_t_len_total ThashT.thash_t_k_total \
+                     ThashX4.thash_prf_x4_total ThashX4.thash_f_x4_total ThashX4.thash_t_len_x4_total \
+                     $(FAMILY_THEOREMS)
 SET_THEOREMS_shake := Thash.thash_t_len_correct Thash.thash_t_k_correct \
-                      Thash.shake_absorb_prefix_correct Thash.keccak_finalize_correct
+                      Thash.shake_absorb_prefix_correct Thash.keccak_finalize_correct \
+                      ThashX4.keccakf1600_x4_total ThashX4.thash_prf_x4_total ThashX4.thash_f_x4_total \
+                      ThashX4.thash_t_len_x4_total $(FAMILY_THEOREMS)
 set_theorems  = $(foreach t,$(SET_THEOREMS) $(SET_THEOREMS_$(call set_family,$(1))),$(if $(filter $(call thm_theory,$(t)),$(basename $(notdir $(call set_proofs,$(1))))),$(t)))
 set_inventories = $(foreach p,$(CORE_PAIRS),$(foreach s,$(CORE_SETS),$(call set_inventory_file,$(p),$(s))))
 
