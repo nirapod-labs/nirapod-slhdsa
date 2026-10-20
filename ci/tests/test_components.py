@@ -60,7 +60,10 @@ class Components(unittest.TestCase):
 
     def test_absent_and_not_run(self):
         found = components.present(self.reg, self.files)
-        self.assertEqual(components.applicability(self.reg, "generated", found)[0], "NOT APPLICABLE")
+        self.assertEqual(components.applicability(self.reg, "generated", found)[0], "RUN")
+        no_gen = components.present(self.reg, [f for f in self.files if not f.startswith("gen/")])
+        self.assertEqual(components.applicability(self.reg, "generated", no_gen)[0],
+                         "NOT APPLICABLE")
         self.assertEqual(components.applicability(self.reg, "differential", found)[0], "RUN")
         self.assertEqual(components.applicability(self.reg, "test-acvp", found)[0], "RUN")
         self.assertEqual(components.applicability(self.reg, "safety", found)[0], "NOT RUN")
