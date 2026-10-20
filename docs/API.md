@@ -8,17 +8,38 @@ page and the header differ, the header is right and this page is a bug.
 ## Building and linking
 
 ```sh
-make JASMINC=/path/to/jasminc            # build/<target>/lib/libnirapod_slhdsa.a
-make check JASMINC=/path/to/jasminc      # the tests of this host; the Makefile
+make                                     # build/<target>/lib/libnirapod_slhdsa.a
+make check                               # the tests of this host; the Makefile
                                          # lists them
 ```
 
 `<target>` is `aarch64-macho`, `aarch64-elf` or `x86_64-elf`, chosen from the
-host. `JASMINC` is the Jasmin compiler that `toolchain/build.sh` builds from
-the pins under `toolchain/`; the build needs it, a C99 compiler, the
-assembler and linker of the platform, and `objcopy` on Linux. Link
-`libnirapod_slhdsa.a` and include `nirapod_slhdsa.h`. The library has no
-other runtime dependency than the C library and the operating system's
+host. Without further options the build assembles the generated assembly the
+repository carries in `gen/<target>/`, and needs a C99 compiler, the
+assembler and linker of the platform, `objcopy` on Linux, and Python 3 for
+`make check`. It first checks that `gen/MANIFEST` records the Jasmin sources
+of the tree and the digest of every file it assembles, and stops otherwise.
+
+To build from the Jasmin sources, which are the form to modify, pass
+`JASMINC`, the Jasmin compiler that `toolchain/build.sh` builds from the pins
+under `toolchain/`:
+
+```sh
+make JASMINC=/path/to/jasminc            # compile the Jasmin sources
+make check JASMINC=/path/to/jasminc      # also the tests that compile units
+                                         # of their own
+make gen JASMINC=/path/to/jasminc        # rewrite gen/ and gen/MANIFEST
+make gen-check JASMINC=/path/to/jasminc  # fail unless gen/ is reproduced
+```
+
+A change to the Jasmin sources regenerates `gen/` with `make gen` in the same
+commit; CI runs `make gen-check` and fails on any byte difference. Without
+`JASMINC`, `make check` reports as NOT RUN the three tests that compile units
+of their own from the sources: the stack and clearing controls and the fault
+test.
+
+Link `libnirapod_slhdsa.a` and include `nirapod_slhdsa.h`. The library has
+no other runtime dependency than the C library and the operating system's
 random source.
 
 `libnirapod_slhdsa.a` exports the functions of `nirapod_slhdsa.h` and nothing

@@ -30,15 +30,26 @@ Results of CI run [38680243373](https://github.com/nirapod-labs/nirapod-slhdsa/a
 
 ## Quick start
 
-Build the pinned toolchain once, then the library. The toolchain build checks the
-compiler's proofs and takes a while; [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md) lists
-what the host needs.
+The repository carries the generated assembly of every target in `gen/`, so a C
+compiler, the platform's assembler and linker, and Python 3 for the tests are
+enough:
+
+```sh
+make                           # build/<target>/lib/libnirapod_slhdsa.a
+make check                     # the tests of this host
+```
+
+To work on the Jasmin sources, the form to modify, build the pinned toolchain once
+and pass the compiler; `make gen` then rewrites `gen/` from the sources. The
+toolchain build checks the compiler's proofs and takes a while;
+[`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md) lists what the host needs.
 
 ```sh
 JOBS=4 toolchain/build.sh
 export PATH="$PWD/toolchain/work/bin:$PATH"
-make JASMINC=jasminc           # build/<target>/lib/libnirapod_slhdsa.a
-make check JASMINC=jasminc     # the tests of this host
+make JASMINC=jasminc           # compile the Jasmin sources
+make check JASMINC=jasminc     # also the tests that compile units of their own
+make gen JASMINC=jasminc       # regenerate gen/ after a change to the sources
 ```
 
 Sign and verify with one parameter set:

@@ -119,10 +119,13 @@ SHA-2 compression functions, single-way or multi-way. Everything above it
 
 The pinned Jasmin compiler ([TOOLCHAIN](TOOLCHAIN.md)) turns each unit into
 assembly for its target (`-arch armv8a` or `-arch x86-64`, Mach-O or ELF). The
-build emits the assembly, assembles it with the platform's assembler and links it
-with the wrapper; this tree does not ship generated assembly, so building needs the
-compiler. `make gen` writes the assembly of all three targets with a manifest,
-and `make gen-check` regenerates it and fails on any byte difference. Each
+build assembles that assembly with the platform's assembler and links it with the
+wrapper. The repository carries the assembly of all three targets in `gen/`, with
+`gen/MANIFEST`, so the library builds with a C toolchain alone; with `JASMINC`
+set, the build compiles the Jasmin sources itself instead. The `.jazz` and
+`.jinc` sources are the form to modify; `gen/` is their compiled output.
+`make gen` writes the assembly of all three targets with the manifest, and
+`make gen-check` regenerates it and fails on any byte difference. Each
 generated file opens with a comment block that names its licence, unit and
 target, the CPU features the unit needs and how to regenerate it; the block
 depends on nothing but the unit and the target.
