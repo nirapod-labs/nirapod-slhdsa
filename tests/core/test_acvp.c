@@ -34,6 +34,12 @@
  * and has no internal interface, so it reports the keygen, hsiggen and
  * isiggen cases as not run.
  *
+ * Every buffer the library is given is allocated for the call at its exact
+ * size: the inputs are heap copies of the decoded fields and the outputs
+ * fresh blocks, so that a read or write past the end of one leaves its
+ * block, where Valgrind's memcheck reports it (make memcheck). The static
+ * arrays below only hold the decoded fields.
+ *
  * usage: test_acvp <acvp-subset.txt>. Exit status 0 when every case run
  * passes, every parameter set had a keygen, siggen and sigver case, and
  * the file had hsiggen and isiggen cases.
@@ -73,6 +79,46 @@ static uint8_t context[NIRAPOD_SLHDSA_MAX_CONTEXT_BYTES];
 static uint8_t expect_sig[NIRAPOD_SLHDSA_MAX_SIGNATURE_BYTES];
 static uint8_t sig[NIRAPOD_SLHDSA_MAX_SIGNATURE_BYTES];
 static uint8_t opt_rand[32];
+
+/* The buffers of one case, at their exact sizes on the heap. */
+typedef struct exact_args {
+    uint8_t *sk, *pk, *message, *context, *opt_rand, *sig, *expect_sig;
+} exact_args;
+
+/*
+ * A block of exactly len bytes holding src[len], or uninitialised when src
+ * is NULL (an output). NULL when len is 0: the library takes a NULL
+ * message or context of length 0, and the block has nothing a call may
+ * touch. Exits on no memory.
+ */
+static uint8_t *exact(const uint8_t *src, size_t len)
+{
+    uint8_t *p;
+
+    if (len == 0) {
+        return NULL;
+    }
+    p = malloc(len);
+    if (p == NULL) {
+        printf("test_acvp: no memory\n");
+        exit(2);
+    }
+    if (src != NULL) {
+        memcpy(p, src, len);
+    }
+    return p;
+}
+
+static void exact_free(exact_args *a)
+{
+    free(a->sk);
+    free(a->pk);
+    free(a->message);
+    free(a->context);
+    free(a->opt_rand);
+    free(a->sig);
+    free(a->expect_sig);
+}
 
 /* Cases seen per set (index set - 1) and kind. */
 enum { KIND_KEYGEN, KIND_SIGGEN, KIND_SIGVER, KINDS };
@@ -195,13 +241,17 @@ static void run_keygen(nirapod_slhdsa_set set, const char *tc, char **f)
     {
         seed_source src = { seeds, 3 * n, 0 };
         nirapod_slhdsa_testing_config config = { NULL, give_seeds, NULL, 0 };
+        exact_args a = { 0 };
         nirapod_slhdsa_status st;
 
+        a.pk = exact(NULL, pk_len);
+        a.sk = exact(NULL, sk_len);
         config.entropy_state = &src;
-        st = nirapod_slhdsa_testing_keygen(&config, set, pk, pk_len, sk, sk_len);
+        st = nirapod_slhdsa_testing_keygen(&config, set, a.pk, pk_len, a.sk, sk_len);
         CHECK(st == NIRAPOD_SLHDSA_OK && src.calls == 1, "%s keygen tcId %s: status %d", name, tc, st);
-        CHECK(memcmp(pk, expect_pk, pk_len) == 0, "%s keygen tcId %s: public key differs", name, tc);
-        CHECK(memcmp(sk, expect_sk, sk_len) == 0, "%s keygen tcId %s: secret key differs", name, tc);
+        CHECK(memcmp(a.pk, expect_pk, pk_len) == 0, "%s keygen tcId %s: public key differs", name, tc);
+        CHECK(memcmp(a.sk, expect_sk, sk_len) == 0, "%s keygen tcId %s: secret key differs", name, tc);
+        exact_free(&a);
         printf("%-20s keygen tcId %-4s %s\n", name, tc, failures == before ? "PASS" : "FAIL");
     }
 #endif
@@ -217,6 +267,7 @@ static void run_siggen(nirapod_slhdsa_set set, const char *tc, char **f)
     size_t n = sk_len / 4, msg_len, ctx_len;
     int prehash = prehash_by_name(f[3]);
     nirapod_slhdsa_status st, vst;
+    exact_args a;
 
     msg_len = unhex(f[5], message, sizeof(message));
     ctx_len = unhex(f[6], context, sizeof(context));
@@ -227,21 +278,25 @@ static void run_siggen(nirapod_slhdsa_set set, const char *tc, char **f)
         return;
     }
 
+    a = (exact_args){ exact(sk, sk_len), exact(sk + 2 * n, 2 * n), exact(message, msg_len),
+                      exact(context, ctx_len), NULL, exact(NULL, sig_len),
+                      exact(expect_sig, sig_len) };
     if (prehash == 0) {
-        st = nirapod_slhdsa_sign_deterministic(set, sig, sig_len, message, msg_len,
-                                               context, ctx_len, sk, sk_len);
-        vst = nirapod_slhdsa_verify(set, expect_sig, sig_len, message, msg_len,
-                                    context, ctx_len, sk + 2 * n, 2 * n);
+        st = nirapod_slhdsa_sign_deterministic(set, a.sig, sig_len, a.message, msg_len,
+                                               a.context, ctx_len, a.sk, sk_len);
+        vst = nirapod_slhdsa_verify(set, a.expect_sig, sig_len, a.message, msg_len,
+                                    a.context, ctx_len, a.pk, 2 * n);
     } else {
-        st = nirapod_slhdsa_hash_sign_deterministic(set, (nirapod_slhdsa_prehash)prehash, sig,
-                                                    sig_len, message, msg_len, context,
-                                                    ctx_len, sk, sk_len);
-        vst = nirapod_slhdsa_hash_verify(set, (nirapod_slhdsa_prehash)prehash, expect_sig,
-                                         sig_len, message, msg_len, context, ctx_len,
-                                         sk + 2 * n, 2 * n);
+        st = nirapod_slhdsa_hash_sign_deterministic(set, (nirapod_slhdsa_prehash)prehash, a.sig,
+                                                    sig_len, a.message, msg_len, a.context,
+                                                    ctx_len, a.sk, sk_len);
+        vst = nirapod_slhdsa_hash_verify(set, (nirapod_slhdsa_prehash)prehash, a.expect_sig,
+                                         sig_len, a.message, msg_len, a.context, ctx_len,
+                                         a.pk, 2 * n);
     }
     CHECK(st == NIRAPOD_SLHDSA_OK, "%s siggen tcId %s: status %d", name, tc, st);
-    CHECK(memcmp(sig, expect_sig, sig_len) == 0, "%s siggen tcId %s: signature differs", name, tc);
+    CHECK(memcmp(a.sig, expect_sig, sig_len) == 0, "%s siggen tcId %s: signature differs", name, tc);
+    exact_free(&a);
     CHECK(vst == NIRAPOD_SLHDSA_OK, "%s siggen tcId %s: expected signature does not verify: %d",
           name, tc, vst);
     printf("%-20s siggen tcId %-4s %-12s %s\n", name, tc, f[3], failures == before ? "PASS" : "FAIL");
@@ -278,21 +333,25 @@ static void run_given(nirapod_slhdsa_set set, const char *tc, const char *kind, 
 #else
     {
         nirapod_slhdsa_status st, vst;
+        exact_args a = { exact(sk, sk_len), exact(sk + 2 * n, 2 * n), exact(message, msg_len),
+                         exact(context, ctx_len), exact(opt_rand, n), exact(NULL, sig_len),
+                         exact(expect_sig, sig_len) };
 
         if (internal) {
-            st = nirapod_slhdsa_testing_sign_internal(NULL, set, sig, sig_len, message, msg_len,
-                                                      sk, sk_len, opt_rand, n);
-            vst = nirapod_slhdsa_testing_verify_internal(NULL, set, expect_sig, sig_len, message,
-                                                         msg_len, sk + 2 * n, 2 * n);
+            st = nirapod_slhdsa_testing_sign_internal(NULL, set, a.sig, sig_len, a.message,
+                                                      msg_len, a.sk, sk_len, a.opt_rand, n);
+            vst = nirapod_slhdsa_testing_verify_internal(NULL, set, a.expect_sig, sig_len,
+                                                         a.message, msg_len, a.pk, 2 * n);
         } else {
-            st = nirapod_slhdsa_testing_sign(NULL, set, 0, sig, sig_len, message, msg_len,
-                                             context, ctx_len, sk, sk_len, opt_rand, n);
-            vst = nirapod_slhdsa_verify(set, expect_sig, sig_len, message, msg_len,
-                                        context, ctx_len, sk + 2 * n, 2 * n);
+            st = nirapod_slhdsa_testing_sign(NULL, set, 0, a.sig, sig_len, a.message, msg_len,
+                                             a.context, ctx_len, a.sk, sk_len, a.opt_rand, n);
+            vst = nirapod_slhdsa_verify(set, a.expect_sig, sig_len, a.message, msg_len,
+                                        a.context, ctx_len, a.pk, 2 * n);
         }
         CHECK(st == NIRAPOD_SLHDSA_OK, "%s %s tcId %s: status %d", name, kind, tc, st);
-        CHECK(memcmp(sig, expect_sig, sig_len) == 0, "%s %s tcId %s: signature differs",
+        CHECK(memcmp(a.sig, expect_sig, sig_len) == 0, "%s %s tcId %s: signature differs",
               name, kind, tc);
+        exact_free(&a);
         CHECK(vst == NIRAPOD_SLHDSA_OK, "%s %s tcId %s: expected signature does not verify: %d",
               name, kind, tc, vst);
         printf("%-20s %s tcId %-4s %s\n", name, kind, tc, failures == before ? "PASS" : "FAIL");
@@ -314,6 +373,7 @@ static void run_sigver(nirapod_slhdsa_set set, const char *tc, char **f)
     int prehash = prehash_by_name(f[3]);
     int passed = strcmp(f[4], "1") == 0;
     nirapod_slhdsa_status st;
+    exact_args a;
 
     msg_len = unhex(f[6], message, sizeof(message));
     ctx_len = unhex(f[7], context, sizeof(context));
@@ -325,13 +385,16 @@ static void run_sigver(nirapod_slhdsa_set set, const char *tc, char **f)
         return;
     }
 
+    a = (exact_args){ NULL, exact(pk, pk_len), exact(message, msg_len), exact(context, ctx_len),
+                      NULL, exact(sig, got_sig), NULL };
     if (prehash == 0) {
-        st = nirapod_slhdsa_verify(set, sig, got_sig, message, msg_len, context, ctx_len,
-                                   pk, pk_len);
+        st = nirapod_slhdsa_verify(set, a.sig, got_sig, a.message, msg_len, a.context, ctx_len,
+                                   a.pk, pk_len);
     } else {
-        st = nirapod_slhdsa_hash_verify(set, (nirapod_slhdsa_prehash)prehash, sig, got_sig,
-                                        message, msg_len, context, ctx_len, pk, pk_len);
+        st = nirapod_slhdsa_hash_verify(set, (nirapod_slhdsa_prehash)prehash, a.sig, got_sig,
+                                        a.message, msg_len, a.context, ctx_len, a.pk, pk_len);
     }
+    exact_free(&a);
     CHECK(st == (passed ? NIRAPOD_SLHDSA_OK : NIRAPOD_SLHDSA_ERROR_INVALID_SIGNATURE),
           "%s sigver tcId %s: status %d, expected %s", name, tc, st, passed ? "valid" : "invalid");
     printf("%-20s sigver tcId %-4s %-12s expected %s, signature of %zu bytes: %s\n", name, tc,
