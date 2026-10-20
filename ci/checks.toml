@@ -211,12 +211,16 @@ toolchain = "compiler"
 skip = ["tests/hash", "tests/acvp", "tests/vectors", "analysis", "proofs", "third_party",
         "ci/hash-sets.toml"]
 
+# gen-check, then `make check` from gen/ without the compiler: the inputs
+# of test-core.
 [checks.generated]
 recipe = "generated"
 component = "gen"
 platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
-skip = ["tests", "bench", "proofs", "third_party", "ci/hash-sets.toml"]
+reads = ["README.md"]
+skip = ["tests/hash", "tests/acvp", "tests/diff", "tests/vectors",
+        "bench", "analysis", "proofs", "third_party", "ci/hash-sets.toml"]
 
 # jasmin-checksafety. Until the safety component lands, the Jasmin code has
 # no safety verdict and the constant-time results are conditional on one:
