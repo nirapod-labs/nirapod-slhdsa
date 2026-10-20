@@ -30,7 +30,11 @@
 # but no safety component; the plan decides both from the tree on every
 # run. Pushes to main, the cold schedule and manual runs other than warm
 # ones reuse no check: they run every one, and record each pass for pull
-# requests to reuse.
+# requests to reuse. The push of a release tag (v*) reuses no check either
+# and runs every one. Its results stay artifacts of its own run, for seven
+# days, and are not offered to pull requests, which reuse records of main
+# only (ci/record.py). Its source job also requires the tag's name to match
+# the version of the header, CITATION.cff and CHANGELOG.md (ci/version.py).
 #
 # Then, as the plan says: the linux-x86_64 toolchain, taken from a run on
 # main or built (.github/actions/toolchain); one job per platform with that
@@ -69,6 +73,8 @@ on:
     types: [opened, synchronize, reopened]
   push:
     branches: [main]
+    # A release tag: every check runs, as on main, and nothing is reused.
+    tags: ["v*"]
   schedule:
     # Cold, Mondays.
     - cron: "17 3 * * 1"

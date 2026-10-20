@@ -19,8 +19,9 @@
 #                   that ran the check under the same key recorded a pass
 #                   (ci/store.py); the summary names that run, its
 #                   commit and its runner image
-#   RUN             anything else, and everything on a push to main, the
-#                   schedule and a manual run: main never reuses
+#   RUN             anything else, and everything on a push to main or of
+#                   a tag, the schedule and a manual run: main and release
+#                   tags never reuse
 #
 # From the decisions follow the jobs (written to $GITHUB_OUTPUT):
 #
@@ -126,7 +127,7 @@ def jobs(reg, legs):
 
 def summary(plan):
     rows = ["### plan", "",
-            f"Event {plan['event']}; records {'reused from main' if plan['reuse'] else 'not reused (main never reuses)'}.",
+            f"Event {plan['event']}; records {'reused from main' if plan['reuse'] else 'not reused (only a pull request reuses)'}.",
             "", "| check | platform | decision | detail |", "|---|---|---|---|"]
     for l in plan["legs"]:
         detail = l["reason"]
@@ -146,10 +147,18 @@ def summary(plan):
     return "\n".join(rows) + "\n"
 
 
+def may_reuse(env):
+    """Only a pull request's run reuses records. A tag's ref never belongs
+    to one; the test is there so that a run of a tag cannot reuse whatever
+    event GitHub reports for it."""
+    return (env.get("GITHUB_EVENT_NAME") == "pull_request"
+            and not env.get("GITHUB_REF", "").startswith("refs/tags/"))
+
+
 def make_plan(env, reg, tree, st, out_dir):
     event = env.get("GITHUB_EVENT_NAME", "local")
     legs = compute(reg, tree)
-    reuse_ok = event == "pull_request"
+    reuse_ok = may_reuse(env)
     warnings = reuse(legs, st, out_dir) if reuse_ok else []
     plan = {"format": 2, "event": event, "reuse": reuse_ok, "legs": legs,
             "warnings": warnings}
@@ -178,8 +187,7 @@ def main(argv):
     try:
         reg, tree = registry.load(), key.Tree()
         os.makedirs(out_dir, exist_ok=True)
-        st = store.Store(store.api_from_env()) \
-            if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" else None
+        st = store.Store(store.api_from_env()) if may_reuse(os.environ) else None
         plan = make_plan(os.environ, reg, tree, st, out_dir)
     except (registry.RegistryError, key.KeyFailure, components.ComponentError,
             ghapi.ApiError) as e:

@@ -21,7 +21,10 @@
 #           computed again here equal plan.json's;
 #         - every leg the plan ran has a PASS record of its key among this
 #           run's results, and every leg it reused has its record in the
-#           plan's reused/ directory, valid for its key and run.
+#           plan's reused/ directory, valid for its key and run;
+#         - the plan reused records only if this run may (a pull request,
+#           never a push of main or of a tag; ci/plan.py), and reused no
+#           leg if it says it reused nothing.
 #
 #       Its summary lists every check and platform with its final status:
 #       PASS (run here), the status of a reused record with the run that
@@ -102,7 +105,8 @@ def leg_status(leg, plan_dir, results):
     return "PASS", "run here", None
 
 
-def cmd_all_checks(workflow, needs, plan_dir, results, reg, tree):
+def cmd_all_checks(workflow, needs, plan_dir, results, reg, tree, env=None):
+    env = os.environ if env is None else env
     problems = []
     jobs = workflow_jobs(workflow)
     if "all-checks" not in jobs:
@@ -134,6 +138,11 @@ def cmd_all_checks(workflow, needs, plan_dir, results, reg, tree):
         problems.append("the plan's legs, keys or applicability differ from this tree's")
     if planner.jobs(reg, plan["legs"]) != plan["jobs"]:
         problems.append("the plan's jobs do not follow from its decisions")
+    if plan["reuse"] and not planner.may_reuse(env):
+        problems.append(f"the plan reuses records in a run of {env.get('GITHUB_EVENT_NAME')} "
+                        f"{env.get('GITHUB_REF')}, which must run every check")
+    if not plan["reuse"] and any(l["decision"] == "REUSED" for l in plan["legs"]):
+        problems.append("the plan reuses no record, yet a leg is REUSED")
     rows = []
     for leg in plan["legs"]:
         status, detail, problem = leg_status(leg, plan_dir, results)

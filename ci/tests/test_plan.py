@@ -10,12 +10,14 @@
 #
 #   - a pull request that changes only documentation finds every record on
 #     main and starts no platform job, macOS included;
-#   - a push to main reuses nothing, and a record other than a pass is
-#     never reused;
+#   - a push to main reuses nothing, nor does a release tag, even reported
+#     as a pull request's event, and a record other than a pass is never
+#     reused;
 #   - all-checks fails when a planned job was skipped, when an unplanned job
 #     ran, when a job is missing from its needs, when a leg is removed from
-#     the plan, when a leg the plan ran has no PASS record, and when a
-#     reused record does not match its key;
+#     the plan, when a leg the plan ran has no PASS record, when a reused
+#     record does not match its key, when a plan of a tag's run reuses, and
+#     when a plan that reuses nothing has a reused leg;
 #   - the proofs gate fails when a shard is missing from the plan or from
 #     proofs/Makefile, or when a shard did not pass.
 
@@ -147,6 +149,20 @@ class Plans(unittest.TestCase):
             self.assertTrue(all(l["decision"] in ("RUN", "NOT APPLICABLE", "NOT RUN")
                                 for l in p["legs"]))
 
+    def test_release_tag_reuses_nothing(self):
+        recs = FakeStore(self.all_records())
+        for event in ("push", "pull_request"):
+            p = plan.make_plan({"GITHUB_EVENT_NAME": event, "GITHUB_REF": "refs/tags/v0.1.0"},
+                               self.reg, self.tree, recs, self.tmp)
+            self.assertFalse(p["reuse"])
+            self.assertTrue(all(l["decision"] in ("RUN", "NOT APPLICABLE", "NOT RUN")
+                                for l in p["legs"]))
+        # The control: the same store serves a pull request.
+        p = plan.make_plan({"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REF": "refs/pull/7/merge"},
+                           self.reg, self.tree, recs, self.tmp)
+        self.assertTrue(p["reuse"])
+        self.assertTrue(any(l["decision"] == "REUSED" for l in p["legs"]))
+
     def test_lookup_error_runs_everything(self):
         class Broken:
             def find_records(self, wanted):
@@ -193,10 +209,10 @@ class AllChecks(unittest.TestCase):
         with open(os.path.join(d, "record"), "w") as f:
             f.write(record.render(status, leg["key"], leg["text"], ENV))
 
-    def problems(self):
+    def problems(self, env=ENV):
         return gate.cmd_all_checks(os.path.join(registry.ROOT, ".github/workflows/ci.yml"),
                                    self.needs, self.plan_dir, self.results, self.reg,
-                                   self.tree)[0]
+                                   self.tree, env)[0]
 
     def test_passes(self):
         self.assertEqual(self.problems(), [])
@@ -250,6 +266,25 @@ class AllChecks(unittest.TestCase):
             f.write(record.render("PASS", leg["key"], leg["text"].replace("inputs ", "inputs 0"),
                                   ENV))
         self.assertTrue(self.problems())
+
+    def test_passes_on_a_release_tag(self):
+        self.assertEqual(self.problems(dict(ENV, GITHUB_REF="refs/tags/v0.1.0")), [])
+
+    def test_reuse_in_a_release_tag_run_fails(self):
+        self.plan["reuse"] = True
+        self.write_plan()
+        tag = dict(ENV, GITHUB_REF="refs/tags/v0.1.0")
+        self.assertTrue(any("must run every check" in p for p in self.problems(tag)))
+        # The control: a pull request's run may reuse.
+        pr = dict(ENV, GITHUB_EVENT_NAME="pull_request", GITHUB_REF="refs/pull/7/merge")
+        self.assertEqual(self.problems(pr), [])
+
+    def test_reused_leg_in_a_plan_without_reuse_fails(self):
+        leg = next(l for l in self.plan["legs"] if l["decision"] == "RUN")
+        leg["decision"] = "REUSED"
+        self.write_plan()
+        self.assertTrue(any("reuses no record, yet a leg is REUSED" in p
+                            for p in self.problems()))
 
     def test_reused_record_must_match(self):
         leg = next(l for l in self.plan["legs"] if l["check"] == "test-hash")
