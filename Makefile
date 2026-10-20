@@ -670,6 +670,63 @@ else
 endif
 
 # --------------------------------------------------------------------
+# Valgrind memcheck over the tests (tests/core/memcheck.py)
+# --------------------------------------------------------------------
+#
+# The programs of `make check` that call the library, on both libraries,
+# under memcheck; then test_memcheck, which runs every export of every
+# variant Valgrind lets the library select on exact-size heap buffers,
+# lists the variants it does not, and makes the negative control. Linux
+# only: Valgrind has no port to macOS on AArch64. Testing evidence, not a
+# memory-safety verdict.
+#
+# Left out:
+#   test_core       its variant matrix and its 4 MiB messages make it far
+#                   too long under memcheck; test_memcheck runs each export
+#                   it covers on every variant the process can select.
+#   test_stack*, test_registers, test_clearing*
+#                   they read the stack below the stack pointer and dead
+#                   frames on purpose and inspect registers through inline
+#                   assembly, which memcheck reports as errors of the test.
+#   the exports check, the known-answer control, the README's tampered copy
+#                   they run no library code of their own, or rerun a
+#                   binary of the list expecting it to fail.
+
+VALGRIND ?= valgrind
+# Programs run at once under memcheck.
+MEMCHECK_JOBS ?= 1
+MEMCHECK := $(TESTS_DIR)/core/memcheck.py
+MEMCHECK_PROGRAM := $(OUT)/tests/test_memcheck
+
+# Longest first, for MEMCHECK_JOBS above 1.
+MEMCHECK_RUN := '$(MEMCHECK_PROGRAM) exports' \
+                '$(OUT)/tests/test_production' \
+                '$(OUT)/tests/test_acvp_production $(ACVP_SUBSET)' \
+                '$(OUT)/tests/test_acvp $(ACVP_SUBSET)' \
+                '$(OUT)/tests/test_negative' \
+                '$(OUT)/tests/test_entropy' \
+                '$(OUT)/tests/test_buffers' \
+                '$(OUT)/readme/example'
+MEMCHECK_TESTS := $(OUT)/tests/test_production $(OUT)/tests/test_acvp_production \
+                  $(OUT)/tests/test_acvp $(OUT)/tests/test_negative \
+                  $(OUT)/tests/test_entropy $(OUT)/tests/test_buffers $(OUT)/readme/example \
+                  $(MEMCHECK_PROGRAM)
+ifneq ($(strip $(JASMINC)),)
+MEMCHECK_RUN   += '$(OUT)/tests/test_fault'
+MEMCHECK_TESTS += $(OUT)/tests/test_fault
+endif
+
+$(MEMCHECK_PROGRAM): $(TESTS_DIR)/core/test_memcheck.c $(TESTING_LIB)
+	@mkdir -p $(@D)
+	$(TEST_CC) -o $@ $< $(TESTING_LIB)
+
+.PHONY: memcheck
+
+memcheck: $(MEMCHECK_TESTS)
+	@test "$$(uname -s)" = Linux || { echo "make memcheck runs on Linux only" >&2; exit 1; }
+	$(PYTHON) -I $(MEMCHECK) -j $(MEMCHECK_JOBS) $(VALGRIND) $(OUT)/memcheck $(MEMCHECK_PROGRAM) $(MEMCHECK_RUN)
+
+# --------------------------------------------------------------------
 # Generated assembly (gen/)
 # --------------------------------------------------------------------
 #
