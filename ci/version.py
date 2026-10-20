@@ -26,7 +26,10 @@
 #                              section for it, the newest
 #
 # Before the first release CHANGELOG.md has no release heading; the check
-# says so and compares the rest. The files are read as text, line by line,
+# says so and compares the rest. Once there is one, the header must match
+# the newest release, so between releases main names the last version
+# released, and a release commit changes the header, CITATION.cff and the
+# CHANGELOG heading together. The files are read as text, line by line,
 # as they are written here: a definition the header hides behind a
 # conditional or a continuation line is not one this reader accepts.
 
