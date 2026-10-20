@@ -27,7 +27,7 @@
 #                     safety-checker workarounds (tests/core/checker/)
 #     make asm        only the Jasmin assembly
 #     make gen        write the assembly of every target and its manifest
-#                     into gen/ (this tree does not carry gen/)
+#                     into gen/, which the repository carries
 #     make gen-check  regenerate into build/gen-check and fail on any byte
 #                     difference from an existing gen/, MANIFEST included
 #                     except the line naming the host's jasminc binary
@@ -37,11 +37,13 @@
 # detected from the host for the library and the tests. `make gen` builds
 # the assembly of all three, which needs no target hardware.
 #
-# Tools: JASMINC (and JASMIN_CT for analysis targets) must be the Jasmin
-# build that toolchain/build.sh makes from the pins under toolchain/; CC
-# must accept C99. JASMINC is required: when it is unset, make looks for
-# the assembly in gen/<target>/, which a clean checkout of this tree does
-# not have.
+# Tools: CC must accept C99. JASMINC (and JASMIN_CT for analysis targets),
+# when set, must be the Jasmin build that toolchain/build.sh makes from the
+# pins under toolchain/. With JASMINC set, make compiles the Jasmin sources;
+# without it, the library and `make check` assemble the shipped gen/<target>/
+# instead, after checking that gen/MANIFEST names the Jasmin sources of this
+# tree and every file the build reads. `make gen`, and the three tests of
+# `make check` that compile units of their own, need JASMINC.
 #
 # Other areas add targets through their own fragments, included at the
 # end: <dir>/<name>.mk and <dir>/<sub>/<name>.mk.
@@ -217,14 +219,38 @@ $(OUT)/asm/%.s: $(OUT)/units/%.jazz $(JASMIN_DEPS)
 	@echo "$(JASMIN_FLAGS) $(JASMIN_INCLUDES)" > $(@:.s=.flags)
 
 # The assembly the objects come from: compiled here when JASMINC is set,
-# else gen/<target>/ as `make gen` writes it (absent from this tree).
+# else gen/<target>/ as `make gen` wrote it.
 GEN_DIR ?= gen
+SHA256  := $(shell command -v sha256sum >/dev/null 2>&1 && echo sha256sum || echo "shasum -a 256")
 ifeq ($(strip $(JASMINC)),)
-ASM_DIR := $(GEN_DIR)/$(TARGET)
+ASM_DIR   := $(GEN_DIR)/$(TARGET)
+GEN_MATCH := $(OUT)/gen-match
 $(GEN_DIR)/$(TARGET)/%.s:
 	@echo "$@ is missing: set JASMINC to the pinned jasminc to compile the Jasmin sources" >&2; exit 1
+
+# gen/ is only used when it was generated from these Jasmin sources and
+# no file of it has changed since: the digest of the sources and the digest
+# of each unit of this target must be those gen/MANIFEST records. An edited
+# .jinc otherwise builds the old assembly without a word.
+$(GEN_MATCH): $(GEN_DIR)/MANIFEST $(addprefix $(GEN_DIR)/$(TARGET)/,$(addsuffix .s,$(UNITS))) \
+              $(shell find $(JASMIN_SRC) -name '*.jinc')
+	@mkdir -p $(@D)
+	@want=$$(sed -n 's/^sources //p' $(GEN_DIR)/MANIFEST); \
+	 have=$$(find $(JASMIN_SRC) -name '*.jinc' | LC_ALL=C sort | xargs $(SHA256) | $(SHA256) | cut -d' ' -f1); \
+	 test -n "$$want" && test "$$want" = "$$have" || { \
+	   echo "$(GEN_DIR)/ was generated from other Jasmin sources than these: set JASMINC to" \
+	        "compile them, or regenerate $(GEN_DIR)/ with make gen" >&2; exit 1; }
+	@for u in $(UNITS); do \
+	   grep -qx "[0-9a-f]\{64\}  $(TARGET)/$$u.s" $(GEN_DIR)/MANIFEST || { \
+	     echo "$(GEN_DIR)/MANIFEST has no digest of $(TARGET)/$$u.s: regenerate with make gen" >&2; exit 1; }; \
+	 done
+	@cd $(GEN_DIR) && grep '  $(TARGET)/' MANIFEST | $(SHA256) -c --status - || { \
+	   echo "a file under $(GEN_DIR)/$(TARGET)/ differs from its digest in $(GEN_DIR)/MANIFEST:" \
+	        "regenerate with make gen" >&2; exit 1; }
+	@touch $@
 else
-ASM_DIR := $(OUT)/asm
+ASM_DIR   := $(OUT)/asm
+GEN_MATCH :=
 endif
 
 # The Linux assemblers accept the mnemonics of the AArch64 crypto-extension
@@ -233,7 +259,7 @@ endif
 # accepts: the instructions are those of the .s file.
 UNIT_ASFLAGS := $(if $(filter aarch64-elf,$(TARGET)),-march=armv8.2-a+sha2+sha3)
 
-$(OUT)/obj/%.o: $(ASM_DIR)/%.s
+$(OUT)/obj/%.o: $(ASM_DIR)/%.s $(GEN_MATCH)
 	@mkdir -p $(@D)
 	$(CC) $(UNIT_ASFLAGS) -c -o $@ $<
 
@@ -655,7 +681,6 @@ endif
 # documents /* */ as a comment on every target.
 
 GEN_TARGETS := aarch64-macho aarch64-elf x86_64-elf
-SHA256      := $(shell command -v sha256sum >/dev/null 2>&1 && echo sha256sum || echo "shasum -a 256")
 
 .PHONY: gen gen-check gen-target
 
