@@ -233,12 +233,48 @@ Not proven:
 `capi/dispatch.c` selects a set's `shani`, `avx2`, `sha2` or `sha3` variant
 wherever the CPU has the extensions it needs, so on such CPUs the library runs
 kernels these proofs do not cover. The proven kernels are those of the scalar
-variant, which every set has.
+variant, which every set has; [the next section](#which-variant-a-cpu-runs) lists
+which variant each CPU runs.
 
 The details are in
 [`proofs/README.md`](../proofs/README.md#extracted-models-and-correctness-proofs).
 `make check-extraction` fails if a committed model differs from a fresh extraction,
 so a proof cannot silently refer to old code.
+
+## Which variant a CPU runs
+
+Each parameter set is compiled once per hash variant (`Makefile`, `capi/sets.c`).
+At every call the library runs the last variant in the order below whose CPU
+features the operating system reports, and the scalar variant when there is none
+(`capi/dispatch.c`). On x86-64 no extension is used unless the CPU reports AVX and
+the operating system has enabled the AVX register state. "Proven" means the
+correctness theorems of [the previous section](#the-code-against-the-specification)
+hold for the variant's model; they never cover the C layer.
+
+| Architecture | Variant | Sets | Selected on | Proven |
+| :-- | :-- | :-- | :-- | :-- |
+| x86-64 | `scalar` | all 12 | SHAKE sets: CPUs without AVX2. SHA2 sets: CPUs with neither AVX2 nor the SHA extensions | yes, model `x86_64/portable` |
+| x86-64 | `avx2` | all 12 | SHAKE sets: CPUs with AVX2. SHA2 sets: CPUs with AVX2 and without the SHA extensions | no |
+| x86-64 | `shani` | 6 SHA2 | CPUs with the SHA extensions, with or without AVX2 | no |
+| AArch64 | `scalar` | all 12 | SHAKE sets: CPUs that lack FEAT_SHA3 or Advanced SIMD. SHA2 sets: CPUs that lack FEAT_SHA256, FEAT_SHA512 or Advanced SIMD | yes, model `aarch64/a64scalar` |
+| AArch64 | `sha3` | 6 SHAKE | CPUs with Advanced SIMD and FEAT_SHA3 | no |
+| AArch64 | `sha2` | 6 SHA2 | CPUs with Advanced SIMD, FEAT_SHA256 and FEAT_SHA512 | no |
+
+The variants differ in their hash kernels only: `avx2` runs the four-way Keccak
+kernel on AVX2 for the SHAKE sets, and the four-way tweakable hashes on the AVX2
+8-way SHA-256 and 4-way SHA-512 kernels for the SHA2 sets; `shani` runs SHA-256 on
+the SHA extensions; `sha3` runs single-way and four-way Keccak on the A64 SHA-3
+instructions; `sha2` runs SHA-256 and SHA-512 on the A64 SHA-2 instructions. The
+SLH-DSA code above the kernels is the same source in every variant, but only the
+scalar models are extracted and proven.
+
+So on a CPU that has the extensions of a set's accelerated variant, no call for
+that set through the library runs proven code. All three CI runners
+([VALIDATION](VALIDATION.md#where-tests-run)) are such CPUs for every set. The
+application library has no way to request the scalar variant. The testing library
+can pin a variant per call, but it also exposes the internal functions of FIPS 205
+section 9 and must not be linked into an application
+([API](API.md#building-and-linking)).
 
 ## Compilation
 

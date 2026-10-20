@@ -28,6 +28,10 @@ SLH-DSA (FIPS 205) in [Jasmin](https://github.com/jasmin-lang/jasmin) for AArch6
 Results of CI run [38680243373](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38680243373) at `de27e6a`, 2026-10-15. Row *The compiler preserves program semantics*: run [38554446843](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38554446843) at `8646299`. Every set, interface and platform: [`docs/STATUS.md`](docs/STATUS.md).
 <!-- end status:summary -->
 
+The library picks a hash variant per call from the CPU's features, and only the
+scalar variants are covered by the correctness proofs:
+[which variant a CPU runs, and whether it is proven](docs/PROOFS.md#which-variant-a-cpu-runs).
+
 ## Quick start
 
 The repository carries the generated assembly of every target in `gen/`, so a C
