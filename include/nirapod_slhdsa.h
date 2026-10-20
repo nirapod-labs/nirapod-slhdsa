@@ -84,7 +84,10 @@
  * (getentropy on macOS, getrandom on Linux). If it fails, the call returns
  * NIRAPOD_SLHDSA_ERROR_ENTROPY; it never falls back to a weaker source.
  * The deterministic variants use no entropy: they sign with opt_rand set to
- * PK.seed, as FIPS 205 section 9.2 specifies.
+ * PK.seed, as FIPS 205 section 9.2 specifies. Both modes give valid
+ * signatures under one key, but the security theorems of docs/PROOFS.md fix
+ * one mode for every signature of a key; to stay within them, use one mode
+ * per key (docs/API.md, "Hedged and deterministic signing").
  *
  * Timing
  * ------

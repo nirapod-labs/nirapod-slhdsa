@@ -34,6 +34,9 @@ scalar variants are covered by the correctness proofs:
 
 ## Quick start
 
+Supported platforms are Linux on x86-64, Linux on AArch64 and macOS on AArch64;
+nothing else is supported ([API](docs/API.md#supported-platforms)).
+
 The repository carries the generated assembly of every target in `gen/`, so a C
 compiler, the platform's assembler and linker, and Python 3 for the tests are
 enough:

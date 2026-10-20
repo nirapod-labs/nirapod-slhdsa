@@ -90,7 +90,8 @@ The header states its version with four macros:
 | `NIRAPOD_SLHDSA_VERSION_STRING` | `"0.1.0"` |
 
 The version follows [Semantic Versioning 2.0.0](https://semver.org/). Before
-1.0.0, a new minor version may change the API and the ABI. The macros are
+1.0.0, a new minor version may change the API and the ABI
+([Stability](#stability)). The macros are
 compile-time values only: the library exports no symbol
 that reports its version, so a program reads the version of the header it
 was built with.
@@ -99,6 +100,14 @@ was built with.
 `version` field of `CITATION.cff` or with the newest release heading of
 `CHANGELOG.md`, and on a release tag when the tag is not `v` followed by
 `NIRAPOD_SLHDSA_VERSION_STRING` or the changelog has no section for it.
+
+## Supported platforms
+
+Supported: Linux on x86-64, Linux on AArch64, and macOS on AArch64. CI builds
+and tests these three natively ([VALIDATION](VALIDATION.md#where-tests-run)).
+Not supported: Windows, 32-bit targets, macOS on x86-64, and every other system
+or architecture. The library is not built or tested there, and its results do
+not apply.
 
 ## Hash variants
 
@@ -177,6 +186,17 @@ int sign_and_check(const uint8_t *msg, size_t msg_len)
 
 The secret key above lives on the caller's stack; clearing it after use is the
 caller's responsibility.
+
+## Hedged and deterministic signing
+
+`nirapod_slhdsa_sign` and `nirapod_slhdsa_hash_sign` are hedged: each signature
+uses a fresh opt_rand from the operating system's random source. The
+`_deterministic` functions use opt_rand = PK.seed and no entropy (FIPS 205
+section 9.2). Both give valid signatures under the same key. The EUF-CMA
+theorems of the specification each fix one mode for every signature made with a
+key, so a key used in both modes is outside them
+([PROOFS](PROOFS.md#security-of-the-specification)); to stay within them, sign
+with one mode per key.
 
 ## Status codes
 
@@ -432,3 +452,24 @@ mode itself, and whether the CPU honours it, stay as described above.
   the address space ([PROOFS](PROOFS.md#the-code-against-the-specification),
   Domain). No buffer a process on the supported targets can hold comes near
   these lengths.
+
+## Stability
+
+No release has been made yet. Until 1.0.0, a minor release (0.1 to 0.2) may
+change the interface incompatibly, and CHANGELOG.md lists every such change; a
+patch release (0.1.0 to 0.1.1) does not.
+
+The interface that this policy covers is:
+
+- the names and signatures of the functions in `nirapod_slhdsa.h`;
+- the numeric values of `nirapod_slhdsa_set`, `nirapod_slhdsa_prehash` and
+  `nirapod_slhdsa_status`;
+- the size macros `NIRAPOD_SLHDSA_<SET>_*_BYTES` and the size functions;
+- the `NIRAPOD_SLHDSA_MAX_*` macros, which may grow when parameter sets are
+  added and never shrink, so a buffer sized by them stays large enough;
+- the order in which arguments are checked, and the state of every output after
+  a failure ([Status codes](#status-codes)).
+
+A later version may add status values, all of them negative. Treat any status
+other than `NIRAPOD_SLHDSA_OK` as failure, including a negative value this page
+does not list.
