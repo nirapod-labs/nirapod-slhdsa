@@ -13,7 +13,7 @@ what = "test programs run under memcheck without an error"
 pattern = '^memcheck: programs=\d+ clean=(\d+)$'
 exactly = 9
 
-# The one-byte-short public key buffer (tests/core/memcheck_control.c):
+# The one-byte-short public key buffer (tests/core/test_memcheck.c, short):
 # memcheck reported the write past its end.
 [[memcheck.line]]
 what = "negative controls memcheck reported"

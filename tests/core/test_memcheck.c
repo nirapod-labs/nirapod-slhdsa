@@ -19,10 +19,11 @@
  *                export of every unit the process can select runs once.
  *                The external form rotates through pure signing and the
  *                twelve pre-hash functions, a different one per set and
- *                variant, so that each variant meets every form across
- *                the sets. test_core runs the full matrix natively; it is
- *                too long to run under memcheck, which slows a program
- *                down many times over.
+ *                variant. With twelve sets a variant meets at most twelve
+ *                of the thirteen forms: on x86-64, scalar never signs with
+ *                SHAKE256 and avx2 never signs pure. test_core runs the
+ *                full matrix natively; it is too long to run under
+ *                memcheck, which slows a program down many times over.
  *     variants   for every parameter set, each compiled variant and
  *                whether this process may run it. Run natively and under
  *                Valgrind, the two listings show which variants memcheck
