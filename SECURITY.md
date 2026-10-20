@@ -6,6 +6,17 @@ This project is under development and has not been released. No version is
 supported for production use yet. Reports are still welcome and will be
 handled as below.
 
+## Supported versions
+
+| Version | Security reports | Production use |
+|---|---|---|
+| 0.1.x | welcome, handled as below | not supported |
+| before 0.1.0 | none was released | not supported |
+
+Until 1.0.0, only the newest minor version receives fixes. A fix is made on
+`main` and reaches users in the next release of that minor version; older
+minor versions receive none.
+
 ## Scope
 
 In scope:
