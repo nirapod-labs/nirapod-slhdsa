@@ -124,6 +124,9 @@ constant-time and speculative results above are conditional on it. The C wrapper
 checks every buffer length against the set before any call, and the tests include
 malformed inputs, overlapping buffers, and builds that fill the checker's
 scratch buffers with 0xa5 bytes instead of zeros ([VALIDATION](VALIDATION.md)).
+On Linux the tests also run under Valgrind's memcheck
+([VALIDATION](VALIDATION.md#valgrind-memcheck)), which sees only the accesses
+those tests make and does not change the status above.
 
 ## Secret lifetime
 

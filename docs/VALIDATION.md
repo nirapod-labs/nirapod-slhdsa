@@ -120,12 +120,33 @@ can follow them. `make fill-check` rebuilds the library with those fills writing
 tested result depends on the fill value. On Linux AArch64, CI also builds one
 control per filled buffer, made to depend on the fill, and each must fail.
 
+## Valgrind memcheck
+
+`make memcheck` runs the programs of `make check` that call the library, on both
+libraries, under Valgrind's memcheck; CI runs it on Linux x86-64 and Linux AArch64.
+A program passes when it exits 0 and memcheck reports no invalid read or write, no
+use of an uninitialised value and no lost block. The known-answer tests give the
+library every buffer at its exact size on the heap, so an access past one leaves
+its block, and `test_memcheck` does the same for every export of every variant the
+process can select. A control has a Jasmin export write a public key into a heap
+buffer one byte short; the run fails unless memcheck reports it.
+
+Valgrind shows the library a CPU without the extensions it does not emulate, so
+the variants that need them are neither selected nor run, and each run's log lists
+them. With Valgrind 3.26 on an x86-64 CPU with the SHA extensions, that is the six
+`shani` units: their kernels have no memcheck coverage. `test_core` is left out
+for its length (`test_memcheck` covers its exports), and the stack, register and
+clearing tests because they read dead stack on purpose. This is testing evidence
+for the paths the tests take, not a memory-safety verdict
+([SECURITY-MODEL](SECURITY-MODEL.md#memory-safety)).
+
 ## Running them
 
 From the repository root, with the pinned toolchain on `PATH`:
 
 ```sh
 make check JASMINC=jasminc                  # core, negative, fault, ABI, ACVP subset
+make memcheck JASMINC=jasminc               # the same programs under Valgrind (Linux)
 make -C tests/acvp check IMPL=nirapod       # the full ACVP vectors
 python3 ci/check.py run differential linux-x86_64   # a CI check, as CI runs it
 ```

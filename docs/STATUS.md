@@ -82,6 +82,7 @@ caller's, and the library does not check it.
 | `analysis-hash` | PASS | PASS | PASS | the same on the hash test exports |
 | `asm-policy` | PASS | PASS | PASS | exported symbols, no division, reserved AArch64 registers, with controls |
 | `safety` | NOT RUN | NOT RUN | NOT RUN | `jasmin-checksafety`; there is no safety target yet |
+| `memcheck` | NOT RUN | NOT RUN | NOT APPLICABLE | Valgrind memcheck over the tests of `make check` and its negative control; testing evidence, not a safety verdict |
 
 From CI run [38680243373](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38680243373) on `main` at `de27e6a`.
 <!-- end status:checks -->
