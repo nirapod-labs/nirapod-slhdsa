@@ -7,22 +7,23 @@ SPDX-License-Identifier: Apache-2.0
 
 EasyCrypt development for nirapod-slhdsa: a byte-level specification of
 FIPS 205 and of the hash functions it uses, lemmas that check parts of that
-specification against the standard, its EUF-CMA security, and the start of
-the functional-correctness proofs that are to connect it to the Jasmin
-implementation.
+specification against the standard, its EUF-CMA security, and
+functional-correctness proofs that connect it to the Jasmin implementation.
 
 **Status.** The specification, its validation theories and the EUF-CMA
 theorems of the specification for all twelve parameter sets are written and
-check. The implementation theorems so far cover the entry points of the
-portable SHA-256 and SHA-512 kernels (one block from an array, one block
-and n blocks from memory) and their round functions, the streaming and
-one-shot SHA-2 hashes built on them, the steps of HMAC and the MGF1
-instances over them, the Keccak-f[1600] permutation of the single-way
-Keccak kernels of the scalar variants, the single-way sponge (absorb,
-finalize, squeeze) and the one-shot SHA-3 and SHAKE functions over it, and
-the hash address (ADRS) setters of the SLH-DSA core (below).
-Nothing in this directory supports a claim that the SLH-DSA implementation
-is verified.
+check. The correctness theorems are about the models `jasmin2ec` extracts
+from the scalar variant of each architecture (`x86_64/portable` and
+`aarch64/a64scalar`). For all twelve parameter sets they state that the five
+exports of `src/slhdsa/api.jinc` compute internal and external key
+generation, signing and verification (FIPS 205 Algorithms 18 to 25), with
+every hash function they call proven too, for a message in the domain stated
+under [Assumptions](#assumptions). They do not cover the variants on SIMD
+and CPU-extension kernels, which the library selects on CPUs that have the
+extensions, nor the C layer; the extraction and the instruction models are
+trusted ([Assumptions](#assumptions)). No theorem here composes the security
+of the specification with the correctness of the code into one statement
+about the library.
 
 ## Layout
 
@@ -96,20 +97,25 @@ Nothing else in the specification is executed. Algorithms 5 to 25 (beyond
 the closed forms `security/FIPS205_TreeForms.ec` restates and proves) and
 the hash instantiations of section 11 (PRF, PRF_msg, H_msg, F, H and T_l,
 their padding and the choice of SHA-256 or SHA-512) are checked by review
-against the standard only. The specification has not been run on ACVP
-vectors; that check is open, and is planned through the equivalence with
-the implementation, once the implementation is tested on them.
+against the standard only. The specification itself cannot be run on ACVP
+vectors. The correctness theorems below make an indirect check possible:
+the scalar exports are proven equal to the specification, so a run of the
+ACVP vectors on the scalar variant tests the specification too, under the
+conditions `../docs/PROOFS.md` lists
+([Testing the specification through the code](../docs/PROOFS.md#testing-the-specification-through-the-code)).
+No result of such a run is recorded in this repository.
 
 The FIPS 180-4 constant tables are checked by `make check-constants`, which
 re-derives them from their definitions.
 
 The hash functions themselves cannot be evaluated inside EasyCrypt (machine
-words are abstract there). Of the hash specifications, only the two SHA-2
-compression functions are tested against vectors, through the kernels proven
-equal to them, which pass the CAVP tests of `tests/hash`. Padding, the full
-hashes and their truncated variants, HMAC, MGF1 and the FIPS 202 byte
-interface are checked by review only, until proofs of the code that
-implements them reach them.
+words are abstract there). They are tested through the code proven equal to
+them (below), which `tests/hash` runs on the NIST CAVP vectors: the SHA-2
+compression functions, the full SHA-2 hashes with their padding and
+truncated variants, and the FIPS 202 byte interface (SHA-3 and SHAKE). HMAC
+is tested the same way, but the step that forms its key block is not among
+the proven code. MGF1 has no CAVP vectors; `tests/hash` compares it with
+MGF1 composed from OpenSSL's SHA-2, at the six sizes FIPS 205 uses.
 
 ## Security of the specification
 
@@ -160,6 +166,18 @@ Limits:
 
 - The theorems are about the EasyCrypt operators of the specification,
   not about the Jasmin code.
+- The adversary is an EasyCrypt module: a classical probabilistic program
+  with classical access to its oracles. Security against quantum
+  adversaries is not covered by these theorems.
+- For the SHA2 sets, the specification's SHA-2 is total
+  (`spec/hash/FIPS180_SHA2.ec`): past the input length FIPS 180-4 allows
+  (under 2^64 bits for SHA-224 and SHA-256, under 2^128 bits for the
+  SHA-512 family), its padding writes the bit length modulo 2^64 or 2^128,
+  where FIPS 180-4 defines nothing. FIPS 205 puts no bound on the message,
+  so its SHA2 sets are undefined on such messages, and the theorems, which
+  have no length bound, are about this extension there. The correctness
+  theorems stop inside the FIPS 180-4 domain (`msg_dom` and `ph_dom`,
+  under [Assumptions](#assumptions)).
 - A key used for both deterministic and hedged signatures is not covered;
   each theorem fixes one mode for every signature.
 - The bound is concrete; no numeric security level is derived from it.
@@ -706,7 +724,13 @@ per (pair, set) in `inventory/sets/` for the per-set models; the
 x86-64 list is longer only because the x86-64 instruction model loads the
 AES axioms and has two of its own. The specification, validation, security
 and correctness theories declare no axioms except these: the section
-hypotheses on the adversary named above; `I_verify_ll` in
+hypotheses on the adversary named above; the section hypotheses of some
+correctness theories on the kernel they are written over (for example
+`kf_h` and `kf_ll` in `correctness/hash/Sponge.ec`, `keccakf1600_h` in
+`correctness/core/shake/Thash.ec`, `sha256_compress_h` and
+`sha512_compress_h` in `correctness/core/sha2/Thash.ec`), which become
+premises of the theorems when the section closes and are discharged by the
+kernel theorems, so that none is left in an inventory; `I_verify_ll` in
 `ExternalFraming.ec`, termination of internal verification, discharged for
 SLH-DSA by `SLH_verify_ll`; and the parameter-set hypothesis `P_in` of the
 abstract theory `SPHINCS_Instance.eca`, realized for every set in
@@ -751,8 +775,13 @@ does not check the bounds at run time.
 The correctness theorems are about the models `jasmin2ec` extracts, so the
 extraction belongs to the trusted base too, and so do the `eclib` models
 of the instructions the kernels use: `BSWAP_32` and `BSWAP_64` in
-`JModel_x86`, `REV_32`, `REV_64` and `BIC_64` in `JModel_armv8a`.
+`JModel_x86`, `REV_32`, `REV_64` and `BIC_64` in `JModel_armv8a`, and
+the speculative load hardening operators of `eclib`'s `Jslh` (`init_msf`,
+`update_msf`, `protect_32`, `protect_64`, `protect_ptr`): the
+`protect_*` operators return their first argument, so the misspeculation
+flag that `init_msf` and `update_msf` compute never changes a value in the
+sequential semantics the proofs use.
 `ArchWord` proves the byte swaps to be byte reversal, and the AArch64
 register kernel's `KernelSpec.ec` proves `BIC_64` to be and-not; that
-they match the compiler's semantics of the instructions is not proven
-here.
+these models match the compiler's semantics of the instructions is not
+proven here.
