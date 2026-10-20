@@ -15,7 +15,7 @@
 # rule (analysis/asm/check-controls.sh), or the target fails.
 
 .PHONY: asm-policy
-asm-policy: $(addprefix $(ASM_DIR)/,$(addsuffix .s,$(UNITS)))
+asm-policy: $(addprefix $(ASM_DIR)/,$(addsuffix .s,$(UNITS))) | $(GEN_MATCH)
 	sh analysis/asm/check-asm.sh $(ARCH) $^
 	@mkdir -p $(OUT)/asm-policy
 	sh analysis/asm/check-controls.sh $(ARCH) $(OUT)/asm-policy

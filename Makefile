@@ -233,7 +233,8 @@ $(GEN_DIR)/$(TARGET)/%.s:
 # of each unit of this target must be those gen/MANIFEST records. An edited
 # .jinc otherwise builds the old assembly without a word.
 $(GEN_MATCH): $(GEN_DIR)/MANIFEST $(addprefix $(GEN_DIR)/$(TARGET)/,$(addsuffix .s,$(UNITS))) \
-              $(shell find $(JASMIN_SRC) -name '*.jinc')
+              $(shell find $(JASMIN_SRC) -name '*.jinc') \
+              $(addprefix $(OUT)/gen-flags/,$(UNITS))
 	@mkdir -p $(@D)
 	@want=$$(sed -n 's/^sources //p' $(GEN_DIR)/MANIFEST); \
 	 have=$$(find $(JASMIN_SRC) -name '*.jinc' | LC_ALL=C sort | xargs $(SHA256) | $(SHA256) | cut -d' ' -f1); \
@@ -247,6 +248,17 @@ $(GEN_MATCH): $(GEN_DIR)/MANIFEST $(addprefix $(GEN_DIR)/$(TARGET)/,$(addsuffix 
 	@cd $(GEN_DIR) && grep '  $(TARGET)/' MANIFEST | $(SHA256) -c --status - || { \
 	   echo "a file under $(GEN_DIR)/$(TARGET)/ differs from its digest in $(GEN_DIR)/MANIFEST:" \
 	        "regenerate with make gen" >&2; exit 1; }
+	@touch $@
+
+# The same holds for what this Makefile hands to jasminc: a unit of gen/ is
+# used only when the flags and include roots MANIFEST records for it are
+# the ones a compilation here would use.
+$(OUT)/gen-flags/%: $(GEN_DIR)/MANIFEST Makefile
+	@mkdir -p $(@D)
+	@want=$$(sed -n 's|^unit $(TARGET)/$* ||p' $(GEN_DIR)/MANIFEST); \
+	 test "$$want" = "$(JASMIN_FLAGS) $(JASMIN_INCLUDES)" || { \
+	   echo "$(GEN_DIR)/$(TARGET)/$*.s was generated with other flags or include roots" \
+	        "than this Makefile gives: regenerate with make gen" >&2; exit 1; }
 	@touch $@
 else
 ASM_DIR   := $(OUT)/asm

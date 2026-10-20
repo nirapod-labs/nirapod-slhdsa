@@ -37,14 +37,23 @@ arch=$1
 shift
 here=$(dirname "$0")
 fail=0
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
 
 for f in "$@"; do
   unit=$(basename "$f" .s | tr '-' '_')
   bad=0
 
+  # A file under gen/ opens with a comment block (licence, provenance)
+  # whose words would read as instructions. The rules see a copy with
+  # that block blanked, so line numbers stay those of the file; messages
+  # name the file itself.
+  g=$tmp/$(basename "$f")
+  awk 'NR == 1 && /^\/\*/ { c = 1 } c { if (/\*\//) c = 0; print ""; next } { print }' "$f" > "$g"
+
   # .global / .globl / .weak / .weak_definition names, with the Mach-O
   # leading underscore removed.
-  for sym in $(sed -En 's/^[[:space:]]*\.(globa?l|weak(_definition)?)[[:space:]]+([A-Za-z0-9_]*).*/\3/p' "$f"); do
+  for sym in $(sed -En 's/^[[:space:]]*\.(globa?l|weak(_definition)?)[[:space:]]+([A-Za-z0-9_]*).*/\3/p' "$g"); do
     name=${sym#_}
     case $name in
       "nirapod_slhdsa_jz_${unit}__keygen"|"nirapod_slhdsa_jz_${unit}__sign"|\
@@ -56,14 +65,15 @@ for f in "$@"; do
 
   case $arch in
     aarch64)
-      if grep -Eq '^[[:space:]]+[us]div[[:space:]]' "$f"; then echo "$f: division instruction"; bad=1; fi
-      if grep -Eq '\b[xw]18\b' "$f"; then echo "$f: uses x18"; bad=1; fi
-      if grep -Eq '\b([xw]29|fp)\b' "$f"; then echo "$f: uses x29"; bad=1; fi
-      timing=$(awk -f "$here/dit.awk" "$f") || { echo "$f: dit.awk failed"; bad=1; }
+      if grep -Eq '^[[:space:]]+[us]div[[:space:]]' "$g"; then echo "$f: division instruction"; bad=1; fi
+      if grep -Eq '\b[xw]18\b' "$g"; then echo "$f: uses x18"; bad=1; fi
+      if grep -Eq '\b([xw]29|fp)\b' "$g"; then echo "$f: uses x29"; bad=1; fi
+      timing=$(awk -f "$here/dit.awk" "$g") || { echo "$f: dit.awk failed"; bad=1; }
+      timing=$(printf '%s\n' "$timing" | sed "s|^$g:|$f:|;/^$/d")
       if [ -n "$timing" ]; then echo "$timing"; bad=1; fi
       ;;
     x86_64)
-      if grep -Eq '^[[:space:]]+i?div[bwlq]?[[:space:]]' "$f"; then echo "$f: division instruction"; bad=1; fi
+      if grep -Eq '^[[:space:]]+i?div[bwlq]?[[:space:]]' "$g"; then echo "$f: division instruction"; bad=1; fi
       ;;
     *)
       echo "check-asm.sh: unknown architecture $arch" >&2
@@ -71,7 +81,8 @@ for f in "$@"; do
       ;;
   esac
 
-  flow=$(awk -v arch="$arch" -f "$here/exports.awk" "$f") || { echo "$f: exports.awk failed"; bad=1; }
+  flow=$(awk -v arch="$arch" -f "$here/exports.awk" "$g") || { echo "$f: exports.awk failed"; bad=1; }
+  flow=$(printf '%s\n' "$flow" | sed "s|^$g:|$f:|;/^$/d")
   if [ -n "$flow" ]; then echo "$flow"; bad=1; fi
 
   if [ "$bad" -eq 0 ]; then echo "$f: PASS"; else fail=1; fi
