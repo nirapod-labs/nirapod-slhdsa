@@ -49,7 +49,9 @@ for f in "$@"; do
   # that block blanked, so line numbers stay those of the file; messages
   # name the file itself.
   g=$tmp/$(basename "$f")
-  awk 'NR == 1 && /^\/\*/ { c = 1 } c { if (/\*\//) c = 0; print ""; next } { print }' "$f" > "$g"
+  if ! awk 'NR == 1 && /^\/\*/ { c = 1 } c { if (/\*\//) c = 0; print ""; next } { print }' "$f" > "$g"; then
+    echo "$f: cannot be read"; bad=1
+  fi
 
   # .global / .globl / .weak / .weak_definition names, with the Mach-O
   # leading underscore removed.

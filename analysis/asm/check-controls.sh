@@ -208,5 +208,16 @@ s/^\.Lf.1:$/'"$e"'$9:\
     ;;
 esac
 
+# A file check-asm.sh cannot read must fail it, not pass as an empty unit.
+mkdir -p "$dir/unreadable"
+if sh "$here/check-asm.sh" "$arch" "$dir/unreadable/sha2_128f-scalar.s" > "$dir/unreadable.log" 2>&1; then
+  echo "control unreadable: accepted"
+  fail=1
+elif ! grep -Eq ": cannot be read\$" "$dir/unreadable.log"; then
+  echo "control unreadable: rejected, but not as unreadable"
+  fail=1
+fi
+n=$((n + 1))
+
 if [ "$fail" -eq 0 ]; then echo "check-controls.sh: $n controls, each rejected by its rule"; fi
 exit $fail
