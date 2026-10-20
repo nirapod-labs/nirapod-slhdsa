@@ -151,6 +151,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/*
+ * Version of this header, in Semantic Versioning 2.0.0. Before 1.0.0, a
+ * new minor version may change the API and the ABI.
+ *
+ * The values exist at compile time only: the library exports no symbol
+ * that reports its version. CI keeps them equal to the version in
+ * CITATION.cff, the newest release heading of CHANGELOG.md and the name of
+ * a release tag.
+ */
+#define NIRAPOD_SLHDSA_VERSION_MAJOR  0
+#define NIRAPOD_SLHDSA_VERSION_MINOR  1
+#define NIRAPOD_SLHDSA_VERSION_PATCH  0
+#define NIRAPOD_SLHDSA_VERSION_STRING "0.1.0"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

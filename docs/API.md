@@ -57,6 +57,23 @@ also builds the example of `README.md` against the application library and
 requires it to print `valid`, and a copy with one signature bit flipped to
 print `invalid` and exit 1 (`tests/core/readme-example.py`).
 
+## Version
+
+The header states its version with four macros:
+
+| Macro | Value |
+|---|---|
+| `NIRAPOD_SLHDSA_VERSION_MAJOR` | `0` |
+| `NIRAPOD_SLHDSA_VERSION_MINOR` | `1` |
+| `NIRAPOD_SLHDSA_VERSION_PATCH` | `0` |
+| `NIRAPOD_SLHDSA_VERSION_STRING` | `"0.1.0"` |
+
+The version follows [Semantic Versioning 2.0.0](https://semver.org/). Before
+1.0.0, a new minor version may change the API and the ABI. The macros are
+compile-time values only: the library exports no symbol
+that reports its version, so a program reads the version of the header it
+was built with.
+
 ## Hash variants
 
 Each parameter set is compiled once per hash variant. The variants compute the
