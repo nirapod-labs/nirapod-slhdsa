@@ -2,6 +2,14 @@ cff-version: 1.2.0
 message: "If you use this software in research, please cite it as below."
 title: "nirapod-slhdsa: SLH-DSA (FIPS 205) in Jasmin for AArch64 and x86-64"
 type: software
+version: "0.1.0"
+abstract: >-
+  An implementation of SLH-DSA, the stateless hash-based signature scheme of
+  FIPS 205, in the Jasmin language for AArch64 and x86-64, with a C API. It
+  covers all twelve parameter sets, pure and pre-hash signing with context
+  strings, and hedged and deterministic signing. The project is under
+  development and not for production use; docs/STATUS.md in the repository
+  states which tests, analyses and proofs pass and what each covers.
 authors:
   - name: "nirapod-slhdsa contributors"
 license: Apache-2.0
