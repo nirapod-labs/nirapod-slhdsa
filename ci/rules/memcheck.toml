@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# ci/rules/memcheck.toml: counts of the memcheck run (ci/counts.py). A
+# minimum is the count of the complete run on the current tests; lowering
+# one is a reviewed change.
+
+# The programs of MEMCHECK_RUN in the Makefile, test_fault included (CI
+# always builds with JASMINC): every one exited 0 with no memcheck error.
+[memcheck]
+[[memcheck.line]]
+what = "test programs run under memcheck without an error"
+pattern = '^memcheck: programs=\d+ clean=(\d+)$'
+exactly = 9
+
+# The one-byte-short public key buffer (tests/core/memcheck_control.c):
+# memcheck reported the write past its end.
+[[memcheck.line]]
+what = "negative controls memcheck reported"
+pattern = '^memcheck control: one-byte-short public key buffer: detected=(\d+) of 1$'
+exactly = 1

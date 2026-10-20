@@ -163,11 +163,11 @@ class Keys(unittest.TestCase):
             self.assertEqual(self.changed_by(path), set(), path)
 
     def test_reads_takes_a_path_back_for_its_check_alone(self):
-        # README.md is in skip-all, and in the reads list of test-core and
-        # generated: both run the README's example. agree changes through
-        # test-core's keys.
+        # README.md is in skip-all, and in the reads lists of test-core,
+        # generated and memcheck: all three run the README's example. agree
+        # changes through test-core's keys.
         self.assertEqual(self.changed_by("README.md"),
-                         self.legs_of("test-core") | self.legs_of("generated")
+                         self.legs_of("test-core", "generated", "memcheck")
                          | {("agree", "any")})
 
     def test_reads_lies_under_skip_all_only(self):

@@ -172,6 +172,19 @@ reads = ["README.md"]
 skip = ["tests/hash", "tests/acvp", "tests/diff", "tests/vectors", "bench", "analysis",
         "proofs", "third_party", "ci/hash-sets.toml"]
 
+# make memcheck: the programs of make check that call the library, under
+# Valgrind's memcheck, with its negative control (tests/core/memcheck.py).
+# Linux only: Valgrind has no port to macOS on AArch64. It builds what make
+# check builds, the README's example included.
+[checks.memcheck]
+recipe = "memcheck"
+component = "core"
+platforms = ["linux-x86_64", "linux-aarch64"]
+toolchain = "compiler"
+reads = ["README.md"]
+skip = ["tests/hash", "tests/acvp", "tests/diff", "tests/vectors", "bench",
+        "analysis", "proofs", "third_party", "ci/hash-sets.toml"]
+
 # The runner and its controls (tests/acvp), the vector pins (tests/vectors),
 # the adapters it links (tests/diff/adapters) and the library.
 [checks.test-acvp]

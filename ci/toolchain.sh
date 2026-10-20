@@ -15,7 +15,7 @@
 #   deps build      the system packages of docs/TOOLCHAIN.md and the pinned
 #                   opam
 #   deps run        what a job needs to run a built compiler and the tests
-#                   (GMP, libcrypto, unzip, zstd)
+#                   (GMP, libcrypto, unzip, zstd; Valgrind on Linux)
 #   pack-switch FILE
 #                   the opam root (after `prune`) and the switch's records,
 #                   as tar.zst
@@ -64,7 +64,7 @@ OPAM_VERSION=2.6.0
 OPAM_URL=https://github.com/ocaml/opam/releases/download/$OPAM_VERSION
 APT_BUILD="build-essential git curl unzip m4 pkg-config bubblewrap zstd
            libgmp-dev libmpfr-dev libppl-dev libpcre2-dev zlib1g-dev"
-APT_RUN="libgmp-dev libssl-dev unzip zstd"
+APT_RUN="libgmp-dev libssl-dev unzip valgrind zstd"
 BREW_BUILD="gmp mpfr ppl pcre2 pkgconf zstd"
 BREW_RUN="gmp openssl@3 zstd"
 PLATFORM="$(uname -s)-$(uname -m)"
