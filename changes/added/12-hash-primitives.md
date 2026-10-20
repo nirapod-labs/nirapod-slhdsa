@@ -4,5 +4,6 @@
   SHA-256, SHA-384, SHA-512, SHA-512/224 and SHA-512/256 (FIPS 180-4); HMAC
   and MGF1 over SHA-256 and SHA-512. They are internal to the library; their
   interfaces are in `src/hash/README.md`. `tests/hash/` checks them
-  against the NIST CAVP vectors and against OpenSSL. No proof of their
-  functional correctness is in the repository yet.
+  against the NIST CAVP vectors and against OpenSSL. Proofs of the
+  functional correctness of some of them, with what they leave out, are
+  separate entries in this list.
