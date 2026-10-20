@@ -173,18 +173,33 @@ Every signing function verifies its signature under the public key stored in
 the secret key (PK.seed || PK.root) before returning it. A signature that does
 not verify is zeroed and the call returns `NIRAPOD_SLHDSA_ERROR_FAULT`.
 
-The published fault attacks on SPHINCS+ signing corrupt the computation of a
-tree root inside the hypertree, so that the WOTS+ key one layer up signs a
-second value; collecting such faulty signatures leads to forgeries. A faulty
-signature of that kind does not verify, so the check withholds it.
-`tests/negative/test_fault.c` injects such faults (a flipped bit in the FORS
-public key, or in a layer-0 XMSS root) and shows the signature withheld, and,
-with the check switched off through the testing library, released and not
-verifying.
+The check catches only part of the published fault attacks on SPHINCS+
+signing (tree grafting), which corrupt the computation of a tree below the top
+of the hypertree so that the WOTS+ key one layer up signs a second value.
+Following A. Genêt, "On Protecting SPHINCS+ Against Fault Attacks" (IACR TCHES
+2023(2), section 4.1):
+
+- Withheld: a fault on the path from the signed leaf to a tree's root (the FORS
+  public key and the XMSS roots included), a fault in the message digest, and
+  any fault in the top XMSS tree. The signature does not verify.
+- Returned: a fault in an authentication-path node or in the subtree below it,
+  and in this library also a fault in the revealed FORS secret or in a WOTS+
+  chain of the signing key before the revealed position. The faulty value
+  reaches both the signature and the root the next layer signs, so the
+  signature verifies, and the check returns it as valid although it can be
+  used for a forgery. In the paper's model, where a fault randomises the output
+  of one hash call chosen at random, this is the outcome of most faults (a
+  probability of 0.86 to 0.95 per fault, depending on the parameter set).
+
+`docs/SECURITY-MODEL.md` ("Faults") gives the argument.
+`tests/negative/test_fault.c` injects faults of the withheld kind only (a
+flipped bit in the FORS public key, or in a layer-0 XMSS root) and shows the
+signature withheld, and, with the check switched off through the testing
+library, released and not verifying.
 
 Not covered:
 
-- a fault that still yields a valid signature;
+- a fault that still yields a valid signature, as above;
 - a fault in the check itself, or one that skips it;
 - faults during key generation (a faulty key pair is internally consistent and
   passes the check);

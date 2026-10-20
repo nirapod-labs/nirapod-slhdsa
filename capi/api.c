@@ -53,15 +53,18 @@
  *
  *     Each signature is verified, with the set's verification export, under
  *     PK.seed || PK.root taken from the secret key, and is released only if
- *     it verifies. Published fault attacks on SPHINCS+ signing (tree
- *     grafting: a fault while a lower tree's root is computed makes the
- *     WOTS+ key above it sign a second, faulty root) need the faulty
- *     signatures, and those do not verify. The check does not cover a fault
- *     in the check itself, one that leaves a valid signature, or one during
- *     key generation (docs/API.md lists the scope), and it also rejects a
- *     secret key whose PK.root does not belong to its seeds. FIPS 205 does
- *     not require it; it costs one verification per signature. The testing
- *     build can skip it (skip_fault_check) to measure that cost.
+ *     it verifies. It withholds the faulty signatures of tree grafting
+ *     (a fault while a lower tree is computed makes the WOTS+ key above it
+ *     sign a second, faulty root) only when the fault lies on the path from
+ *     the signed leaf to the root. A fault in an authentication path, or in
+ *     the subtree below one, reaches the signature and the signed root
+ *     alike, so the signature verifies and is returned; that is the common
+ *     case (docs/SECURITY-MODEL.md, "Faults"). Nor does the check cover a
+ *     fault in the check itself or one during key generation (docs/API.md
+ *     lists the scope). It also rejects a secret key whose PK.root does not
+ *     belong to its seeds. FIPS 205 does not require the check; it costs one
+ *     verification per signature. The testing build can skip it
+ *     (skip_fault_check) to measure that cost.
  *
  *     The timing mode set for signing stays set during the check, and the
  *     registers are cleared after it: when the check fails, the values it

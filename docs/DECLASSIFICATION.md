@@ -113,10 +113,12 @@ registers are cleared after it.
 
 Why releases 1 and 2 are safe: indices and digits are addresses, not values.
 A released signature discloses them together with the chain values they
-select; a withheld one discloses only the addresses. The fault attacks that
-the check answers (tree grafting) need a WOTS+ signature of a faulty root,
-that is the chain values at the positions those digits name, to combine with a
-valid signature of the same WOTS+ key; the positions alone do not give them.
+select; a withheld one discloses only the addresses. A forgery by tree
+grafting from a withheld signature would need a WOTS+ signature of a faulty
+root, that is the chain values at the positions those digits name, to combine
+with a valid signature of the same WOTS+ key; the positions alone do not give
+them. (Faults that leave the signature valid are not withheld and are outside
+this argument; `docs/SECURITY-MODEL.md`, "Faults".)
 Seeing the digits of a faulty root tells an observer which values a released
 faulty signature would have contained, and nothing of the values. Repeating
 faulty calls, or calls with an inconsistent key, discloses more such addresses

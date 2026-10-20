@@ -144,19 +144,56 @@ clearing and the comparison cover all of zmm0-zmm31 ([API](API.md#what-is-cleare
 
 Every signing function verifies its new signature under the public key in the
 secret key before it returns it, and withholds a signature that does not verify.
-This answers the published attacks that fault a tree root inside the hypertree and
-combine the faulty signature with a valid one. `tests/negative/test_fault.c`
-injects such faults and shows the signature withheld.
+The check stops a fault only when the fault leaves the signature inconsistent with
+the public key, and most faults that enable a forgery do not.
 
-Not covered: a fault that still yields a valid signature, a fault in the check or
-one that skips it, and faults during key generation.
-[API](API.md#fault-check) gives the details and the cost.
+Fault attacks on SPHINCS+ signing, which apply to SLH-DSA unchanged, corrupt the
+computation of any tree below the top layer of the hypertree. The WOTS+ key one
+layer up then signs a second value, and the faulty signature together with a valid
+one under the same WOTS+ key leads to a universal forgery (tree grafting). A. Genêt,
+"On Protecting SPHINCS+ Against Fault Attacks", IACR Transactions on Cryptographic
+Hardware and Embedded Systems 2023(2), section 4.1, sorts these faults by where they
+strike:
 
-The check is the only countermeasure. Beyond what it detects, fault injection is
-outside the threat model, whether physical (voltage or clock glitches,
-electromagnetic or laser pulses) or induced from software (memory disturbance such
-as Rowhammer, or misuse of frequency and voltage controls), and so are the physical
-side channels of [Observer](#observer).
+- A fault on the path from the signed leaf to the root of a FORS tree or of an
+  XMSS tree below the top, the FORS public key and the root included, gives a
+  signature that does not verify, and the check withholds it. So it does a fault
+  in the message digest, or anywhere in the top XMSS tree, whose root must equal
+  PK.root.
+- A fault in a node of an authentication path, or anywhere in the subtree below
+  one, gives a signature that verifies. The faulty node goes both into the
+  authentication path in the signature and into the root that the next layer
+  signs, so a verifier recomputes that same root. The check does not stop such a
+  signature. It is returned as valid, and it is exploitable: the WOTS+ key above
+  has signed a root other than the correct one.
+
+The second kind is the likely outcome. The paper models a fault as making the
+output of one hash call, chosen uniformly among all the calls of a signing
+operation, random. Under that model a fault gives a signature that verifies with
+probability 0.86 to 0.95, and an exploitable one with probability 0.92 to 0.97,
+depending on the parameter set (its Table 4, whose parameter sets are those of
+FIPS 205).
+
+In this library the undetected kind is somewhat larger than the paper counts. A
+tree's signed leaf is computed in the same pass as the tree: the revealed FORS
+secret is the value its leaf is hashed from, and each WOTS+ signature value is a
+point on the chain that ends in the leaf's public key. A fault in that FORS secret,
+or in a WOTS+ chain of the signing key before the position the signature reveals,
+also gives a signature that verifies.
+
+`tests/negative/test_fault.c` injects faults of the first kind only, a flipped bit
+in the FORS public key or in a layer-0 XMSS root, and shows the signature withheld.
+
+Also not covered: a fault in the check or one that skips it, and faults during key
+generation. [API](API.md#fault-check) gives the details and the cost.
+
+The check is the only countermeasure. The library does not compute signatures
+redundantly, which is what the paper recommends against faults of the second kind.
+Beyond what the check detects, fault injection is outside the threat model,
+whether physical (voltage or clock glitches, electromagnetic or laser pulses) or
+induced from software (memory disturbance such as Rowhammer, or misuse of
+frequency and voltage controls), and so are the physical side channels of
+[Observer](#observer).
 
 ## Platform hardening
 
