@@ -272,13 +272,14 @@ hold for the variant's model; they never cover the C layer.
 | AArch64 | `sha3` | 6 SHAKE | CPUs with Advanced SIMD and FEAT_SHA3 | no |
 | AArch64 | `sha2` | 6 SHA2 | CPUs with Advanced SIMD, FEAT_SHA256 and FEAT_SHA512 | no |
 
-The variants differ in their hash kernels only: `avx2` runs the four-way Keccak
-kernel on AVX2 for the SHAKE sets, and the four-way tweakable hashes on the AVX2
-8-way SHA-256 and 4-way SHA-512 kernels for the SHA2 sets; `shani` runs SHA-256 on
-the SHA extensions; `sha3` runs single-way and four-way Keccak on the A64 SHA-3
-instructions; `sha2` runs SHA-256 and SHA-512 on the A64 SHA-2 instructions. The
-SLH-DSA code above the kernels is the same source in every variant, but only the
-scalar models are extracted and proven.
+The variants differ in their hash kernels, and `avx2` also in the four-way SHA2
+tweakable hashes: `avx2` runs the four-way Keccak kernel on AVX2 for the SHAKE
+sets, and the four-way tweakable hashes of `src/slhdsa/thash_sha2_x4/multi/` on
+the AVX2 8-way SHA-256 and 4-way SHA-512 kernels for the SHA2 sets; `shani` runs
+SHA-256 on the SHA extensions; `sha3` runs single-way and four-way Keccak on the
+A64 SHA-3 instructions; `sha2` runs SHA-256 and SHA-512 on the A64 SHA-2
+instructions. The rest of the SLH-DSA code is the same source in every variant,
+but only the scalar models are extracted and proven.
 
 So on a CPU that has the extensions of a set's accelerated variant, no call for
 that set through the library runs proven code. All three CI runners
@@ -307,8 +308,12 @@ does; that the compiler, with the parts outside its proof (front end, assembly
 printer, assembler, linker), preserves that behaviour; that the `eclib` models of
 the instructions the kernels use match the compiler's semantics of them; and that
 the runner and the C layer, which are not proven, pass each case's inputs to the
-exports and report their results unchanged. Every ACVP message is far inside the
-Domain.
+exports and report their results unchanged; and that the scalar exports run safely
+on those inputs, since the compiler theorem covers only safe executions and the
+extracted model is total, so on an unsafe run the model, the Jasmin program and
+the binary need not agree. Memory safety has no verdict yet
+([SECURITY-MODEL](SECURITY-MODEL.md#memory-safety)). Every ACVP message is far
+inside the Domain.
 
 The ACVP check in CI runs the variant each runner selects, which on the CI runners
 is never the scalar one (previous section), so it does not give this result. No
