@@ -74,6 +74,11 @@ compile-time values only: the library exports no symbol
 that reports its version, so a program reads the version of the header it
 was built with.
 
+`ci/version.py` fails when the macros disagree with each other, with the
+`version` field of `CITATION.cff` or with the newest release heading of
+`CHANGELOG.md`, and on a release tag when the tag is not `v` followed by
+`NIRAPOD_SLHDSA_VERSION_STRING` or the changelog has no section for it.
+
 ## Hash variants
 
 Each parameter set is compiled once per hash variant. The variants compute the

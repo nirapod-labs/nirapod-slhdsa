@@ -32,6 +32,9 @@
 #                library builds (ci/kernel_roots.py)
 #   status       the status sections of README.md and docs/STATUS.md
 #                against their record, docs/status.toml (ci/status.py)
+#   version      the version macros of the header, CITATION.cff, the
+#                newest release heading of CHANGELOG.md and, on the push
+#                of a tag, the tag's name agree (ci/version.py)
 #
 # Every check runs; the script fails at the end if any failed.
 
@@ -176,7 +179,13 @@ def main(argv):
         print(f"source {name}: {'FAIL' if errors else 'PASS'}")
         if errors:
             failed.append(name)
-    steps = [("status", [sys.executable, "-I", "ci/status.py", "check"])]
+    version = [sys.executable, "-I", "ci/version.py"]
+    # On the push of a tag, GitHub sets GITHUB_REF_TYPE=tag and the tag's
+    # name; an empty name is passed on, and fails.
+    if os.environ.get("GITHUB_REF_TYPE") == "tag":
+        version += ["--tag", os.environ.get("GITHUB_REF_NAME", "")]
+    steps = [("status", [sys.executable, "-I", "ci/status.py", "check"]),
+             ("version", version)]
     if found["hash"]:
         steps.append(("hash", ["make", "-C", "tests/hash", "constants", "generated"]))
     if found["proofs"]:
