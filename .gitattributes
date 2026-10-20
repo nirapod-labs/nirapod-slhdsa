@@ -1,0 +1,4 @@
+# Generated assembly and its manifest (make gen). Kept byte for byte: no
+# line-ending conversion, so that make gen-check and the digests in
+# gen/MANIFEST compare what the compiler wrote.
+gen/** -text linguist-generated
