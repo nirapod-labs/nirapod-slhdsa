@@ -19,9 +19,10 @@
  *                export of every unit the process can select runs once.
  *                The external form rotates through pure signing and the
  *                twelve pre-hash functions, a different one per set and
- *                variant. With twelve sets a variant meets at most twelve
- *                of the thirteen forms: on x86-64, scalar never signs with
- *                SHAKE256 and avx2 never signs pure. test_core runs the
+ *                variant, so no variant meets all thirteen: scalar never
+ *                signs with SHAKE256 and avx2 never signs pure, and
+ *                shani, sha2 and sha3, built for six sets each, meet six
+ *                forms each and never pure. test_core runs the
  *                full matrix natively; it is too long to run under
  *                memcheck, which slows a program down many times over.
  *     variants   for every parameter set, each compiled variant and
