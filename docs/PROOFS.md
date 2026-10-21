@@ -315,9 +315,15 @@ the binary need not agree. Memory safety has no verdict yet
 ([SECURITY-MODEL](SECURITY-MODEL.md#memory-safety)). Every ACVP message is far
 inside the Domain.
 
-The ACVP check in CI runs the variant each runner selects, which on the CI runners
-is never the scalar one (previous section), so it does not give this result. No
-result of the scalar run is recorded in this repository.
+CI runs this command on each of its three platforms as the `test-acvp-scalar`
+check ([VALIDATION](VALIDATION.md#nist-acvp-vectors)): on the x86-64 runner it
+runs the exports modelled by `x86_64/portable`, on the two AArch64 runners those
+modelled by `aarch64/a64scalar`. The check passes only if the runner reports the
+scalar variant as forced and all 1248 cases of the 120 groups run and pass; its
+result is in [STATUS](STATUS.md#checks), and every condition above still applies
+to it. The `test-acvp` check runs the variant each runner selects, which on the CI
+runners is never the scalar one (previous section), so it does not give this
+result.
 
 ## Compilation
 

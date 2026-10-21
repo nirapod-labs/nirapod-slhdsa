@@ -76,6 +76,7 @@ caller's, and the library does not check it.
 | :-- | :-: | :-: | :-: | :-- |
 | `test-core` | PASS | PASS | PASS | `make check`: round trips of every set, ACVP subset, negative, fault, stack, register and export tests |
 | `test-acvp` | PASS | PASS | PASS | 1248 of 1248 NIST ACVP cases, and the runner's negative controls |
+| `test-acvp-scalar` | NOT RUN | NOT RUN | NOT RUN | 1248 of 1248 NIST ACVP cases on the scalar variant, forced for every set |
 | `differential` | PASS | PASS | PASS | 336 of 336 cases against slhdsa-c `174c02e`, and the comparison controls |
 | `test-hash` | PASS | PASS | PASS | CAVP, differential and negative tests of the hash layer |
 | `analysis-units` | PASS | PASS | PASS | `jasmin-ct` and `jasmin-ct --sct` on every unit of the architecture |
@@ -87,8 +88,11 @@ caller's, and the library does not check it.
 From CI run [38680243373](https://github.com/nirapod-labs/nirapod-slhdsa/actions/runs/38680243373) on `main` at `de27e6a`.
 <!-- end status:checks -->
 
-The full ACVP run uses the hash variant the runner's CPU selects: `shani` and
-`avx2` on the x86-64 runner, `sha2` and `sha3` on both AArch64 runners. `make check`
+The full ACVP run of `test-acvp` uses the hash variant the runner's CPU selects:
+`shani` and `avx2` on the x86-64 runner, `sha2` and `sha3` on both AArch64 runners.
+`test-acvp-scalar` runs the same vectors on the scalar variant, forced for every
+set: the variant the correctness proofs cover
+([PROOFS](PROOFS.md#testing-the-specification-through-the-code)). `make check`
 requires every other variant the host supports to produce the scalar variant's keys
 and deterministic signatures byte for byte. [VALIDATION](VALIDATION.md) describes
 each check and its controls.

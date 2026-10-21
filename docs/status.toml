@@ -151,6 +151,7 @@ columns = ["Check", "Linux x86-64", "Linux AArch64", "macOS AArch64", "What a PA
 rows = [
   ["`test-core`", "PASS", "PASS", "PASS", "`make check`: round trips of every set, ACVP subset, negative, fault, stack, register and export tests"],
   ["`test-acvp`", "PASS", "PASS", "PASS", "1248 of 1248 NIST ACVP cases, and the runner's negative controls"],
+  ["`test-acvp-scalar`", "NOT RUN", "NOT RUN", "NOT RUN", "1248 of 1248 NIST ACVP cases on the scalar variant, forced for every set"],
   ["`differential`", "PASS", "PASS", "PASS", "336 of 336 cases against slhdsa-c `174c02e`, and the comparison controls"],
   ["`test-hash`", "PASS", "PASS", "PASS", "CAVP, differential and negative tests of the hash layer"],
   ["`analysis-units`", "PASS", "PASS", "PASS", "`jasmin-ct` and `jasmin-ct --sct` on every unit of the architecture"],
