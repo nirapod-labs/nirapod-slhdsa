@@ -97,6 +97,13 @@ permissions: {}
 # other run (main, the schedule, manual runs) has a group of its own: a
 # shared group would let a later run cancel a pending one, such as the
 # weekly cold build, without a trace.
+#
+# Cancelling a run re-evaluates the `if` of every running job and cancels
+# only those whose condition turns false. A job that has to run after a
+# failed or skipped job therefore uses `!cancelled()`, never `always()`:
+# with `always()` it keeps running in the cancelled run, and the next run
+# of the group waits for it. all-checks alone keeps `always()`
+# (ci/tests/test_workflows.py).
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -268,7 +275,7 @@ jobs:
     name: linux-x86_64
     needs: [plan, toolchain-x86]
     if: >-
-      always() && needs.plan.result == 'success' && needs.plan.outputs.native-linux-x86_64 == 'true'
+      !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.native-linux-x86_64 == 'true'
       && (needs.toolchain-x86.result == 'success'
           || (needs.toolchain-x86.result == 'skipped' && needs.plan.outputs.need-linux-x86_64 == 'none'))
     permissions:
@@ -401,7 +408,7 @@ jobs:
   proofs:
     name: proofs
     needs: [plan, proof-shards]
-    if: always() && needs.plan.result == 'success'
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -559,7 +566,9 @@ jobs:
           main: ${{ env.MAIN }}
           token: ${{ github.token }}
 
-  # Skipped in warm mode, which runs no check.
+  # Skipped in warm mode, which runs no check. It runs in a cancelled run
+  # too: a skipped required check counts as passing in branch protection,
+  # so a skipped one could stand for the head until the next run reports.
   all-checks:
     name: all-checks
     if: ${{ always() && !(github.event.schedule == '43 4 * * *' || inputs.warm == true) }}
