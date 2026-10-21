@@ -195,6 +195,17 @@ platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
 toolchain = "compiler"
 skip = ["tests/hash", "bench", "analysis", "proofs", "third_party", "ci/hash-sets.toml"]
 
+# The same vectors with the scalar variant forced for every set, the
+# variant the correctness proofs cover (docs/PROOFS.md); it reads what
+# test-acvp reads.
+[checks.test-acvp-scalar]
+recipe = "test-acvp-scalar"
+component = "acvp"
+needs = ["core", "diff"]
+platforms = ["linux-x86_64", "linux-aarch64", "macos-aarch64"]
+toolchain = "compiler"
+skip = ["tests/hash", "bench", "analysis", "proofs", "third_party", "ci/hash-sets.toml"]
+
 [checks.analysis-units]
 recipe = "analysis-units"
 component = "slhdsa"

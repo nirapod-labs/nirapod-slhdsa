@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: nirapod-slhdsa contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# ci/rules/test-acvp-scalar.toml: counts of the ACVP run on the forced
+# scalar variant (ci/counts.py). Every rule matches only a summary line
+# that names variant=forced[scalar], which the runner prints when it
+# accepted --variant=scalar; a run on the variant the library selects
+# prints default[...] and matches nothing. The counts are exact, those of
+# the pinned vectors: changing one is a reviewed change of this file.
+
+[acvp]
+[[acvp.line]]
+what = "ACVP cases run on the forced scalar variant, none failed or not run"
+pattern = '^acvp: impl=nirapod-slhdsa variant=forced\[scalar\] control=none groups=\d+ cases=(\d+) pass=\d+ fail=0 notrun=0 filtered=0 verdict=PASS$'
+exactly = 1248
+
+[[acvp.line]]
+what = "ACVP cases passed on the forced scalar variant"
+pattern = '^acvp: impl=nirapod-slhdsa variant=forced\[scalar\] control=none groups=\d+ cases=\d+ pass=(\d+) fail=0 notrun=0 filtered=0 verdict=PASS$'
+exactly = 1248
+
+[[acvp.line]]
+what = "ACVP test groups run on the forced scalar variant"
+pattern = '^acvp: impl=nirapod-slhdsa variant=forced\[scalar\] control=none groups=(\d+) cases=\d+ pass=\d+ fail=0 notrun=0 filtered=0 verdict=PASS$'
+exactly = 120
