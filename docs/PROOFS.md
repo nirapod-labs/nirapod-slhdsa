@@ -28,14 +28,25 @@ SPHINCS+ proof of ePrint 2024/910, imported unchanged; `make -C proofs check`
 re-checks both.
 
 - **Object.** The specification, not the Jasmin code. The specification is checked
-  against FIPS 205 by review and by the lemmas of `proofs/spec/validation/`, and has
-  not been run on ACVP vectors.
+  against FIPS 205 by review and by the lemmas of `proofs/spec/validation/`. It
+  cannot be run on ACVP vectors itself; an indirect route is described under
+  [Testing the specification through the code](#testing-the-specification-through-the-code).
 - **Scope.** All 12 parameter sets, pure and pre-hash, deterministic and hedged
   signing.
 - **Bound.** Concrete, in PRF, ITSR, tweakable-hash and pre-hash collision terms;
   no numeric security level is derived from it.
-- **Limits.** Hypotheses and limits, such as a key used for both deterministic and
-  hedged signing being outside the theorems, are in
+- **Adversary.** Classical: the adversary is a probabilistic program with
+  classical access to its oracles. Security against quantum adversaries is not
+  covered by these theorems.
+- **SHA-2 beyond its domain.** FIPS 180-4 defines SHA-2 for inputs under 2^64
+  bits (SHA-224, SHA-256) or 2^128 bits (the SHA-512 family), and FIPS 205 puts
+  no bound on the message, so the SHA2 sets are undefined on longer inputs. The
+  specification's SHA-2 is total: there it writes the bit length modulo 2^64 or
+  2^128. The security theorems have no length bound, so on such messages they are
+  about this extension, not about FIPS 205. The correctness theorems stay inside
+  the FIPS 180-4 domain (Domain, below).
+- **Limits.** The other hypotheses and limits, such as a key used for both
+  deterministic and hedged signing being outside the theorems, are in
   [`proofs/README.md`](../proofs/README.md#security-of-the-specification).
 
 ## The code against the specification
@@ -55,8 +66,9 @@ Proven, on the x86-64 and AArch64 models, total correctness:
 - **Addresses.** The hash address procedures of `src/slhdsa/address.jinc` compute
   the address setters of FIPS 205 Table 1, for all 12 parameter sets (the code
   depends on none).
-- **SHA-2.** The entry points of the portable SHA-2 kernels, with their round
-  functions, against FIPS 180-4: one block from an array (`_sha*_compress`), one
+- **SHA-2.** The entry points of the portable SHA-2 kernels against FIPS 180-4
+  (their round functions alone are proved in partial correctness, and the entry
+  points that run them in total correctness): one block from an array (`_sha*_compress`), one
   block from memory (`_sha*_compress_one`) and n consecutive blocks from memory
   (`_sha*_compress_blocks`, used by the streaming hash); and the streaming SHA-224,
   SHA-256, SHA-384, SHA-512, SHA-512/224 and SHA-512/256 (absorb from memory,
@@ -233,12 +245,79 @@ Not proven:
 `capi/dispatch.c` selects a set's `shani`, `avx2`, `sha2` or `sha3` variant
 wherever the CPU has the extensions it needs, so on such CPUs the library runs
 kernels these proofs do not cover. The proven kernels are those of the scalar
-variant, which every set has.
+variant, which every set has; [the next section](#which-variant-a-cpu-runs) lists
+which variant each CPU runs.
 
 The details are in
 [`proofs/README.md`](../proofs/README.md#extracted-models-and-correctness-proofs).
 `make check-extraction` fails if a committed model differs from a fresh extraction,
 so a proof cannot silently refer to old code.
+
+## Which variant a CPU runs
+
+Each parameter set is compiled once per hash variant (`Makefile`, `capi/sets.c`).
+At every call the library runs the last variant in the order below whose CPU
+features the operating system reports, and the scalar variant when there is none
+(`capi/dispatch.c`). On x86-64 no extension is used unless the CPU reports AVX and
+the operating system has enabled the AVX register state. "Proven" means the
+correctness theorems of [the previous section](#the-code-against-the-specification)
+hold for the variant's model; they never cover the C layer.
+
+| Architecture | Variant | Sets | Selected on | Proven |
+| :-- | :-- | :-- | :-- | :-- |
+| x86-64 | `scalar` | all 12 | SHAKE sets: CPUs without AVX2. SHA2 sets: CPUs with neither AVX2 nor the SHA extensions | yes, model `x86_64/portable` |
+| x86-64 | `avx2` | all 12 | SHAKE sets: CPUs with AVX2. SHA2 sets: CPUs with AVX2 and without the SHA extensions | no |
+| x86-64 | `shani` | 6 SHA2 | CPUs with the SHA extensions, with or without AVX2 | no |
+| AArch64 | `scalar` | all 12 | SHAKE sets: CPUs that lack FEAT_SHA3 or Advanced SIMD. SHA2 sets: CPUs that lack FEAT_SHA256, FEAT_SHA512 or Advanced SIMD | yes, model `aarch64/a64scalar` |
+| AArch64 | `sha3` | 6 SHAKE | CPUs with Advanced SIMD and FEAT_SHA3 | no |
+| AArch64 | `sha2` | 6 SHA2 | CPUs with Advanced SIMD, FEAT_SHA256 and FEAT_SHA512 | no |
+
+The variants differ in their hash kernels, and `avx2` also in the four-way SHA2
+tweakable hashes: `avx2` runs the four-way Keccak kernel on AVX2 for the SHAKE
+sets, and the four-way tweakable hashes of `src/slhdsa/thash_sha2_x4/multi/` on
+the AVX2 8-way SHA-256 and 4-way SHA-512 kernels for the SHA2 sets; `shani` runs
+SHA-256 on the SHA extensions; `sha3` runs single-way and four-way Keccak on the
+A64 SHA-3 instructions; `sha2` runs SHA-256 and SHA-512 on the A64 SHA-2
+instructions. The rest of the SLH-DSA code is the same source in every variant,
+but only the scalar models are extracted and proven.
+
+So on a CPU that has the extensions of a set's accelerated variant, no call for
+that set through the library runs proven code. All three CI runners
+([VALIDATION](VALIDATION.md#where-tests-run)) are such CPUs for every set. The
+application library has no way to request the scalar variant. The testing library
+can pin a variant per call, but it also exposes the internal functions of FIPS 205
+section 9 and must not be linked into an application
+([API](API.md#building-and-linking)).
+
+## Testing the specification through the code
+
+The specification cannot be run on test vectors: machine words are abstract in
+EasyCrypt. The correctness theorems give an indirect way to test it. For each of
+the 12 sets, the exports of the scalar variant are proven to compute the
+specification's key generation, signing and verification for every input in the
+Domain, so a run of the NIST ACVP vectors through the scalar variant of every set
+checks the specification on the same cases:
+
+```sh
+make -C tests/acvp check IMPL=nirapod RUNNER_FLAGS=--variant=scalar
+```
+
+A pass shows that the specification gives the ACVP expected values on those cases,
+provided that `jasmin2ec` extracts a model that behaves as the Jasmin program
+does; that the compiler, with the parts outside its proof (front end, assembly
+printer, assembler, linker), preserves that behaviour; that the `eclib` models of
+the instructions the kernels use match the compiler's semantics of them; and that
+the runner and the C layer, which are not proven, pass each case's inputs to the
+exports and report their results unchanged; and that the scalar exports run safely
+on those inputs, since the compiler theorem covers only safe executions and the
+extracted model is total, so on an unsafe run the model, the Jasmin program and
+the binary need not agree. Memory safety has no verdict yet
+([SECURITY-MODEL](SECURITY-MODEL.md#memory-safety)). Every ACVP message is far
+inside the Domain.
+
+The ACVP check in CI runs the variant each runner selects, which on the CI runners
+is never the scalar one (previous section), so it does not give this result. No
+result of the scalar run is recorded in this repository.
 
 ## Compilation
 
@@ -256,7 +335,9 @@ parameter set for the per-set models, in `proofs/inventory/`, together with each
 claimed theorem statement and every definition it relies on; `make
 check-inventory` fails when any of them changes without a reviewed update. The trusted base of the EasyCrypt results is EasyCrypt,
 Why3 and the pinned SMT provers, the Jasmin EasyCrypt library and its instruction
-models, and `jasmin2ec` itself; for calls through the C API, the C layer as
+models, the definitions that the imported `crypto-specs` theory `JWordList`
+states with `axiomatized by`, the defining axioms of EasyCrypt's `Subtype`
+clones, and `jasmin2ec` itself; for calls through the C API, the C layer as
 well (Not proven, above). No proof contains an admitted step: the proof-hole
 scan rejects `admit`, `admitted` and the commands that would let a file pass
 unchecked.

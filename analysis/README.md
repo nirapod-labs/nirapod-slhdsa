@@ -21,7 +21,11 @@ runs, for every parameter-set unit of the host's target,
   same under the model of mispredicted conditional branches (Spectre v1), with
   the misspeculation flag threaded through every function and every value
   reloaded from a spill slot or a stack array protected before it addresses
-  memory or decides a branch.
+  memory or decides a branch. Other speculation is outside the model: return
+  prediction (Spectre-RSB), although internal calls return with `ret`;
+  store-to-load forwarding (Spectre v4), whose mitigation, speculative store
+  bypass disable, is the platform's; and indirect-branch prediction
+  (`docs/SECURITY-MODEL.md`, Speculative constant time).
 - `jasmin-ct --doit`, after the compiler's `slhlowering` pass: PASS means that
   additionally every instruction that takes a secret operand is one the
   compiler marks data-operand-independent (Intel's DOIT list, Arm's DIT list),

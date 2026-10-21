@@ -60,10 +60,23 @@ What the result does not cover:
 branches (Spectre v1): the misspeculation flag is threaded through every function,
 and every value reloaded from a spill slot or stack array, and every released
 value, is protected with it before it addresses memory or decides a branch. It has
-the same limits as the constant-time check. Speculation through other mechanisms,
-such as indirect-branch or store-to-load prediction, is not part of this model,
-and the speculative guarantees of barrier instructions are an assumption of it
+the same limits as the constant-time check. The speculative guarantees of barrier
+instructions are an assumption of it
 ([TOOLCHAIN](TOOLCHAIN.md#assurance-boundary-of-the-toolchain)).
+
+Speculation through other mechanisms is not part of this model:
+
+- Return-address prediction (Spectre-RSB). Internal functions are called and
+  return with ordinary call and return instructions (`call`/`ret` on x86-64,
+  `bl`/`ret` on AArch64), and a return may be mispredicted to a different call
+  site. Nothing in the library or in the check prevents this.
+- Store-to-load forwarding (Spectre v4): a load may speculatively read a stale
+  value before an earlier store to the same address. Speculative store bypass
+  disable (SSBD) is the platform's: the library does not set it, and whether a
+  process runs with it is up to the operating system and the CPU.
+- Indirect-branch prediction. The assembly compiled from Jasmin has no indirect
+  branch or call (`make asm-policy`); the C layer is not checked for them, and the
+  caller's code and the operating system may have them.
 
 ## Instruction timing
 
